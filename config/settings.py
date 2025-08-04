@@ -1,0 +1,1 @@
+UI_FRAMEWORK = 'pyqt5' # or 'kivy'
