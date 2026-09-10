@@ -1,6 +1,6 @@
 # FlowNote — Execution Plan
 
-**Status:** DRAFT · **Based on:** `DESIGN.md` §3, §6, §9 (source: Notion "FlowNote — Canvas Editor Architecture" v1.4, §9 Implementation Plan) · **Repo state at time of writing:** empty scaffold (`README.md` only), branch `feature/linote`
+**Status:** IN PROGRESS — Phase 0 complete, Phase 1 scaffolding complete (2026-09-10) · **Based on:** `DESIGN.md` §3, §6, §9 (source: Notion "FlowNote — Canvas Editor Architecture" v1.4, §9 Implementation Plan) · **Repo state at time of writing:** empty scaffold (`README.md` only), branch `feature/linote`
 
 This turns the design's 7-phase plan into a checklist-driven execution plan, scoped to actually bootstrapping this repo from scratch. Each phase lists concrete tasks, its testing gate, and an explicit exit criterion.
 
@@ -10,7 +10,7 @@ This turns the design's 7-phase plan into a checklist-driven execution plan, sco
 
 Nothing exists yet beyond `README.md`, so this has to happen before Phase 1's tasks make sense.
 
-- [ ] Initialize a **pnpm workspace** at the repo root:
+- [x] Initialize a **pnpm workspace** at the repo root:
   ```
   apps/electron/          # Electron shell (Linux)
   apps/tauri/             # Tauri shell (Windows/macOS)
@@ -21,13 +21,13 @@ Nothing exists yet beyond `README.md`, so this has to happen before Phase 1's ta
   crates/flownote-tauri/      # Tauri command handlers (Win/macOS)
   crates/flownote-sync/       # Automerge WebSocket relay
   ```
-- [ ] Add root `pnpm-workspace.yaml`, root `tsconfig.json` (strict mode), root `.eslintrc` with a rule **banning `document.execCommand()`** in `packages/frontend` (DESIGN.md §5.4, §10 "Ribbon → segment dispatch" risk).
-- [ ] Add a Rust `Cargo.toml` workspace matching DESIGN.md §6.4.
-- [ ] Add `vitest` config for TypeScript unit tests and `Playwright` config for E2E (used from Phase 2 onward).
-- [ ] Add `cargo clippy` to the toolchain; wire both `cargo test`/`clippy` and `pnpm test` as local scripts before wiring CI.
-- [ ] Commit as the first change on `feature/linote` (or a sub-branch) — this is the literal starting point for Phase 1.
+- [x] Add root `pnpm-workspace.yaml`, root `tsconfig.json` (strict mode), root `.eslintrc` with a rule **banning `document.execCommand()`** in `packages/frontend` (DESIGN.md §5.4, §10 "Ribbon → segment dispatch" risk).
+- [x] Add a Rust `Cargo.toml` workspace matching DESIGN.md §6.4.
+- [x] Add `vitest` config for TypeScript unit tests and `Playwright` config for E2E (used from Phase 2 onward).
+- [x] Add `cargo clippy` to the toolchain; wire both `cargo test`/`clippy` and `pnpm test` as local scripts before wiring CI.
+- [x] Commit as the first change on `feature/linote` (or a sub-branch) — this is the literal starting point for Phase 1.
 
-**Exit criteria:** `pnpm install` succeeds, `cargo check` succeeds across the workspace, empty test suites run green in both toolchains.
+**Exit criteria:** ✅ met — `pnpm install` succeeds, `cargo check --workspace` (Tauri-excluded set on Linux) succeeds, `pnpm exec vitest run` / `cargo test` / `cargo clippy -- -D warnings` all pass green. See `bootstrap.md` (now marked executed) for the exact command sequence run.
 
 ---
 
@@ -35,17 +35,17 @@ Nothing exists yet beyond `README.md`, so this has to happen before Phase 1's ta
 
 | Task | Details |
 |---|---|
-| Monorepo structure | Confirmed from Bootstrap above. |
-| Rust workspace | `flownote-core`, `flownote-electron`, `flownote-tauri`, `flownote-sync` crates present and compiling. |
-| SQLite setup | Implement schema v1.4 from DESIGN.md §7.2: `pages`, `segments` (with `h`, `ink_layer`), `blocks`, `blocks_fts` (FTS5), spatial index (`idx_segments_page_pos`), `plugins`, `plugin_storage`. Use `refinery` migrations. |
-| IPCAdapter interface | Define the full interface from DESIGN.md §3.3 in `packages/ipc-adapter`, including all plugin IPC methods. Provide stub implementations for both `ElectronIPCAdapter` and `TauriIPCAdapter` that satisfy the interface but return mock data. |
-| Electron shell (Linux) | `electron-builder` config; main process starts the Rust sidecar (`flownote-electron`); wire `electron-trpc` router; set up the preload bridge. |
-| Tauri shell (Win/macOS) | `create-tauri-app` scaffold; point Vite at `packages/frontend`; wire `tauri-specta` type generation from Rust commands. |
-| CI matrix | GitHub Actions (or equivalent) matrix: `ubuntu-24.04` (Electron), `windows-2025` (Tauri), `macos-15` (Tauri) — each running `cargo test`, `cargo clippy`, `tsc --noEmit`, `vitest run`. |
+| Monorepo structure | ✅ Done — confirmed from Bootstrap above. |
+| Rust workspace | ✅ Done — `flownote-core`, `flownote-electron`, `flownote-tauri`, `flownote-sync` crates present and compiling (`cargo check`/`test`/`clippy` clean locally on the Linux exclusion set). |
+| SQLite setup | ⬜ Not started — schema v1.4 from DESIGN.md §7.2 (`pages`, `segments`, `blocks`, `blocks_fts` FTS5, spatial index, `plugins`, `plugin_storage`) and `refinery` migrations still to do. |
+| IPCAdapter interface | ✅ Interface + stub `ElectronIPCAdapter`/`TauriIPCAdapter` in `packages/ipc-adapter` done (return-mock-data / throw-not-implemented stubs, typecheck+lint clean, one smoke test). ⬜ The shared integration test suite exercising both stubs identically (DESIGN.md §10 "IPCAdapter type drift") is not written yet. |
+| Electron shell (Linux) | ⬜ Partial — main process opens a window; `electron-builder` config, sidecar start, `electron-trpc` router, and preload bridge not wired yet. |
+| Tauri shell (Win/macOS) | ⬜ Partial — `src-tauri` scaffolded and pointed at `packages/frontend`; `tauri-specta` type generation from real Rust commands not wired yet (crate compiles locally but untested on Windows/macOS). |
+| CI matrix | ✅ Done — `.github/workflows/ci.yml` runs `cargo test`, `cargo clippy`, `pnpm -w run tsc`, `pnpm -w vitest run`, `pnpm -w eslint .` on `ubuntu-24.04`/`windows-2025`/`macos-15`. Not yet pushed/verified actually green on GitHub Actions. |
 
-**Testing gate:** `cargo test` + `clippy` clean on all three CI runners; `tsc` strict-mode clean; both IPCAdapter stub implementations pass the same integration test suite (DESIGN.md §10 "IPCAdapter type drift" mitigation, applied early).
+**Testing gate:** ⬜ Not yet met — local `cargo test`/`clippy`/`tsc`/`vitest` all pass, but nothing has run on the actual three-OS CI matrix yet, and the shared IPCAdapter-stub integration suite doesn't exist.
 
-**Exit criteria:** Both shells launch to a blank window backed by a working (stubbed) IPCAdapter, on all three target OSes in CI.
+**Exit criteria:** ⬜ Not yet met — both shells build/typecheck, but "launch to a blank window ... on all three target OSes in CI" hasn't been verified (this session has no display server and no Windows/macOS runner).
 
 ---
 
