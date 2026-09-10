@@ -4,9 +4,17 @@
 // shared types once they're defined (likely generated via tauri-specta for the Tauri
 // side, mirrored by hand or via electron-trpc types for the Electron side).
 
+// Matches the `pages` table (DESIGN.md §7.2) and generated/tauri-bindings.ts's
+// `PageDto` — both flownote-electron's protocol.rs and flownote-tauri's
+// commands.rs return exactly this shape for getPage (DESIGN.md §10 "IPCAdapter
+// type drift"). Timestamps are epoch milliseconds.
 export interface Page {
   id: string
-  // TODO: fields per DESIGN.md storage schema
+  notebookId: string
+  title: string
+  mode: 'canvas' | 'linear'
+  createdAt: number
+  updatedAt: number
 }
 
 export interface Segment {

@@ -1,3 +1,4 @@
+import { commands } from './generated/tauri-bindings'
 import type {
   Block,
   IPCAdapter,
@@ -8,12 +9,24 @@ import type {
   SyncEvent,
 } from './types'
 
-// Backed by tauri-specta's generated invoke() bindings against the
-// #[tauri::command] handlers in crates/flownote-tauri. Stub — swap each
-// throw for the generated commands() call once tauri-specta bindings exist.
+// Backed by tauri-specta's generated invoke() bindings (./generated/tauri-
+// bindings.ts) against the #[tauri::command] handlers in crates/flownote-
+// tauri. Methods the bindings don't cover yet are still throw-stubs; as
+// flownote-tauri gains a command, add it to specta_builder() there and swap
+// the matching method here from a stub throw to a `commands.xxx()` call —
+// mirroring how apps/electron's trpc router grows (see its module doc).
 export class TauriIPCAdapter implements IPCAdapter {
-  async getPage(_pageId: string): Promise<Page> {
-    throw new Error(`TauriIPCAdapter.getPage not implemented (pageId=${_pageId})`)
+  async getPage(pageId: string): Promise<Page> {
+    const result = await commands.getPage(pageId)
+    if (result.status === 'error') throw new Error(result.error)
+    // PageDto's `mode` is a plain string on the Rust side (SQLite TEXT
+    // column, DESIGN.md §7.2) — specta can't express the 'canvas'|'linear'
+    // union from that, so narrow it here rather than widening our own type.
+    const { mode } = result.data
+    if (mode !== 'canvas' && mode !== 'linear') {
+      throw new Error(`getPage: unexpected page mode "${mode}"`)
+    }
+    return { ...result.data, mode }
   }
 
   async saveSegment(_seg: Segment): Promise<void> {
