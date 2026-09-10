@@ -1253,6 +1253,12 @@ dependencies = [
 [[package]]
 name = "flownote-electron"
 version = "0.1.0"
+dependencies = [
+ "flownote-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "flownote-sync"
