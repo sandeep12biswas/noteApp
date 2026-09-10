@@ -53,8 +53,8 @@ Nothing exists yet beyond `README.md`, so this has to happen before Phase 1's ta
 
 | Task | Details |
 |---|---|
-| Three-panel chrome | `RibbonRoot`, `SectionSidebar` (with a Plugins tab stub), `PageList`, `EditorPane`, `StatusBar` — per DESIGN.md §5.1–5.2. |
-| Multi-tab ribbon | Home/Insert/Draw/View tabs with all button groups from DESIGN.md §5.3. Plugin ribbon-group slots defined but empty. |
+| Three-panel chrome | ✅ Done — `RibbonRoot`, `SectionSidebar` (with a Plugins tab stub), `PageList`, `EditorPane`, `StatusBar` assembled in `AppShell`, per DESIGN.md §5.1–5.2. Tailwind CSS 4 wired in as part of this (was speced but never actually added when the frontend was scaffolded). 4 component tests. Panel widths are fixed, not yet drag-resizable (needs Phase 3's collision machinery). |
+| Multi-tab ribbon | ✅ Tab bar done (Home/Insert/Draw/View, switch on click, tested) — `RibbonRoot`'s per-tab panel is still an empty placeholder. ⬜ The actual button groups from DESIGN.md §5.3 (Bold/Italic/font family/etc.) need `editorRefs`/`getActiveEditor()` to dispatch through, which doesn't exist until `CanvasRoot` does. Plugin ribbon-group slots not defined yet either (needs `ExtensionPointRegistry`, Phase 7). |
 | Folder & file panels | Implement the product-requirement behaviors from DESIGN.md §2.1–2.2: folder-only tree with auto-capitalized names, file counts, expandable sub-folders (default depth 7, configurable), changeable folder icons (built-in set + external import), natural ordering; file panel with natural ordering, filename validation rules, new-page creation flow (folder-pick-or-create → name), per-folder filename uniqueness, filename search and content search. |
 | `CanvasRoot` + `SegmentHost` | Click-to-create using `findFreePosition()`; hover-to-reveal; one TipTap `Editor` instance per segment; `ResizeObserver` wiring. |
 | IPCAdapter calls wired | All storage calls go through IPCAdapter — no direct `invoke`/`ipcRenderer` calls anywhere in `packages/frontend`. |
