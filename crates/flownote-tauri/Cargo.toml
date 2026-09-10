@@ -1,0 +1,8 @@
+[package]
+name = "flownote-tauri"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tauri = "2"
+tauri-specta = { version = "2.0.0-rc.21", features = ["derive"] }
