@@ -1,0 +1,73 @@
+/**
+ * Root ESLint config. Two enforcement rules exist specifically to protect
+ * architectural boundaries named in DESIGN.md and must never be relaxed
+ * without updating that doc first:
+ *
+ *  1. `document.execCommand` is banned inside packages/frontend — DESIGN.md
+ *     §5.4/§10 flags the Ribbon → segment dispatch path as the place this
+ *     footgun would otherwise get reintroduced.
+ *  2. packages/frontend may not import platform IPC packages directly —
+ *     only packages/ipc-adapter may reference `@tauri-apps/api` / `electron`
+ *     (DESIGN.md §3.3 IPCAdapter boundary).
+ */
+module.exports = {
+  root: true,
+  env: { es2022: true, node: true, browser: true },
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    project: ['./tsconfig.json', './packages/*/tsconfig.json', './apps/electron/tsconfig.json'],
+  },
+  plugins: ['@typescript-eslint', 'react-hooks'],
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+  ],
+  ignorePatterns: [
+    'node_modules',
+    'dist',
+    'target',
+    '**/src-tauri/target',
+    '**/src-tauri/gen',
+  ],
+  rules: {
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+  },
+  overrides: [
+    {
+      files: ['packages/frontend/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector:
+              "CallExpression[callee.object.name='document'][callee.property.name='execCommand']",
+            message:
+              'document.execCommand is banned in packages/frontend — dispatch ribbon actions through the active segment editor instead (see DESIGN.md §5.4/§10).',
+          },
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: '@tauri-apps/api',
+                message:
+                  'packages/frontend must not import platform IPC directly — go through packages/ipc-adapter (DESIGN.md §3.3).',
+              },
+              {
+                name: 'electron',
+                message:
+                  'packages/frontend must not import platform IPC directly — go through packages/ipc-adapter (DESIGN.md §3.3).',
+              },
+            ],
+            patterns: ['@tauri-apps/*', 'electron/*'],
+          },
+        ],
+      },
+    },
+  ],
+}
