@@ -11,12 +11,27 @@ import { SidecarSupervisor, type SupervisedProcess } from './sidecarSupervisor'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
 
-/** Path to the compiled flownote-electron binary, built by `cargo build`. */
+/**
+ * Path to the compiled flownote-electron binary. electron-builder.yml's
+ * `extraResources` copies the release binary to `resources/bin/` in a
+ * packaged app; unpackaged (dev, or `electron-builder --dir`), it's read
+ * straight out of the Cargo workspace's `target/` — see also
+ * frontendIndexPath() below, which makes the same packaged/unpackaged split.
+ */
 function sidecarBinaryPath(): string {
-  const profile = isDev ? 'debug' : 'release'
   const name = process.platform === 'win32' ? 'flownote-electron.exe' : 'flownote-electron'
-  // apps/electron/dist/main.js (or src/main.ts under tsx) -> repo root -> target/<profile>
+  if (app.isPackaged) return join(process.resourcesPath, 'bin', name)
+
+  const profile = isDev ? 'debug' : 'release'
+  // apps/electron/dist/main.js -> apps/electron -> apps -> repo root -> target/<profile>
   return join(__dirname, '..', '..', '..', 'target', profile, name)
+}
+
+/** Same packaged/unpackaged split as sidecarBinaryPath(), for the built frontend. */
+function frontendIndexPath(): string {
+  if (app.isPackaged) return join(process.resourcesPath, 'frontend', 'index.html')
+  // apps/electron/dist/main.js -> apps/electron -> apps -> repo root -> packages/frontend/dist
+  return join(__dirname, '..', '..', '..', 'packages', 'frontend', 'dist', 'index.html')
 }
 
 function spawnSidecar(): SupervisedProcess {
@@ -47,7 +62,7 @@ function createWindow(sidecar: SidecarSupervisor): void {
   if (isDev) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL as string)
   } else {
-    win.loadFile(join(__dirname, '..', '..', 'frontend', 'dist', 'index.html'))
+    win.loadFile(frontendIndexPath())
   }
 }
 

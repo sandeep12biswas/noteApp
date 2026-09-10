@@ -1,0 +1,28 @@
+# electron-builder config — Linux packaging only (DESIGN.md §3.2/§6.1: the
+# Windows/macOS shells are Tauri, packaged separately under apps/tauri).
+#
+# The packaged app never reaches into the monorepo at runtime: the compiled
+# frontend and the flownote-electron sidecar binary are copied in as
+# `extraResources` at build time, and src/main.ts's sidecarBinaryPath() /
+# frontendIndexPath() read them from `process.resourcesPath` when
+# `app.isPackaged`. Run `pnpm run package` (after `pnpm build` and
+# `cargo build --release -p flownote-electron`) to produce them.
+appId: com.sandeep.flownote
+productName: FlowNote
+executableName: flownote
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: ../../packages/frontend/dist
+    to: frontend
+  - from: ../../target/release/flownote-electron
+    to: bin/flownote-electron
+linux:
+  target:
+    - deb
+    - AppImage
+  category: Office

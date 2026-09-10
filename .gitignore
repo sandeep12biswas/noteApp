@@ -213,5 +213,6 @@ dist/
 target/
 apps/tauri/src-tauri/target/
 apps/tauri/src-tauri/gen/
+apps/electron/release/
 *.log
 .DS_Store

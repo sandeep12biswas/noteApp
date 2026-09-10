@@ -2,11 +2,15 @@
   "name": "@flownote/electron",
   "private": true,
   "version": "0.0.0",
+  "description": "FlowNote — Linux desktop shell (Electron)",
+  "author": "Sandeep Biswas",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "pnpm build && electron .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "pnpm build && electron-builder --linux",
+    "package:dir": "pnpm build && electron-builder --linux --dir"
   },
   "dependencies": {
     "electron-trpc": "^0.7.1",
