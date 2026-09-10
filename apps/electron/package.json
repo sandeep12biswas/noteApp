@@ -2,9 +2,10 @@
   "name": "@flownote/electron",
   "private": true,
   "version": "0.0.0",
-  "main": "src/main.ts",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "pnpm build && electron .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
