@@ -1,5 +1,8 @@
+import { createTRPCClient } from '@trpc/client'
+import { ipcLink } from 'electron-trpc/renderer'
 import type {
   Block,
+  Folder,
   IPCAdapter,
   Page,
   PluginManifest,
@@ -8,24 +11,77 @@ import type {
   SyncEvent,
 } from './types'
 
-// Backed by electron-trpc, exposed on window.electronIPC by the Electron
-// preload script. Stub — wire each method to the tRPC client once
-// apps/electron's preload + main-process router exist.
+// The renderer-side trpc client's procedure shape, hand-mirrored from
+// apps/electron/src/trpc/router.ts's `AppRouter` rather than imported from
+// it — apps/electron depends on this package, not the other way around, and
+// pulling its type across that boundary would need a shared third package.
+// electron-trpc's `ipcLink` is structural at runtime (DESIGN.md §10
+// "IPCAdapter type drift" is exactly this risk); keep this type in sync by
+// hand when router.ts's procedures change, the same discipline
+// contract.test.ts and tauri.test.ts already apply to the Tauri side.
+interface ElectronRouter {
+  ping: { query: () => Promise<string> }
+  getPage: { query: (pageId: string) => Promise<Page> }
+  saveFolder: { mutate: (folder: Folder) => Promise<void> }
+  listFolders: { query: () => Promise<Folder[]> }
+  savePage: { mutate: (page: { id: string; folderId: string; title: string }) => Promise<void> }
+  listPages: { query: (folderId: string) => Promise<Page[]> }
+  listSegments: { query: (pageId: string) => Promise<Segment[]> }
+  saveSegment: { mutate: (seg: Segment) => Promise<void> }
+  saveSegmentsBatch: { mutate: (segs: Segment[]) => Promise<void> }
+  deleteSegment: { mutate: (id: string) => Promise<void> }
+}
+
+let client: ElectronRouter | null = null
+function getClient(): ElectronRouter {
+  // `createTRPCClient` has no way to know `ElectronRouter`'s procedures are
+  // real trpc router procedures (it isn't a genuine `AnyRouter` — see the
+  // module doc above), so its generic is `any` here and the cast below is
+  // what actually gives call sites their types.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client ??= createTRPCClient<any>({ links: [ipcLink()] }) as unknown as ElectronRouter
+  return client
+}
+
+// Backed by electron-trpc, exposed on window.electronTRPC by the Electron
+// preload script (apps/electron/src/preload.ts). Every method below is a
+// thin pass-through matching apps/electron/src/trpc/router.ts's procedure
+// names one-for-one — see that file's module doc for how to add a new one.
 export class ElectronIPCAdapter implements IPCAdapter {
-  async getPage(_pageId: string): Promise<Page> {
-    throw new Error(`ElectronIPCAdapter.getPage not implemented (pageId=${_pageId})`)
+  async getPage(pageId: string): Promise<Page> {
+    return getClient().getPage.query(pageId)
   }
 
-  async saveSegment(_seg: Segment): Promise<void> {
-    throw new Error('ElectronIPCAdapter.saveSegment not implemented')
+  async saveFolder(folder: Folder): Promise<void> {
+    await getClient().saveFolder.mutate(folder)
   }
 
-  async saveSegmentsBatch(_segs: Segment[]): Promise<void> {
-    throw new Error('ElectronIPCAdapter.saveSegmentsBatch not implemented')
+  async listFolders(): Promise<Folder[]> {
+    return getClient().listFolders.query()
   }
 
-  async deleteSegment(_id: string): Promise<void> {
-    throw new Error('ElectronIPCAdapter.deleteSegment not implemented')
+  async savePage(page: { id: string; folderId: string; title: string }): Promise<void> {
+    await getClient().savePage.mutate(page)
+  }
+
+  async listPages(folderId: string): Promise<Page[]> {
+    return getClient().listPages.query(folderId)
+  }
+
+  async listSegments(pageId: string): Promise<Segment[]> {
+    return getClient().listSegments.query(pageId)
+  }
+
+  async saveSegment(seg: Segment): Promise<void> {
+    await getClient().saveSegment.mutate(seg)
+  }
+
+  async saveSegmentsBatch(segs: Segment[]): Promise<void> {
+    await getClient().saveSegmentsBatch.mutate(segs)
+  }
+
+  async deleteSegment(id: string): Promise<void> {
+    await getClient().deleteSegment.mutate(id)
   }
 
   async saveBlock(_block: Block): Promise<void> {

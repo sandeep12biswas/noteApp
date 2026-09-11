@@ -17,10 +17,36 @@ export interface Page {
   updatedAt: number
 }
 
+// `folderId` isn't on the shared `PageDto`/`get_page` response yet (DESIGN.md
+// §10 "IPCAdapter type drift" — keep Page's on-the-wire shape stable),
+// hence the separate input type `savePage`/`listPages` use.
+
+// Matches packages/frontend/src/store/canvasStore.ts's `Segment` (minus
+// `createdAt`/`updatedAt`, which the backend owns) and both
+// flownote-electron's protocol.rs / flownote-tauri's commands.rs
+// `save_segment`/`SegmentInput` — DESIGN.md §4.1/§7.1. `content` is the
+// TipTap JSON document, passed through as an opaque value; see the V2
+// migration's notes on why it isn't decomposed into `blocks` rows yet.
 export interface Segment {
   id: string
   pageId: string
-  // TODO: position/size/color/blocks per DESIGN.md §4.1/§4.2
+  x: number
+  y: number
+  w: number
+  h: number
+  zIndex: number
+  borderColor: string | null
+  fillColor: string | null
+  content: Record<string, unknown>
+}
+
+// Matches notebookStore.ts's `Folder` — DESIGN.md §2.1.
+export interface Folder {
+  id: string
+  name: string
+  parentId: string | null
+  icon: string | null
+  expanded: boolean
 }
 
 export interface Block {
@@ -50,6 +76,11 @@ export interface PluginManifest {
 
 export interface IPCAdapter {
   getPage(pageId: string): Promise<Page>
+  saveFolder(folder: Folder): Promise<void>
+  listFolders(): Promise<Folder[]>
+  savePage(page: { id: string; folderId: string; title: string }): Promise<void>
+  listPages(folderId: string): Promise<Page[]>
+  listSegments(pageId: string): Promise<Segment[]>
   saveSegment(seg: Segment): Promise<void>
   saveSegmentsBatch(segs: Segment[]): Promise<void>
   deleteSegment(id: string): Promise<void>

@@ -1,6 +1,7 @@
-import { commands } from './generated/tauri-bindings'
+import { commands, type SegmentInput } from './generated/tauri-bindings'
 import type {
   Block,
+  Folder,
   IPCAdapter,
   Page,
   PluginManifest,
@@ -8,6 +9,12 @@ import type {
   Segment,
   SyncEvent,
 } from './types'
+
+/** Unwraps a tauri-specta `Result<T, string>`, throwing the backend's error message on failure. */
+function unwrap<T>(result: { status: 'ok'; data: T } | { status: 'error'; error: string }): T {
+  if (result.status === 'error') throw new Error(result.error)
+  return result.data
+}
 
 // Backed by tauri-specta's generated invoke() bindings (./generated/tauri-
 // bindings.ts) against the #[tauri::command] handlers in crates/flownote-
@@ -29,16 +36,47 @@ export class TauriIPCAdapter implements IPCAdapter {
     return { ...result.data, mode }
   }
 
-  async saveSegment(_seg: Segment): Promise<void> {
-    throw new Error('TauriIPCAdapter.saveSegment not implemented')
+  async saveFolder(folder: Folder): Promise<void> {
+    unwrap(await commands.saveFolder(folder))
   }
 
-  async saveSegmentsBatch(_segs: Segment[]): Promise<void> {
-    throw new Error('TauriIPCAdapter.saveSegmentsBatch not implemented')
+  async listFolders(): Promise<Folder[]> {
+    return unwrap(await commands.listFolders())
   }
 
-  async deleteSegment(_id: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.deleteSegment not implemented')
+  async savePage(page: { id: string; folderId: string; title: string }): Promise<void> {
+    unwrap(await commands.savePage(page))
+  }
+
+  async listPages(folderId: string): Promise<Page[]> {
+    const pages = unwrap(await commands.listPages(folderId))
+    return pages.map((p) => {
+      const { mode } = p
+      if (mode !== 'canvas' && mode !== 'linear') {
+        throw new Error(`listPages: unexpected page mode "${mode}"`)
+      }
+      return { ...p, mode }
+    })
+  }
+
+  async listSegments(pageId: string): Promise<Segment[]> {
+    return unwrap(await commands.listSegments(pageId)) as unknown as Segment[]
+  }
+
+  // `Segment.content` is `Record<string, unknown>` (a TipTap JSON doc always
+  // has one) but specta can only express the generated `SegmentInput.content`
+  // as the broader `JsonValue` — the cast just bridges that, not a real
+  // shape mismatch.
+  async saveSegment(seg: Segment): Promise<void> {
+    unwrap(await commands.saveSegment(seg as unknown as SegmentInput))
+  }
+
+  async saveSegmentsBatch(segs: Segment[]): Promise<void> {
+    unwrap(await commands.saveSegmentsBatch(segs as unknown as SegmentInput[]))
+  }
+
+  async deleteSegment(id: string): Promise<void> {
+    unwrap(await commands.deleteSegment(id))
   }
 
   async saveBlock(_block: Block): Promise<void> {

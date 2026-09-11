@@ -1,12 +1,29 @@
-// Folder/file domain state — DESIGN.md §2.1/§2.2. This is client-side state
-// only for now; wiring these actions through IPCAdapter to real SQLite
-// storage is a separate later task ("IPCAdapter calls wired" in
-// EXECUTION_PLAN.md's Phase 2 table) — the shapes here are deliberately
-// close to the `pages`/eventual `folders` tables (DESIGN.md §7.2) so that
-// swap is mostly replacing these reducers' bodies with `ipc.*` calls.
+// Folder/file domain state — DESIGN.md §2.1/§2.2. Reducers stay synchronous
+// and remain the source of truth for local state (so existing callers and
+// tests are untouched); each mutation additionally fires an IPCAdapter call
+// to persist it to real SQLite storage ("IPCAdapter calls wired",
+// EXECUTION_PLAN.md Phase 2) — fire-and-forget, since nothing here is on the
+// critical path for the UI to stay responsive. `setIPCAdapter` is a no-op
+// until `App.tsx` resolves a real adapter at startup, which is also what
+// keeps this store's ~30 existing unit tests adapter-free.
+import type { IPCAdapter } from '@flownote/ipc-adapter'
 import { create } from 'zustand'
 import { capitalizeFirstLetter, validateFileName } from '../lib/validation'
 import { naturalSortBy } from '../lib/naturalSort'
+
+let ipc: IPCAdapter | null = null
+
+/** Called once at startup (App.tsx) once `resolveIPCAdapter()` settles. */
+export function setIPCAdapter(adapter: IPCAdapter | null): void {
+  ipc = adapter
+}
+
+function persist(label: string, promise: Promise<unknown> | undefined): void {
+  promise?.catch((err: unknown) => {
+    // eslint-disable-next-line no-console -- best-effort persistence; nothing else observes this failure yet
+    console.error(`notebookStore: ${label} failed`, err)
+  })
+}
 
 /** DESIGN.md §2.1: folder hierarchy depth is configurable, defaulting to 7. */
 export const DEFAULT_MAX_FOLDER_DEPTH = 7
@@ -105,6 +122,8 @@ interface NotebookState {
   selectFile: (id: string | null) => void
   /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
   updateFileContent: (id: string, content: string) => void
+  /** Loads every folder and its pages from IPCAdapter — called once at startup once an adapter resolves. */
+  hydrateFromIPC: () => Promise<void>
 }
 
 let nextId = 1
@@ -129,9 +148,9 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     }
 
     const id = makeId('folder')
-    set((state) => ({
-      folders: { ...state.folders, [id]: { id, name, parentId, icon: null, expanded: false } },
-    }))
+    const folder: Folder = { id, name, parentId, icon: null, expanded: false }
+    set((state) => ({ folders: { ...state.folders, [id]: folder } }))
+    persist('saveFolder', ipc?.saveFolder(folder))
     return { ok: true, id }
   },
 
@@ -140,7 +159,9 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     set((state) => {
       const folder = state.folders[id]
       if (!folder) return state
-      return { folders: { ...state.folders, [id]: { ...folder, name } } }
+      const updated = { ...folder, name }
+      persist('saveFolder', ipc?.saveFolder(updated))
+      return { folders: { ...state.folders, [id]: updated } }
     })
   },
 
@@ -148,14 +169,18 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     set((state) => {
       const folder = state.folders[id]
       if (!folder) return state
-      return { folders: { ...state.folders, [id]: { ...folder, expanded: !folder.expanded } } }
+      const updated = { ...folder, expanded: !folder.expanded }
+      persist('saveFolder', ipc?.saveFolder(updated))
+      return { folders: { ...state.folders, [id]: updated } }
     }),
 
   setFolderIcon: (id, icon) =>
     set((state) => {
       const folder = state.folders[id]
       if (!folder) return state
-      return { folders: { ...state.folders, [id]: { ...folder, icon } } }
+      const updated = { ...folder, icon }
+      persist('saveFolder', ipc?.saveFolder(updated))
+      return { folders: { ...state.folders, [id]: updated } }
     }),
 
   selectFolder: (id) => set({ selectedFolderId: id }),
@@ -174,6 +199,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     set((state) => ({
       files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now() } },
     }))
+    persist('savePage', ipc?.savePage({ id, folderId, title: name }))
     return { ok: true, id }
   },
 
@@ -185,4 +211,20 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       if (!file) return state
       return { files: { ...state.files, [id]: { ...file, content, updatedAt: Date.now() } } }
     }),
+
+  hydrateFromIPC: async () => {
+    if (!ipc) return
+    const folders = await ipc.listFolders()
+    const folderMap: Folders = {}
+    for (const f of folders) folderMap[f.id] = f
+
+    const fileMap: Files = {}
+    for (const folder of folders) {
+      const pages = await ipc.listPages(folder.id)
+      for (const p of pages) {
+        fileMap[p.id] = { id: p.id, name: p.title, folderId: folder.id, content: '', updatedAt: p.updatedAt }
+      }
+    }
+    set({ folders: folderMap, files: fileMap })
+  },
 }))

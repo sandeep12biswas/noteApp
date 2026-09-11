@@ -5,7 +5,11 @@
 
 pub mod commands;
 
-pub use commands::{get_page, ping, AppState, PageDto};
+pub use commands::{
+    delete_segment, get_page, list_folders, list_pages, list_segments, ping, save_folder, save_page,
+    save_segment, save_segments_batch, AppState, FolderDto, FolderInput, PageDto, PageInput, SegmentDto,
+    SegmentInput,
+};
 
 /// Builds the `tauri-specta` builder wiring every command above. Consumed by
 /// `apps/tauri/src-tauri/src/lib.rs`, which both attaches it as the app's
@@ -13,7 +17,18 @@ pub use commands::{get_page, ping, AppState, PageDto};
 /// `packages/ipc-adapter`'s `TauriIPCAdapter` gets typed `invoke()` calls
 /// instead of hand-typed strings (DESIGN.md §3.3/§8.2).
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![ping, get_page])
+    tauri_specta::Builder::<tauri::Wry>::new().commands(tauri_specta::collect_commands![
+        ping,
+        get_page,
+        save_folder,
+        list_folders,
+        save_page,
+        list_pages,
+        list_segments,
+        save_segment,
+        save_segments_batch,
+        delete_segment,
+    ])
 }
 
 /// The shared TypeScript-export configuration — used both by the real

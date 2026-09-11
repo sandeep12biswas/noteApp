@@ -21,11 +21,14 @@ struct Migration {
 
 /// Add new migrations here, in ascending version order. Never edit or
 /// reorder an existing entry once it has shipped — add a new one instead.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "init",
-    sql: include_str!("../migrations/V1__init.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration { version: 1, name: "init", sql: include_str!("../migrations/V1__init.sql") },
+    Migration {
+        version: 2,
+        name: "folders_and_segment_content",
+        sql: include_str!("../migrations/V2__folders_and_segment_content.sql"),
+    },
+];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
 /// current schema version, each inside its own transaction. Safe to call on
@@ -74,6 +77,7 @@ mod tests {
             "blocks_fts",
             "plugins",
             "plugin_storage",
+            "folders",
         ];
         for table in expected_tables {
             let count: i64 = conn
@@ -89,7 +93,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 1);
+        assert_eq!(applied, 2);
     }
 
     #[test]

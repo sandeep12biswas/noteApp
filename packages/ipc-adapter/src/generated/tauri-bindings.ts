@@ -15,6 +15,70 @@ async getPage(pageId: string) : Promise<Result<PageDto, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async saveFolder(folder: FolderInput) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_folder", { folder }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listFolders() : Promise<Result<FolderDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_folders") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async savePage(page: PageInput) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_page", { page }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listPages(folderId: string) : Promise<Result<PageDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_pages", { folderId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async listSegments(pageId: string) : Promise<Result<SegmentDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_segments", { pageId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveSegment(segment: SegmentInput) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_segment", { segment }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveSegmentsBatch(segments: SegmentInput[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_segments_batch", { segments }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteSegment(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_segment", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -28,7 +92,17 @@ async getPage(pageId: string) : Promise<Result<PageDto, string>> {
 
 /** user-defined types **/
 
+export type FolderDto = { id: string; name: string; parentId: string | null; icon: string | null; expanded: boolean }
+export type FolderInput = { id: string; name: string; parentId: string | null; icon: string | null; expanded: boolean }
+export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 export type PageDto = { id: string; notebookId: string; title: string; mode: string; createdAt: number; updatedAt: number }
+export type PageInput = { id: string; folderId: string; title: string }
+export type SegmentDto = { id: string; pageId: string; x: number; y: number; w: number; h: number; zIndex: number; borderColor: string | null; fillColor: string | null; content: JsonValue }
+export type SegmentInput = { id: string; pageId: string; x: number; y: number; w: number; h: number; zIndex?: number; borderColor: string | null; fillColor: string | null; 
+/**
+ * TipTap JSON document, passed through as an opaque JSON value (DESIGN.md §7.1).
+ */
+content?: JsonValue }
 
 /** tauri-specta globals **/
 

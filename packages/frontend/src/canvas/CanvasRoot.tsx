@@ -4,7 +4,7 @@
 // mirrored into `notebookStore`'s `FileEntry.content` so the existing
 // filename/content search (DESIGN.md §2.2) keeps working without a direct
 // dependency between the two stores.
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { findFreePosition } from '../lib/collision'
 import { DEFAULT_SEGMENT_HEIGHT, DEFAULT_SEGMENT_WIDTH, useCanvasStore } from '../store/canvasStore'
 import { useNotebookStore } from '../store/notebookStore'
@@ -16,9 +16,18 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
   const createSegment = useCanvasStore((s) => s.createSegment)
   const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
   const aabbsForPage = useCanvasStore((s) => s.aabbsForPage)
+  const loadSegmentsForPage = useCanvasStore((s) => s.loadSegmentsForPage)
   const updateFileContent = useNotebookStore((s) => s.updateFileContent)
 
   const pageSegments = useMemo(() => Object.values(segments).filter((s) => s.pageId === pageId), [segments, pageId])
+
+  // Loads this page's persisted segments the first time it's opened
+  // ("IPCAdapter calls wired", EXECUTION_PLAN.md Phase 2). No-op when no
+  // IPCAdapter is wired (see App.tsx) or once segments are already local.
+  useEffect(() => {
+    loadSegmentsForPage(pageId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageId])
 
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {

@@ -15,6 +15,21 @@ interface AdapterUnderTest {
   create: () => IPCAdapter
 }
 
+const testSegment = {
+  id: 'seg-1',
+  pageId: 'page-1',
+  x: 0,
+  y: 0,
+  w: 280,
+  h: 40,
+  zIndex: 0,
+  borderColor: null,
+  fillColor: null,
+  content: { type: 'doc', content: [] },
+}
+
+const testFolder = { id: 'folder-1', name: 'Work', parentId: null, icon: null, expanded: false }
+
 const adapters: AdapterUnderTest[] = [
   { name: 'ElectronIPCAdapter', create: () => new ElectronIPCAdapter() },
   { name: 'TauriIPCAdapter', create: () => new TauriIPCAdapter() },
@@ -26,11 +41,34 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.getPage('page-1')).rejects.toThrow()
   })
 
+  it('saveFolder rejects', async () => {
+    const adapter = create()
+    await expect(adapter.saveFolder(testFolder)).rejects.toThrow()
+  })
+
+  it('listFolders rejects', async () => {
+    const adapter = create()
+    await expect(adapter.listFolders()).rejects.toThrow()
+  })
+
+  it('savePage rejects', async () => {
+    const adapter = create()
+    await expect(adapter.savePage({ id: 'page-1', folderId: 'folder-1', title: 'Notes' })).rejects.toThrow()
+  })
+
+  it('listPages rejects', async () => {
+    const adapter = create()
+    await expect(adapter.listPages('folder-1')).rejects.toThrow()
+  })
+
+  it('listSegments rejects', async () => {
+    const adapter = create()
+    await expect(adapter.listSegments('page-1')).rejects.toThrow()
+  })
+
   it('saveSegment rejects', async () => {
     const adapter = create()
-    await expect(
-      adapter.saveSegment({ id: 'seg-1', pageId: 'page-1' }),
-    ).rejects.toThrow()
+    await expect(adapter.saveSegment(testSegment)).rejects.toThrow()
   })
 
   it('saveSegmentsBatch rejects', async () => {

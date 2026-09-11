@@ -154,6 +154,12 @@ importers:
       '@tauri-apps/api':
         specifier: ^2
         version: 2.11.1
+      '@trpc/client':
+        specifier: ^11
+        version: 11.18.0(@trpc/server@11.18.0(typescript@5.7.3))(typescript@5.7.3)
+      electron-trpc:
+        specifier: ^0.7.1
+        version: 0.7.1(@trpc/client@11.18.0(@trpc/server@11.18.0(typescript@5.7.3))(typescript@5.7.3))(@trpc/server@11.18.0(typescript@5.7.3))(electron@32.3.3)
 
 packages:
 
