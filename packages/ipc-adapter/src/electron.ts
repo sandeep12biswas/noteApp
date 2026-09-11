@@ -30,6 +30,8 @@ interface ElectronRouter {
   saveSegment: { mutate: (seg: Segment) => Promise<void> }
   saveSegmentsBatch: { mutate: (segs: Segment[]) => Promise<void> }
   deleteSegment: { mutate: (id: string) => Promise<void> }
+  setPageMode: { mutate: (input: { pageId: string; mode: 'canvas' | 'linear' }) => Promise<void> }
+  search: { query: (input: { query: string; notebookId: string }) => Promise<SearchResult[]> }
 }
 
 let client: ElectronRouter | null = null
@@ -96,12 +98,12 @@ export class ElectronIPCAdapter implements IPCAdapter {
     throw new Error('ElectronIPCAdapter.mergeSegments not implemented')
   }
 
-  async search(_query: string, _notebookId: string): Promise<SearchResult[]> {
-    throw new Error('ElectronIPCAdapter.search not implemented')
+  async search(query: string, notebookId: string): Promise<SearchResult[]> {
+    return getClient().search.query({ query, notebookId })
   }
 
-  async setPageMode(_pageId: string, _mode: 'canvas' | 'linear'): Promise<void> {
-    throw new Error('ElectronIPCAdapter.setPageMode not implemented')
+  async setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void> {
+    await getClient().setPageMode.mutate({ pageId, mode })
   }
 
   onSyncEvent(_handler: (event: SyncEvent) => void): () => void {

@@ -8,3 +8,9 @@ apps/tauri/src-tauri/gen/
 apps/electron/release/
 *.log
 .DS_Store
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

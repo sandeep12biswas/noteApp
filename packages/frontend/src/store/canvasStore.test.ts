@@ -30,6 +30,47 @@ describe('updateSegmentWidth', () => {
   })
 })
 
+describe('setSegmentColor', () => {
+  it('persists border and fill colour', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().setSegmentColor(id, '#dc2626', 'rgba(220, 38, 38, 0.08)')
+    const seg = useCanvasStore.getState().segments[id]
+    expect(seg?.borderColor).toBe('#dc2626')
+    expect(seg?.fillColor).toBe('rgba(220, 38, 38, 0.08)')
+  })
+
+  it('clears both colours when passed null', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().setSegmentColor(id, '#dc2626', 'rgba(220, 38, 38, 0.08)')
+    useCanvasStore.getState().setSegmentColor(id, null, null)
+    const seg = useCanvasStore.getState().segments[id]
+    expect(seg?.borderColor).toBeNull()
+    expect(seg?.fillColor).toBeNull()
+  })
+})
+
+describe('deleteIfEmptyAndUncolored (DESIGN.md §4.2 "coloured segments never auto-delete")', () => {
+  it('deletes an empty, uncoloured segment', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().deleteIfEmptyAndUncolored(id)
+    expect(useCanvasStore.getState().segments[id]).toBeUndefined()
+  })
+
+  it('keeps an empty segment once it has been given a colour', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().setSegmentColor(id, '#dc2626', 'rgba(220, 38, 38, 0.08)')
+    useCanvasStore.getState().deleteIfEmptyAndUncolored(id)
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+  })
+
+  it('keeps a non-empty segment regardless of colour', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().updateSegmentContent(id, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] })
+    useCanvasStore.getState().deleteIfEmptyAndUncolored(id)
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+  })
+})
+
 describe('updateSegmentHeight cascade', () => {
   it('does not push anything when nothing overlaps', () => {
     const a = useCanvasStore.getState().createSegment('page-1', 0, 0, 200, 40)
@@ -78,5 +119,19 @@ describe('updateSegmentHeight cascade', () => {
     useCanvasStore.getState().updateSegmentHeight(a, 200)
 
     expect(useCanvasStore.getState().segments[b]?.y).toBe(20)
+  })
+})
+
+describe('makeSegmentId cross-session uniqueness', () => {
+  // Regression test for a real bug found via live QA (run-electron): ids
+  // used to be a bare per-module-load counter ("segment-1", "segment-2", …),
+  // so a segment created in a *fresh* app launch could collide with a
+  // persisted id from an earlier session — and since React keys SegmentHost
+  // by id, the already-mounted (stale) TipTap editor for the old segment
+  // silently absorbed the new segment's keystrokes. Ids must carry a
+  // per-module-load random component, not just be numeric.
+  it('is not a bare numeric counter', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    expect(id).not.toMatch(/^segment-\d+$/)
   })
 })

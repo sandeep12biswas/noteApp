@@ -7,6 +7,7 @@ import { useNotebookStore } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
 import { CanvasRoot } from '../canvas/CanvasRoot'
 import { InkLayer } from '../canvas/InkLayer'
+import { LinearRoot } from '../canvas/LinearRoot'
 
 /**
  * Borderless, editable page title (DESIGN.md §5.2) — commits on blur/Enter,
@@ -89,11 +90,15 @@ export function EditorPane() {
         </p>
       </div>
       <div className="relative flex-1 overflow-auto">
-        {selectedFileId ? (
-          <>
-            <CanvasRoot pageId={selectedFileId} />
-            <InkLayer pageId={selectedFileId} active={drawMode} />
-          </>
+        {selectedFileId && file ? (
+          file.mode === 'linear' ? (
+            <LinearRoot pageId={selectedFileId} />
+          ) : (
+            <>
+              <CanvasRoot pageId={selectedFileId} />
+              <InkLayer pageId={selectedFileId} active={drawMode} />
+            </>
+          )
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-gray-400">Select or create a page</div>
         )}

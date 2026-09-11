@@ -66,6 +66,14 @@ export const appRouter = t.router({
       return id
     })
     .mutation(({ ctx, input }) => ctx.sidecar.request('delete_segment', { id: input })),
+
+  setPageMode: t.procedure
+    .input((input: unknown): { pageId: string; mode: 'canvas' | 'linear' } => input as never)
+    .mutation(({ ctx, input }) => ctx.sidecar.request('set_page_mode', { pageId: input.pageId, mode: input.mode })),
+
+  search: t.procedure
+    .input((input: unknown): { query: string; notebookId: string } => input as never)
+    .query(({ ctx, input }) => ctx.sidecar.request('search', { query: input.query, notebookId: input.notebookId })),
 })
 
 export type AppRouter = typeof appRouter

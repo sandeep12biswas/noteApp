@@ -1,8 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { PageList } from './PageList'
-import { DEFAULT_MAX_FOLDER_DEPTH, useNotebookStore } from '../store/notebookStore'
+import { DEFAULT_MAX_FOLDER_DEPTH, setIPCAdapter, useNotebookStore } from '../store/notebookStore'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -110,5 +110,75 @@ describe('PageList', () => {
 
     expect(screen.getByText('Alpha')).toBeInTheDocument()
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+})
+
+describe('PageList content search backed by ipc.search (Phase 5 "Full-text search")', () => {
+  afterEach(() => setIPCAdapter(null))
+
+  it('uses backend search results, deduped by page, when an IPCAdapter is wired', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const { id: matchId } = store.createFile(folder.id!, 'Backend Match')
+    store.createFile(folder.id!, 'Local Only')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    setIPCAdapter({
+      search: async () => [
+        { pageId: matchId!, segmentId: 'seg-1', snippet: 'hit one' },
+        { pageId: matchId!, segmentId: 'seg-2', snippet: 'hit two' },
+      ],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- only `search` is exercised here
+    } as any)
+
+    const user = userEvent.setup()
+    render(<PageList />)
+    await user.click(screen.getByRole('combobox', { name: 'Search mode' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Search mode' }), 'content')
+    await user.type(screen.getByRole('textbox', { name: 'Search pages' }), 'anything')
+
+    await waitFor(() => {
+      const items = screen.getAllByRole('listitem')
+      expect(items).toHaveLength(1)
+      expect(items[0]).toHaveTextContent('Backend Match')
+    })
+  })
+
+  it('falls back to the local content index when no IPCAdapter is wired', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Has Match', 'findme in here')
+    store.createFile(folder.id!, 'No Match', 'nothing relevant')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    const user = userEvent.setup()
+    render(<PageList />)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Search mode' }), 'content')
+    await user.type(screen.getByRole('textbox', { name: 'Search pages' }), 'findme')
+
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toHaveTextContent('Has Match')
+  })
+})
+
+describe('PageList keyboard navigation (Phase 6 accessibility pass)', () => {
+  it('ArrowDown/ArrowUp rove focus through the file list', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Page A')
+    store.createFile(folder.id!, 'Page B')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    render(<PageList />)
+    const items = screen.getAllByRole('listitem').map((li) => li.querySelector('button')!)
+    items[0]!.focus()
+    expect(items[0]).toHaveFocus()
+
+    const user = userEvent.setup()
+    await user.keyboard('{ArrowDown}')
+    expect(items[1]).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(items[0]).toHaveFocus()
   })
 })

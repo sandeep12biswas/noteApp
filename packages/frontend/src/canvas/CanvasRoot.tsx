@@ -7,8 +7,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { findFreePosition } from '../lib/collision'
 import { DEFAULT_SEGMENT_HEIGHT, DEFAULT_SEGMENT_WIDTH, useCanvasStore } from '../store/canvasStore'
-import { useNotebookStore } from '../store/notebookStore'
+import { useUIStore } from '../store/uiStore'
 import { SegmentHost } from './SegmentHost'
+import { useSyncFileContent } from './useSyncFileContent'
 
 export function CanvasRoot({ pageId }: { pageId: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -17,7 +18,8 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
   const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
   const aabbsForPage = useCanvasStore((s) => s.aabbsForPage)
   const loadSegmentsForPage = useCanvasStore((s) => s.loadSegmentsForPage)
-  const updateFileContent = useNotebookStore((s) => s.updateFileContent)
+  const zoom = useUIStore((s) => s.zoom)
+  const handleTextChange = useSyncFileContent(pageId)
 
   const pageSegments = useMemo(() => Object.values(segments).filter((s) => s.pageId === pageId), [segments, pageId])
 
@@ -33,32 +35,25 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target !== containerRef.current) return
       const rect = containerRef.current!.getBoundingClientRect()
-      const rawX = e.clientX - rect.left
-      const rawY = e.clientY - rect.top
+      // `rect` reflects the on-screen (post-`transform: scale(zoom)`) box —
+      // dividing by `zoom` converts the click back into the same unscaled
+      // coordinate space `segment.x/y` is stored in (DESIGN.md §10 "Zoom
+      // corrects AABB coordinates").
+      const rawX = (e.clientX - rect.left) / zoom
+      const rawY = (e.clientY - rect.top) / zoom
       const existing = aabbsForPage(pageId)
       const { x, y } = findFreePosition(rawX, rawY, DEFAULT_SEGMENT_WIDTH, DEFAULT_SEGMENT_HEIGHT, existing)
       createSegment(pageId, x, y)
     },
-    [aabbsForPage, createSegment, pageId],
-  )
-
-  const handleTextChange = useCallback(
-    (_segmentId: string, _text: string) => {
-      // Combine all segments' text for this page into the file's searchable content.
-      const allText = Object.values(useCanvasStore.getState().segments)
-        .filter((s) => s.pageId === pageId)
-        .map((s) => segmentText(s.content))
-        .join('\n')
-      updateFileContent(pageId, allText)
-    },
-    [pageId, updateFileContent],
+    [aabbsForPage, createSegment, pageId, zoom],
   )
 
   return (
     <div
       ref={containerRef}
       data-testid="canvas-root"
-      className="relative h-full min-h-[600px] w-full"
+      className="relative h-full min-h-[600px] w-full origin-top-left"
+      style={{ transform: zoom !== 1 ? `scale(${zoom})` : undefined }}
       onClick={handleCanvasClick}
       onMouseDown={(e) => {
         if (e.target === containerRef.current) setActiveSegment(null)
@@ -74,12 +69,4 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
       ))}
     </div>
   )
-}
-
-function segmentText(content: Record<string, unknown>): string {
-  const nodes = (content as { content?: { content?: { text?: string }[] }[] }).content ?? []
-  return nodes
-    .flatMap((n) => n.content ?? [])
-    .map((n) => n.text ?? '')
-    .join(' ')
 }

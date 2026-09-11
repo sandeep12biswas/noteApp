@@ -18,6 +18,25 @@ export function setIPCAdapter(adapter: IPCAdapter | null): void {
   ipc = adapter
 }
 
+/**
+ * The same adapter instance, for callers that need to reach IPCAdapter
+ * methods this store doesn't wrap itself — e.g. `PageList`'s content search
+ * calling `ipc.search()` directly (DESIGN.md §2.2, Phase 5 "Full-text
+ * search") rather than adding a thin pass-through action here for it.
+ */
+export function getIPCAdapter(): IPCAdapter | null {
+  return ipc
+}
+
+/**
+ * Every page currently belongs to this one implicit notebook —
+ * `flownote-electron/src/protocol.rs`'s `save_page` hardcodes the same
+ * value server-side. Multi-notebook support is a later feature, not
+ * Phase 5's; this constant is the single place both sides of that
+ * assumption meet on the frontend.
+ */
+export const DEFAULT_NOTEBOOK_ID = 'nb-1'
+
 function persist(label: string, promise: Promise<unknown> | undefined): void {
   promise?.catch((err: unknown) => {
     // eslint-disable-next-line no-console -- best-effort persistence; nothing else observes this failure yet
@@ -42,6 +61,8 @@ export interface FileEntry {
   folderId: string
   content: string
   updatedAt: number
+  /** Canvas vs. linear view (DESIGN.md §4.3, Phase 5 "Mode toggle") — defaults to 'canvas' for pages created client-side before a round-trip through `hydrateFromIPC`. */
+  mode: 'canvas' | 'linear'
 }
 
 type Folders = Record<string, Folder>
@@ -124,13 +145,24 @@ interface NotebookState {
   selectFile: (id: string | null) => void
   /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
   updateFileContent: (id: string, content: string) => void
+  /** Canvas ↔ linear toggle (DESIGN.md §4.3, Phase 5 "Mode toggle") — persists via `ipc.setPageMode()`. */
+  setFileMode: (id: string, mode: 'canvas' | 'linear') => void
   /** Loads every folder and its pages from IPCAdapter — called once at startup once an adapter resolves. */
   hydrateFromIPC: () => Promise<void>
 }
 
 let nextId = 1
+// Salted the same way and for the same reason as `canvasStore.ts`'s
+// `makeSegmentId` (see its comment): a plain per-session counter here means
+// a freshly created folder/file can collide with a real persisted id from
+// an *earlier* session (this module's counter restarts at 1 on every
+// launch) — and because `CanvasRoot.loadSegmentsForPage` loads by page id,
+// a colliding new page would silently inherit an old page's segments. Found
+// live via `run-electron` chasing what looked like a search bug but turned
+// out to be exactly this, one layer up from the segment-id version of it.
+const sessionSalt = Math.random().toString(36).slice(2, 8)
 function makeId(prefix: string): string {
-  return `${prefix}-${nextId++}`
+  return `${prefix}-${sessionSalt}-${nextId++}`
 }
 
 export const useNotebookStore = create<NotebookState>((set, get) => ({
@@ -199,7 +231,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
 
     const id = makeId('file')
     set((state) => ({
-      files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now() } },
+      files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now(), mode: 'canvas' } },
     }))
     persist('savePage', ipc?.savePage({ id, folderId, title: name }))
     return { ok: true, id }
@@ -233,6 +265,14 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       return { files: { ...state.files, [id]: { ...file, content, updatedAt: Date.now() } } }
     }),
 
+  setFileMode: (id, mode) =>
+    set((state) => {
+      const file = state.files[id]
+      if (!file || file.mode === mode) return state
+      persist('setPageMode', ipc?.setPageMode(id, mode))
+      return { files: { ...state.files, [id]: { ...file, mode, updatedAt: Date.now() } } }
+    }),
+
   hydrateFromIPC: async () => {
     if (!ipc) return
     const folders = await ipc.listFolders()
@@ -243,7 +283,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     for (const folder of folders) {
       const pages = await ipc.listPages(folder.id)
       for (const p of pages) {
-        fileMap[p.id] = { id: p.id, name: p.title, folderId: folder.id, content: '', updatedAt: p.updatedAt }
+        fileMap[p.id] = { id: p.id, name: p.title, folderId: folder.id, content: '', updatedAt: p.updatedAt, mode: p.mode }
       }
     }
     set({ folders: folderMap, files: fileMap })

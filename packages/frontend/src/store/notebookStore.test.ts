@@ -171,3 +171,43 @@ describe('search', () => {
     expect(searchFilesByName(useNotebookStore.getState().files, '')).toEqual([])
   })
 })
+
+describe('setFileMode (DESIGN.md §4.3 mode toggle)', () => {
+  it('defaults new files to canvas mode', () => {
+    const { id } = useNotebookStore.getState().createFile('folder-1', 'Todo')
+    expect(useNotebookStore.getState().files[id!]?.mode).toBe('canvas')
+  })
+
+  it('switches to linear and back without touching any other field', () => {
+    const { id } = useNotebookStore.getState().createFile('folder-1', 'Todo')
+    const before = useNotebookStore.getState().files[id!]!
+
+    useNotebookStore.getState().setFileMode(id!, 'linear')
+    expect(useNotebookStore.getState().files[id!]?.mode).toBe('linear')
+
+    useNotebookStore.getState().setFileMode(id!, 'canvas')
+    const after = useNotebookStore.getState().files[id!]!
+    expect(after.mode).toBe('canvas')
+    expect(after.name).toBe(before.name)
+    expect(after.folderId).toBe(before.folderId)
+  })
+
+  it('is a no-op for an unknown file id', () => {
+    expect(() => useNotebookStore.getState().setFileMode('missing', 'linear')).not.toThrow()
+  })
+})
+
+describe('makeId cross-session uniqueness', () => {
+  // Regression test, same bug/fix as canvasStore.test.ts's
+  // "makeSegmentId cross-session uniqueness": a bare per-module-load
+  // counter for folder/file ids meant a freshly created page in a new app
+  // launch could collide with an old persisted page id — and since
+  // CanvasRoot.loadSegmentsForPage loads by page id, the new page would
+  // silently inherit the old page's segments. Found live via `run-electron`.
+  it('folder and file ids are not bare numeric counters', () => {
+    const { id: folderId } = useNotebookStore.getState().createFolder(null, 'Notes')
+    const { id: fileId } = useNotebookStore.getState().createFile(folderId!, 'Todo')
+    expect(folderId).not.toMatch(/^folder-\d+$/)
+    expect(fileId).not.toMatch(/^file-\d+$/)
+  })
+})

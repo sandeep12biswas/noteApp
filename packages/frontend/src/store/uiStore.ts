@@ -7,12 +7,34 @@ import { create } from 'zustand'
 export const RIBBON_TABS = ['Home', 'Insert', 'Draw', 'View'] as const
 export type RibbonTab = (typeof RIBBON_TABS)[number]
 
+// DESIGN.md §5.3 View tab "Zoom in/out"; §10 "Zoom corrects AABB
+// coordinates and the ink canvas" — every consumer of raw pointer deltas
+// (CanvasRoot's click-to-create, SegmentHost's drag/resize, InkLayer's
+// strokes) must divide by `zoom` to convert on-screen pixels back into the
+// canvas's own (unscaled) coordinate space that `segment.x/y/w/h` and ink
+// strokes are stored in.
+export const MIN_ZOOM = 0.5
+export const MAX_ZOOM = 2
+const ZOOM_STEP = 0.1
+
+function clampZoom(z: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 100) / 100))
+}
+
 interface UIState {
   activeRibbonTab: RibbonTab
   setActiveRibbonTab: (tab: RibbonTab) => void
+  zoom: number
+  zoomIn: () => void
+  zoomOut: () => void
+  resetZoom: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
   activeRibbonTab: 'Home',
   setActiveRibbonTab: (tab) => set({ activeRibbonTab: tab }),
+  zoom: 1,
+  zoomIn: () => set((s) => ({ zoom: clampZoom(s.zoom + ZOOM_STEP) })),
+  zoomOut: () => set((s) => ({ zoom: clampZoom(s.zoom - ZOOM_STEP) })),
+  resetZoom: () => set({ zoom: 1 }),
 }))

@@ -108,10 +108,20 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
 
         "delete_segment" => match req.params.get("id").and_then(Value::as_str) {
             None => Response::err(req.id, "delete_segment requires a string `id` param"),
-            Some(id) => match conn.execute("DELETE FROM segments WHERE id = ?1", [id]) {
-                Ok(_) => Response::ok(req.id, Value::Null),
+            Some(id) => match delete_segment(conn, id) {
+                Ok(()) => Response::ok(req.id, Value::Null),
                 Err(e) => Response::err(req.id, e.to_string()),
             },
+        },
+
+        "set_page_mode" => match set_page_mode(conn, &req.params) {
+            Ok(()) => Response::ok(req.id, Value::Null),
+            Err(e) => Response::err(req.id, e.to_string()),
+        },
+
+        "search" => match search(conn, &req.params) {
+            Ok(results) => Response::ok(req.id, Value::Array(results)),
+            Err(e) => Response::err(req.id, e.to_string()),
         },
 
         other => Response::err(req.id, format!("method not implemented: {other}")),
@@ -262,6 +272,13 @@ fn list_segments(conn: &Connection, page_id: &str) -> Result<Vec<Value>, String>
 
 /// Upserts a segment row (DESIGN.md §4.1/§7.1's `Segment`). `content` is the
 /// TipTap JSON document, stored as serialised text (see V2 migration notes).
+/// Also upserts one `blocks` row per segment — flattening the full TipTap
+/// document to plain text — so `search()` has something to `MATCH` against;
+/// the V3 migration's triggers keep `blocks_fts` in sync with it for free.
+/// One block per segment (`blocks.id = segments.id`) is the simplest thing
+/// that satisfies "Full-text search" (EXECUTION_PLAN.md Phase 5) without yet
+/// decomposing a segment's document into its individual TipTap nodes — see
+/// the V2 migration's notes on why that split hasn't happened yet.
 fn save_segment(conn: &Connection, seg: &Value) -> Result<(), String> {
     let id = seg.get("id").and_then(Value::as_str).ok_or("save_segment requires `id`")?;
     let page_id = seg.get("pageId").and_then(Value::as_str).ok_or("save_segment requires `pageId`")?;
@@ -272,7 +289,8 @@ fn save_segment(conn: &Connection, seg: &Value) -> Result<(), String> {
     let z_index = seg.get("zIndex").and_then(Value::as_i64).unwrap_or(0);
     let border_color = seg.get("borderColor").and_then(Value::as_str);
     let fill_color = seg.get("fillColor").and_then(Value::as_str);
-    let content = seg.get("content").map(Value::to_string).unwrap_or_else(|| "null".into());
+    let content_value = seg.get("content");
+    let content = content_value.map(Value::to_string).unwrap_or_else(|| "null".into());
     let now = now_ms();
 
     conn.execute(
@@ -286,6 +304,29 @@ fn save_segment(conn: &Connection, seg: &Value) -> Result<(), String> {
         rusqlite::params![id, page_id, x, y, w, h, z_index, border_color, fill_color, content, now],
     )
     .map_err(|e| e.to_string())?;
+
+    let text = content_value.map(flatten_tiptap_text).unwrap_or_default();
+    conn.execute(
+        "INSERT INTO blocks (id, segment_id, position, type, content, attrs)
+         VALUES (?1, ?1, 0, 'text', ?2, '{}')
+         ON CONFLICT(id) DO UPDATE SET content = excluded.content",
+        rusqlite::params![id, text],
+    )
+    .map_err(|e| e.to_string())?;
+    sync_block_fts(conn, id, &text)?;
+    Ok(())
+}
+
+/// Keeps `blocks_fts` (self-contained FTS5, V3 migration) in sync with one
+/// block's row: delete-then-insert is simplest for a table with no
+/// `UPDATE`-by-key support that also doesn't need one at our write volume.
+fn sync_block_fts(conn: &Connection, block_id: &str, text: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [block_id]).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO blocks_fts (block_id, content) VALUES (?1, ?2)",
+        rusqlite::params![block_id, text],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -294,6 +335,92 @@ fn save_segments_batch(conn: &Connection, segments: &[Value]) -> Result<(), Stri
         save_segment(conn, seg)?;
     }
     Ok(())
+}
+
+/// Deleting a segment cascades (`ON DELETE CASCADE`, V1 schema) to its
+/// `blocks` row automatically; `blocks_fts` (V3 migration, self-contained
+/// FTS5 — no rowid/FK coupling to `blocks`) needs its own explicit delete.
+fn delete_segment(conn: &Connection, id: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM segments WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Walks a TipTap JSON document's `content` tree and concatenates every
+/// `text` node, space-separated — the same flattening
+/// `packages/frontend/src/canvas/CanvasRoot.tsx`'s `segmentText()` does
+/// client-side for the notebook's in-memory filename/content search; this is
+/// the server-side equivalent that feeds FTS5 instead.
+fn flatten_tiptap_text(doc: &Value) -> String {
+    fn walk(node: &Value, out: &mut Vec<String>) {
+        if let Some(text) = node.get("text").and_then(Value::as_str) {
+            out.push(text.to_string());
+        }
+        if let Some(children) = node.get("content").and_then(Value::as_array) {
+            for child in children {
+                walk(child, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(doc, &mut out);
+    out.join(" ")
+}
+
+/// Updates a page's canvas/linear mode (DESIGN.md §4.3, Phase 5 "Mode toggle").
+fn set_page_mode(conn: &Connection, params: &Value) -> Result<(), String> {
+    let page_id = params.get("pageId").and_then(Value::as_str).ok_or("set_page_mode requires `pageId`")?;
+    let mode = params.get("mode").and_then(Value::as_str).ok_or("set_page_mode requires `mode`")?;
+    if mode != "canvas" && mode != "linear" {
+        return Err(format!("set_page_mode: invalid mode `{mode}` (expected \"canvas\" or \"linear\")"));
+    }
+    let now = now_ms();
+    let changed = conn
+        .execute(
+            "UPDATE pages SET mode = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![mode, now, page_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("no such page: {page_id}"));
+    }
+    Ok(())
+}
+
+/// Full-text search over segment content (DESIGN.md §2.2, Phase 5 "Full-text
+/// search") — `blocks_fts MATCH` against the flattened text `save_segment`
+/// keeps in `blocks`, scoped to one notebook, with a `snippet()`-generated
+/// excerpt per hit. Filename search stays the existing client-side
+/// `notebookStore` search (DESIGN.md §2.2) — the two are complementary, not
+/// this one call doing both.
+fn search(conn: &Connection, params: &Value) -> Result<Vec<Value>, String> {
+    let query = params.get("query").and_then(Value::as_str).ok_or("search requires `query`")?;
+    let notebook_id = params.get("notebookId").and_then(Value::as_str).ok_or("search requires `notebookId`")?;
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.page_id, b.segment_id, snippet(blocks_fts, 1, '', '', '…', 8)
+             FROM blocks_fts
+             JOIN blocks b ON b.id = blocks_fts.block_id
+             JOIN segments s ON s.id = b.segment_id
+             JOIN pages p ON p.id = s.page_id
+             WHERE blocks_fts MATCH ?1 AND p.notebook_id = ?2
+             ORDER BY blocks_fts.rank",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![query, notebook_id], |row| {
+            Ok(serde_json::json!({
+                "pageId": row.get::<_, String>(0)?,
+                "segmentId": row.get::<_, String>(1)?,
+                "snippet": row.get::<_, String>(2)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -354,8 +481,8 @@ mod tests {
     #[test]
     fn unknown_method_errors_without_panicking() {
         let conn = db::open_in_memory().unwrap();
-        let res = dispatch(&conn, Request { id: 5, method: "search".into(), params: Value::Null });
-        assert_eq!(res.error.unwrap(), "method not implemented: search");
+        let res = dispatch(&conn, Request { id: 5, method: "merge_segments".into(), params: Value::Null });
+        assert_eq!(res.error.unwrap(), "method not implemented: merge_segments");
     }
 
     #[test]
@@ -523,6 +650,150 @@ mod tests {
         assert_eq!(segs[0]["id"], json!("seg-1"));
         assert_eq!(segs[0]["x"], json!(5.0));
         assert_eq!(segs[0]["content"], json!({ "type": "doc", "content": [] }));
+    }
+
+    #[test]
+    fn set_page_mode_updates_the_row() {
+        let conn = conn_with_page("page-1");
+        let res = dispatch(
+            &conn,
+            Request { id: 21, method: "set_page_mode".into(), params: json!({ "pageId": "page-1", "mode": "linear" }) },
+        );
+        assert!(res.error.is_none());
+        let mode: String = conn.query_row("SELECT mode FROM pages WHERE id = 'page-1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(mode, "linear");
+    }
+
+    #[test]
+    fn set_page_mode_rejects_an_invalid_mode() {
+        let conn = conn_with_page("page-1");
+        let res = dispatch(
+            &conn,
+            Request { id: 22, method: "set_page_mode".into(), params: json!({ "pageId": "page-1", "mode": "sideways" }) },
+        );
+        assert!(res.error.unwrap().contains("invalid mode"));
+    }
+
+    #[test]
+    fn set_page_mode_errors_on_missing_page() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(
+            &conn,
+            Request { id: 23, method: "set_page_mode".into(), params: json!({ "pageId": "missing", "mode": "linear" }) },
+        );
+        assert!(res.error.unwrap().contains("no such page"));
+    }
+
+    #[test]
+    fn save_segment_makes_its_text_searchable() {
+        let conn = conn_with_page("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 24,
+                method: "save_segment".into(),
+                params: json!({
+                    "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
+                    "content": { "type": "doc", "content": [
+                        { "type": "paragraph", "content": [{ "type": "text", "text": "hello searchable world" }] }
+                    ] },
+                }),
+            },
+        );
+
+        let res = dispatch(
+            &conn,
+            Request { id: 25, method: "search".into(), params: json!({ "query": "searchable", "notebookId": "nb-1" }) },
+        );
+        assert!(res.error.is_none());
+        let results = res.result.unwrap();
+        assert_eq!(results.as_array().unwrap().len(), 1);
+        assert_eq!(results[0]["pageId"], json!("page-1"));
+        assert_eq!(results[0]["segmentId"], json!("seg-1"));
+        assert!(results[0]["snippet"].as_str().unwrap().contains("searchable"));
+    }
+
+    #[test]
+    fn search_does_not_cross_notebooks() {
+        let conn = conn_with_page("page-1");
+        conn.execute(
+            "INSERT INTO pages (id, notebook_id, title, mode, created_at, updated_at)
+             VALUES ('page-2', 'nb-2', 'Other', 'canvas', 0, 0)",
+            [],
+        )
+        .unwrap();
+        dispatch(
+            &conn,
+            Request {
+                id: 26,
+                method: "save_segment".into(),
+                params: json!({
+                    "id": "seg-2", "pageId": "page-2", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
+                    "content": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "unicorn" }] }] },
+                }),
+            },
+        );
+
+        let res = dispatch(
+            &conn,
+            Request { id: 27, method: "search".into(), params: json!({ "query": "unicorn", "notebookId": "nb-1" }) },
+        );
+        assert_eq!(res.result.unwrap().as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn search_returns_nothing_for_a_blank_query() {
+        let conn = conn_with_page("page-1");
+        let res = dispatch(&conn, Request { id: 28, method: "search".into(), params: json!({ "query": "  ", "notebookId": "nb-1" }) });
+        assert!(res.error.is_none());
+        assert_eq!(res.result.unwrap().as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn deleting_a_segment_removes_it_from_search() {
+        let conn = conn_with_page("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 29,
+                method: "save_segment".into(),
+                params: json!({
+                    "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
+                    "content": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "ephemeral" }] }] },
+                }),
+            },
+        );
+        dispatch(&conn, Request { id: 30, method: "delete_segment".into(), params: json!({ "id": "seg-1" }) });
+
+        let res = dispatch(
+            &conn,
+            Request { id: 31, method: "search".into(), params: json!({ "query": "ephemeral", "notebookId": "nb-1" }) },
+        );
+        assert_eq!(res.result.unwrap().as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn editing_a_segment_updates_its_search_text() {
+        let conn = conn_with_page("page-1");
+        for text in ["original", "revised"] {
+            dispatch(
+                &conn,
+                Request {
+                    id: 32,
+                    method: "save_segment".into(),
+                    params: json!({
+                        "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
+                        "content": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": text }] }] },
+                    }),
+                },
+            );
+        }
+
+        let stale = dispatch(&conn, Request { id: 33, method: "search".into(), params: json!({ "query": "original", "notebookId": "nb-1" }) });
+        assert_eq!(stale.result.unwrap().as_array().unwrap().len(), 0);
+
+        let fresh = dispatch(&conn, Request { id: 34, method: "search".into(), params: json!({ "query": "revised", "notebookId": "nb-1" }) });
+        assert_eq!(fresh.result.unwrap().as_array().unwrap().len(), 1);
     }
 
     #[test]

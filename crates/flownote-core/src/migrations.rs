@@ -28,6 +28,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "folders_and_segment_content",
         sql: include_str!("../migrations/V2__folders_and_segment_content.sql"),
     },
+    Migration {
+        version: 3,
+        name: "blocks_fts_sync",
+        sql: include_str!("../migrations/V3__blocks_fts_sync.sql"),
+    },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -93,7 +98,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 2);
+        assert_eq!(applied, 3);
     }
 
     #[test]

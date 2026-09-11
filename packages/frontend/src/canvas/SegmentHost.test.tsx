@@ -1,7 +1,8 @@
 // DESIGN.md §4.1: clicking empty canvas creates a segment and the user
 // should be able to type immediately — a newly-created (active) segment
 // must receive DOM focus without a second click.
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CanvasRoot } from './CanvasRoot'
 import { useCanvasStore } from '../store/canvasStore'
@@ -11,7 +12,7 @@ afterEach(cleanup)
 beforeEach(() => {
   useCanvasStore.setState({ segments: {}, activeSegmentId: null })
   useNotebookStore.setState({
-    files: { 'page-1': { id: 'page-1', name: 'Test', folderId: 'f1', content: '', updatedAt: 0 } },
+    files: { 'page-1': { id: 'page-1', name: 'Test', folderId: 'f1', content: '', updatedAt: 0, mode: 'canvas' } },
   })
 })
 
@@ -60,5 +61,77 @@ describe('SegmentHost height tracking', () => {
     } finally {
       globalThis.ResizeObserver = original
     }
+  })
+})
+
+describe('SegmentHost colour menu (DESIGN.md §4.2)', () => {
+  it('right-click opens the colour menu and picking a swatch persists it and prevents auto-delete', async () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+
+    const el = screen.getByTestId(`segment-${id}`)
+    fireEvent.contextMenu(el)
+
+    const menu = await screen.findByRole('menu', { name: 'Segment colour' })
+    const swatch = within(menu).getByRole('menuitemradio', { name: 'Colour #dc2626' })
+    fireEvent.click(swatch)
+
+    await waitFor(() => {
+      const seg = useCanvasStore.getState().segments[id]
+      expect(seg?.borderColor).toBe('#dc2626')
+      expect(seg?.fillColor).toBe('rgba(220, 38, 38, 0.08)')
+    })
+
+    // Coloured + empty must survive blur (DESIGN.md §4.2 "never auto-delete").
+    useCanvasStore.getState().deleteIfEmptyAndUncolored(id)
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+  })
+
+  it('"None" clears the colour', async () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().setSegmentColor(id, '#dc2626', 'rgba(220, 38, 38, 0.08)')
+    render(<CanvasRoot pageId="page-1" />)
+
+    fireEvent.contextMenu(screen.getByTestId(`segment-${id}`))
+    const menu = await screen.findByRole('menu', { name: 'Segment colour' })
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'None' }))
+
+    await waitFor(() => expect(useCanvasStore.getState().segments[id]?.borderColor).toBeNull())
+  })
+})
+
+describe('SlashMenu (DESIGN.md §4.4)', () => {
+  it('opens only when "/" is the sole content of the current (empty) line, and applies the chosen block type', async () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+    const user = userEvent.setup()
+
+    const editable = screen.getByRole('textbox', { name: 'Segment' }).querySelector('[contenteditable="true"]') as HTMLElement
+    await waitFor(() => expect(document.activeElement).toBe(editable))
+
+    expect(screen.queryByRole('menu', { name: 'Insert block' })).not.toBeInTheDocument()
+
+    await user.type(editable, '/')
+    const menu = await screen.findByRole('menu', { name: 'Insert block' })
+
+    await user.click(within(menu).getByRole('menuitem', { name: 'Heading 1' }))
+
+    await waitFor(() => {
+      const content = useCanvasStore.getState().segments[id]?.content as { content?: { type?: string }[] }
+      expect(content.content?.[0]?.type).toBe('heading')
+    })
+    expect(screen.queryByRole('menu', { name: 'Insert block' })).not.toBeInTheDocument()
+  })
+
+  it('typing past "/" (no longer the sole content) closes the menu', async () => {
+    useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+    const user = userEvent.setup()
+
+    const editable = screen.getByRole('textbox', { name: 'Segment' }).querySelector('[contenteditable="true"]') as HTMLElement
+    await waitFor(() => expect(document.activeElement).toBe(editable))
+
+    await user.type(editable, '/x')
+    expect(screen.queryByRole('menu', { name: 'Insert block' })).not.toBeInTheDocument()
   })
 })

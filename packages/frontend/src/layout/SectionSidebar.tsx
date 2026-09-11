@@ -2,7 +2,8 @@
 // names, file counts, expandable sub-folders, natural order. Icon
 // picking/import (§2.1) isn't built yet — `Folder.icon` exists in the store
 // for it to land in later without a shape change.
-import { type KeyboardEvent, useMemo, useState } from 'react'
+import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
+import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
 
@@ -120,6 +121,12 @@ export function SectionSidebar() {
   // Plugin-registered section tabs (DESIGN.md §9.2 `registerSectionTab`) —
   // empty until Phase 7's PluginManager populates the registry.
   const pluginSectionTabs = useExtensionRegistry((s) => s.sectionTabs)
+  // Phase 6 "Accessibility pass" — same roving arrow-key nav as PageList's
+  // file list, for the same reason (DESIGN.md "keyboard navigation in
+  // section/page lists"); works across nested `FolderNode`s for free since
+  // it queries every `button` descendant regardless of tree depth.
+  const treeRef = useRef<HTMLUListElement | null>(null)
+  useMenuKeyboardNav(treeRef, { autoFocus: false, itemSelector: 'button' })
 
   return (
     <aside
@@ -138,7 +145,7 @@ export function SectionSidebar() {
           +
         </button>
       </div>
-      <ul className="flex-1 overflow-y-auto px-1" aria-label="Folder tree">
+      <ul ref={treeRef} className="flex-1 overflow-y-auto px-1" aria-label="Folder tree">
         {rootFolders.map((folder) => (
           <FolderNode key={folder.id} folder={folder} depth={0} />
         ))}

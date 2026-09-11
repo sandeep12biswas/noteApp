@@ -104,8 +104,19 @@ interface CanvasState {
 }
 
 let nextSegmentId = 1
+// A plain in-session counter (`segment-1`, `segment-2`, …) collides with a
+// real persisted id from a *previous* session the moment this module
+// reloads (every launch restarts the counter at 1) — found live via
+// `run-electron`: a freshly clicked-into-existence segment reused an old
+// segment's id, and since React keys `SegmentHost` by that id, the already-
+// mounted TipTap editor for the old segment was never remounted, so typing
+// into the "new" segment silently appended onto the old one's text. The
+// counter still makes ids human-readable in tests/logs; salting with a
+// per-module-load random suffix is enough to make them unique *across*
+// sessions too, without switching to opaque UUIDs everywhere.
+const sessionSalt = Math.random().toString(36).slice(2, 8)
 function makeSegmentId(): string {
-  return `segment-${nextSegmentId++}`
+  return `segment-${sessionSalt}-${nextSegmentId++}`
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({

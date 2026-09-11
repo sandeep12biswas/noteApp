@@ -7,10 +7,13 @@
 // `pointermove` and mutate this segment's own DOM style directly for 60fps
 // (DESIGN.md §4.6/Phase 3) — the store only gets one commit, on release.
 import { EditorContent, useEditor } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, idsWithinGap, resolvePosition } from '../lib/collision'
 import { useCanvasStore, type Segment } from '../store/canvasStore'
+import { useUIStore } from '../store/uiStore'
+import { SegmentColorMenu } from './SegmentColorMenu'
+import { segmentEditorExtensions } from './segmentEditorExtensions'
+import { SlashMenu } from './SlashMenu'
 
 const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
 
@@ -35,6 +38,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   const updateSegmentHeight = useCanvasStore((s) => s.updateSegmentHeight)
   const updateSegmentPosition = useCanvasStore((s) => s.updateSegmentPosition)
   const updateSegmentWidth = useCanvasStore((s) => s.updateSegmentWidth)
+  const setSegmentColor = useCanvasStore((s) => s.setSegmentColor)
   const deleteIfEmptyAndUncolored = useCanvasStore((s) => s.deleteIfEmptyAndUncolored)
   const registerEditor = useCanvasStore((s) => s.registerEditor)
   const unregisterEditor = useCanvasStore((s) => s.unregisterEditor)
@@ -45,13 +49,39 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   const highlightedRef = useRef<Set<string>>(new Set())
   const isActive = activeSegmentId === segment.id
 
+  const [colorMenu, setColorMenu] = useState<{ x: number; y: number } | null>(null)
+  // `charPos` is the ProseMirror position right after the "/" — needed to
+  // delete it before applying the chosen block type.
+  const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; charPos: number } | null>(null)
+
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: segmentEditorExtensions,
     content: segment.content,
     onUpdate: ({ editor }) => {
       const json = editor.getJSON()
       updateSegmentContent(segment.id, json)
       onTextChange(segment.id, editor.getText())
+
+      // Slash command menu (DESIGN.md §4.4): opens only when the current
+      // line is exactly "/" — an empty paragraph the user just typed "/"
+      // into, never mid-word or on a non-empty line.
+      const { $from } = editor.state.selection
+      if ($from.parent.type.name === 'paragraph' && $from.parent.textContent === '/' && $from.parentOffset === 1) {
+        // `coordsAtPos` needs real layout (`Range.getClientRects`,
+        // `document.elementFromPoint`) that jsdom doesn't implement — falls
+        // back to (0, 0) there rather than crashing the whole editor update;
+        // real browsers always have this, so the menu still opens where
+        // typed outside of tests.
+        let coords = { left: 0, bottom: 0 }
+        try {
+          coords = editor.view.coordsAtPos($from.pos)
+        } catch {
+          // jsdom: no layout engine — see comment above.
+        }
+        setSlashMenu({ x: coords.left, y: coords.bottom, charPos: $from.pos })
+      } else {
+        setSlashMenu(null)
+      }
     },
     onFocus: () => setActiveSegment(segment.id),
     onBlur: () => deleteIfEmptyAndUncolored(segment.id),
@@ -134,10 +164,21 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     const startClientY = e.clientY
     const startX = segment.x
     const startY = segment.y
+    // Captured once per drag, not read reactively per-move — CanvasRoot's
+    // `transform: scale(zoom)` means a screen-pixel pointer delta maps to
+    // `delta / zoom` canvas units (DESIGN.md §10 "Zoom corrects AABB
+    // coordinates"); changing zoom mid-drag isn't a real scenario the ribbon
+    // allows anyway (zoom buttons live outside this pointer capture).
+    const zoom = useUIStore.getState().zoom
     let resolved = { x: startX, y: startY }
 
     const onMove = (ev: PointerEvent) => {
-      const proposed = { x: startX + (ev.clientX - startClientX), y: startY + (ev.clientY - startClientY), w: segment.w, h: segment.h }
+      const proposed = {
+        x: startX + (ev.clientX - startClientX) / zoom,
+        y: startY + (ev.clientY - startClientY) / zoom,
+        w: segment.w,
+        h: segment.h,
+      }
       const existing = useCanvasStore.getState().aabbsForPage(segment.pageId, segment.id)
       resolved = resolvePosition(proposed, existing)
       const el = containerRef.current
@@ -165,10 +206,11 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     handle.setPointerCapture(e.pointerId)
     const startClientX = e.clientX
     const startW = segment.w
+    const zoom = useUIStore.getState().zoom
     let resolvedW = startW
 
     const onMove = (ev: PointerEvent) => {
-      const proposedW = startW + (ev.clientX - startClientX)
+      const proposedW = startW + (ev.clientX - startClientX) / zoom
       const existing = useCanvasStore.getState().aabbsForPage(segment.pageId, segment.id)
       resolvedW = clampResizeWidth({ x: segment.x, y: segment.y, h: segment.h }, proposedW, existing)
       const el = containerRef.current
@@ -184,6 +226,43 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     }
     handle.addEventListener('pointermove', onMove)
     handle.addEventListener('pointerup', onUp)
+  }
+
+  const applyCoreBlock = (id: string) => {
+    if (!editor || !slashMenu) return
+    const chain = editor.chain().focus().deleteRange({ from: slashMenu.charPos - 1, to: slashMenu.charPos })
+    switch (id) {
+      case 'paragraph':
+        chain.setParagraph().run()
+        break
+      case 'heading1':
+        chain.setHeading({ level: 1 }).run()
+        break
+      case 'heading2':
+        chain.setHeading({ level: 2 }).run()
+        break
+      case 'heading3':
+        chain.setHeading({ level: 3 }).run()
+        break
+      case 'bulletList':
+        chain.toggleBulletList().run()
+        break
+      case 'orderedList':
+        chain.toggleOrderedList().run()
+        break
+      case 'taskList':
+        chain.toggleTaskList().run()
+        break
+      case 'blockquote':
+        chain.toggleBlockquote().run()
+        break
+      case 'codeBlock':
+        chain.toggleCodeBlock().run()
+        break
+      default:
+        chain.run()
+    }
+    setSlashMenu(null)
   }
 
   const revealed = isActive || segment.borderColor !== null
@@ -207,6 +286,11 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
         backgroundColor: segment.fillColor ?? undefined,
       }}
       onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setColorMenu({ x: e.clientX, y: e.clientY })
+      }}
     >
       {revealed && (
         <div
@@ -225,6 +309,25 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           aria-label="Resize segment"
           className="absolute top-1/2 -right-1 h-4 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-sm bg-gray-300 dark:bg-gray-600"
           onPointerDown={startResize}
+        />
+      )}
+      {colorMenu && (
+        <SegmentColorMenu
+          x={colorMenu.x}
+          y={colorMenu.y}
+          activeColor={segment.borderColor}
+          onPick={(border, fill) => setSegmentColor(segment.id, border, fill)}
+          onClear={() => setSegmentColor(segment.id, null, null)}
+          onClose={() => setColorMenu(null)}
+        />
+      )}
+      {slashMenu && (
+        <SlashMenu
+          x={slashMenu.x}
+          y={slashMenu.y}
+          onSelectCore={applyCoreBlock}
+          onSelectPlugin={() => setSlashMenu(null)}
+          onClose={() => setSlashMenu(null)}
         />
       )}
     </div>

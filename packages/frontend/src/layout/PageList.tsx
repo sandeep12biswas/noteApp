@@ -1,9 +1,12 @@
 // File panel — DESIGN.md §2.2: files for the selected folder in natural
 // order, new-page flow (folder pick-or-create → name), per-folder filename
 // uniqueness, and search by file name or by content.
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import {
+  DEFAULT_NOTEBOOK_ID,
   filesInFolderOf,
+  getIPCAdapter,
   searchFilesByContent,
   searchFilesByName,
   useNotebookStore,
@@ -163,17 +166,68 @@ export function PageList() {
   const [showNewPage, setShowNewPage] = useState(false)
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState<SearchMode>('name')
+  // Backend FTS5 content search (DESIGN.md §2.2, Phase 5 "Full-text
+  // search") reaches every persisted segment, not just pages this session
+  // has opened — `null` means "no backend result yet for this query", so
+  // `visibleFiles` falls back to the local (in-memory) `searchFilesByContent`
+  // while it's in flight or when no IPCAdapter is wired (e.g. tests).
+  const [backendPageIds, setBackendPageIds] = useState<string[] | null>(null)
 
   const isSearching = query.trim().length > 0
   const files = useMemo(
     () => (selectedFolderId ? filesInFolderOf(allFiles, selectedFolderId) : []),
     [allFiles, selectedFolderId],
   )
-  const searchResults = useMemo(() => {
+  const localSearchResults = useMemo(() => {
     if (!isSearching) return []
     return searchMode === 'name' ? searchFilesByName(allFiles, query) : searchFilesByContent(allFiles, query)
   }, [allFiles, isSearching, query, searchMode])
+
+  useEffect(() => {
+    setBackendPageIds(null)
+    if (searchMode !== 'content' || !isSearching) return
+    const ipc = getIPCAdapter()
+    if (!ipc) return
+    let cancelled = false
+    ipc
+      .search(query, DEFAULT_NOTEBOOK_ID)
+      .then((results) => {
+        if (cancelled) return
+        // Dedupe while preserving rank order — a page can match on more than one segment.
+        const seen = new Set<string>()
+        const ids: string[] = []
+        for (const r of results) {
+          if (seen.has(r.pageId)) continue
+          seen.add(r.pageId)
+          ids.push(r.pageId)
+        }
+        setBackendPageIds(ids)
+      })
+      .catch(() => {
+        // Backend search failing (or not implemented on this platform yet)
+        // just means falling back to the local index below — not worth
+        // surfacing as an error for a search box.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [query, searchMode, isSearching])
+
+  const backendSearchResults = useMemo(() => {
+    if (backendPageIds === null) return null
+    return backendPageIds.map((id) => allFiles[id]).filter((f): f is NonNullable<typeof f> => f !== undefined)
+  }, [backendPageIds, allFiles])
+
+  const searchResults = searchMode === 'content' && backendSearchResults !== null ? backendSearchResults : localSearchResults
   const visibleFiles = isSearching ? searchResults : files
+
+  // Phase 6 "Accessibility pass" — DESIGN.md "keyboard navigation in
+  // section/page lists": Arrow Up/Down roves focus through the file list
+  // like a listbox, without grabbing focus on mount (this list is always
+  // visible, not a popover — stealing focus every render would fight
+  // whatever the user is actually doing elsewhere in the app).
+  const listRef = useRef<HTMLUListElement | null>(null)
+  useMenuKeyboardNav(listRef, { autoFocus: false, itemSelector: 'button' })
 
   return (
     <section
@@ -212,7 +266,7 @@ export function PageList() {
         </select>
       </div>
 
-      <ul className="flex-1 overflow-y-auto px-1" aria-label={isSearching ? 'Search results' : 'Files'}>
+      <ul ref={listRef} className="flex-1 overflow-y-auto px-1" aria-label={isSearching ? 'Search results' : 'Files'}>
         {visibleFiles.map((file) => (
           <li key={file.id}>
             <button
