@@ -50,6 +50,15 @@ function createWindow(sidecar: SidecarSupervisor): void {
     height: 800,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
+      // Electron's default sandboxed preload can only resolve Node/Electron
+      // built-ins, not third-party packages — `preload.js`'s plain
+      // `require('electron-trpc/main')` fails under it ("module not
+      // found") since the preload is only `tsc`-compiled, not bundled.
+      // `sandbox: false` runs the preload with normal Node module
+      // resolution instead (contextIsolation stays on, so the renderer
+      // still only gets what preload.ts explicitly puts on
+      // `contextBridge`) — this is what electron-trpc's own examples do.
+      sandbox: false,
     },
   })
 

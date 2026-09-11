@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "electron-trpc": "^0.7.1",
-    "@trpc/server": "^11",
-    "@trpc/client": "^11",
+    "@trpc/server": "10.45.2",
+    "@trpc/client": "10.45.2",
     "@flownote/ipc-adapter": "workspace:*"
   },
   "devDependencies": {

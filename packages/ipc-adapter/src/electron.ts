@@ -1,4 +1,4 @@
-import { createTRPCClient } from '@trpc/client'
+import { createTRPCProxyClient } from '@trpc/client'
 import { ipcLink } from 'electron-trpc/renderer'
 import type {
   Block,
@@ -34,12 +34,12 @@ interface ElectronRouter {
 
 let client: ElectronRouter | null = null
 function getClient(): ElectronRouter {
-  // `createTRPCClient` has no way to know `ElectronRouter`'s procedures are
-  // real trpc router procedures (it isn't a genuine `AnyRouter` — see the
-  // module doc above), so its generic is `any` here and the cast below is
-  // what actually gives call sites their types.
+  // `createTRPCProxyClient` has no way to know `ElectronRouter`'s procedures
+  // are real trpc router procedures (it isn't a genuine `AnyRouter` — see
+  // the module doc above), so its generic is `any` here and the cast below
+  // is what actually gives call sites their types.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client ??= createTRPCClient<any>({ links: [ipcLink()] }) as unknown as ElectronRouter
+  client ??= createTRPCProxyClient<any>({ links: [ipcLink()] }) as unknown as ElectronRouter
   return client
 }
 

@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "@trpc/client": "^11",
+    "@trpc/client": "10.45.2",
+    "@trpc/server": "10.45.2",
     "electron-trpc": "^0.7.1"
   }
 }
