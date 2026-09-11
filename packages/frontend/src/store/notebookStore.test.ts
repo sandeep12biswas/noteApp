@@ -100,6 +100,48 @@ describe('createFile', () => {
   })
 })
 
+describe('renameFile', () => {
+  it('renames the file and re-validates the name', () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const file = store.createFile(folder.id!, 'Todo')
+
+    const result = store.renameFile(file.id!, 'Roadmap')
+    expect(result.ok).toBe(true)
+    expect(useNotebookStore.getState().files[file.id!]?.name).toBe('Roadmap')
+  })
+
+  it('rejects a name that does not start with a capital letter, leaving the old name in place', () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const file = store.createFile(folder.id!, 'Todo')
+
+    const result = store.renameFile(file.id!, 'todo')
+    expect(result.ok).toBe(false)
+    expect(useNotebookStore.getState().files[file.id!]?.name).toBe('Todo')
+  })
+
+  it('rejects a duplicate name within the same folder but allows renaming to itself', () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const a = store.createFile(folder.id!, 'Todo')
+    store.createFile(folder.id!, 'Roadmap')
+
+    expect(store.renameFile(a.id!, 'Roadmap').ok).toBe(false)
+    expect(store.renameFile(a.id!, 'Todo').ok).toBe(true)
+  })
+
+  it('allows the same name reused in a different folder', () => {
+    const store = useNotebookStore.getState()
+    const a = store.createFolder(null, 'A')
+    const b = store.createFolder(null, 'B')
+    store.createFile(a.id!, 'Todo')
+    const fileInB = store.createFile(b.id!, 'Other')
+
+    expect(store.renameFile(fileInB.id!, 'Todo').ok).toBe(true)
+  })
+})
+
 describe('search', () => {
   it('searchFilesByName matches on file name only', () => {
     const store = useNotebookStore.getState()

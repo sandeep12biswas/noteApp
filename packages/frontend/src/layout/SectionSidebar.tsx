@@ -3,6 +3,7 @@
 // picking/import (§2.1) isn't built yet — `Folder.icon` exists in the store
 // for it to land in later without a shape change.
 import { type KeyboardEvent, useMemo, useState } from 'react'
+import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
 
 function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone: () => void }) {
@@ -116,6 +117,9 @@ export function SectionSidebar() {
   const allFolders = useNotebookStore((s) => s.folders)
   const rootFolders = useMemo(() => childFoldersOf(allFolders, null), [allFolders])
   const [addingRoot, setAddingRoot] = useState(false)
+  // Plugin-registered section tabs (DESIGN.md §9.2 `registerSectionTab`) —
+  // empty until Phase 7's PluginManager populates the registry.
+  const pluginSectionTabs = useExtensionRegistry((s) => s.sectionTabs)
 
   return (
     <aside
@@ -149,6 +153,11 @@ export function SectionSidebar() {
       >
         {/* Plugins tab — DESIGN.md §9.5 Plugin Manager UI entry point */}
         Plugins
+        {Object.values(pluginSectionTabs).map((tab) => (
+          <div key={`${tab.pluginId}/${tab.id}`} className="pt-1 text-xs">
+            {tab.label}
+          </div>
+        ))}
       </div>
     </aside>
   )

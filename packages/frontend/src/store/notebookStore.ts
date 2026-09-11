@@ -119,6 +119,8 @@ interface NotebookState {
   selectFolder: (id: string | null) => void
 
   createFile: (folderId: string, rawName: string, content?: string) => MutationResult
+  /** Editor pane title rename (DESIGN.md §5.2) — same validation/uniqueness rules as create. */
+  renameFile: (id: string, rawName: string) => MutationResult
   selectFile: (id: string | null) => void
   /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
   updateFileContent: (id: string, content: string) => void
@@ -200,6 +202,25 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now() } },
     }))
     persist('savePage', ipc?.savePage({ id, folderId, title: name }))
+    return { ok: true, id }
+  },
+
+  renameFile: (id, rawName) => {
+    const file = get().files[id]
+    if (!file) return { ok: false, error: 'No such page.' }
+
+    const name = rawName.trim()
+    const validation = validateFileName(name)
+    if (!validation.valid) return { ok: false, error: validation.error }
+
+    if (name === file.name) return { ok: true, id }
+
+    const duplicate = Object.values(get().files).some((f) => f.folderId === file.folderId && f.id !== id && f.name === name)
+    if (duplicate) return { ok: false, error: `"${name}" already exists in this folder.` }
+
+    const updated = { ...file, name, updatedAt: Date.now() }
+    set((state) => ({ files: { ...state.files, [id]: updated } }))
+    persist('savePage', ipc?.savePage({ id, folderId: file.folderId, title: name }))
     return { ok: true, id }
   },
 

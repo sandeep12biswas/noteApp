@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { resolveIPCAdapter } from '@flownote/ipc-adapter'
 import { AppShell } from './layout/AppShell'
 import { setIPCAdapter as setCanvasIPCAdapter } from './store/canvasStore'
+import { setIPCAdapter as setInkIPCAdapter } from './canvas/InkLayer'
 import { setIPCAdapter as setNotebookIPCAdapter, useNotebookStore } from './store/notebookStore'
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
       .then((ipc) => {
         setNotebookIPCAdapter(ipc)
         setCanvasIPCAdapter(ipc)
+        setInkIPCAdapter(ipc)
         return useNotebookStore.getState().hydrateFromIPC()
       })
       .catch(() => {
