@@ -103,6 +103,8 @@ interface NotebookState {
 
   createFile: (folderId: string, rawName: string, content?: string) => MutationResult
   selectFile: (id: string | null) => void
+  /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
+  updateFileContent: (id: string, content: string) => void
 }
 
 let nextId = 1
@@ -176,4 +178,11 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   },
 
   selectFile: (id) => set({ selectedFileId: id }),
+
+  updateFileContent: (id, content) =>
+    set((state) => {
+      const file = state.files[id]
+      if (!file) return state
+      return { files: { ...state.files, [id]: { ...file, content, updatedAt: Date.now() } } }
+    }),
 }))
