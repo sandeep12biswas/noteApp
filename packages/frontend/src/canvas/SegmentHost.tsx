@@ -41,6 +41,18 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, segment.id])
 
+  // Segments start invisible/unfocused (DESIGN.md §4.1); `createSegment`
+  // marks the new one active immediately, but that alone doesn't move DOM
+  // focus into its ProseMirror node, so a click-to-create left the user
+  // having to click a second time before they could type. Focus whenever
+  // this segment newly becomes active — not on every render, since
+  // `editor.isFocused` only differs from `isActive` right after creation or
+  // a programmatic activeSegmentId change, never mid-typing.
+  useEffect(() => {
+    if (isActive && editor && !editor.isFocused) editor.commands.focus('end')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, editor])
+
   useEffect(() => {
     const el = containerRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
