@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { findFreePosition, MIN_GAP, overlaps } from './collision'
+import {
+  clampResizeWidth,
+  findFreePosition,
+  GAP_HIGHLIGHT_THRESHOLD,
+  idsWithinGap,
+  MIN_GAP,
+  MIN_SEGMENT_WIDTH,
+  overlaps,
+  resolvePosition,
+} from './collision'
 
 describe('overlaps', () => {
   it('is false for boxes far apart', () => {
@@ -41,5 +50,96 @@ describe('findFreePosition', () => {
     for (const box of existing) {
       expect(overlaps({ ...result, w: 100, h: 30 }, box)).toBe(false)
     }
+  })
+})
+
+describe('resolvePosition', () => {
+  it('returns the requested position when nothing else is there', () => {
+    expect(resolvePosition({ x: 20, y: 30, w: 100, h: 50 }, [])).toEqual({ x: 20, y: 30 })
+  })
+
+  it('pushes out along the axis needing the smaller correction', () => {
+    // Dragged box mostly clear horizontally, just grazing vertically —
+    // should resolve by nudging up/down, not sideways.
+    const existing = [{ x: 0, y: 0, w: 100, h: 100 }]
+    const moving = { x: 90, y: 95, w: 50, h: 50 } // overlaps by 15 in y, would need 65 in x
+    const result = resolvePosition(moving, existing)
+    expect(result.x).toBe(90) // unchanged
+    expect(overlaps({ ...result, w: 50, h: 50 }, existing[0]!)).toBe(false)
+  })
+
+  it('never returns negative coordinates', () => {
+    const existing = [{ x: 0, y: 0, w: 100, h: 100 }]
+    const result = resolvePosition({ x: 5, y: 5, w: 50, h: 50 }, existing)
+    expect(result.x).toBeGreaterThanOrEqual(0)
+    expect(result.y).toBeGreaterThanOrEqual(0)
+  })
+
+  it('resolves clear of every box when dropped into a gap between two', () => {
+    const existing = [
+      { x: 0, y: 0, w: 100, h: 50 },
+      { x: 0, y: 150, w: 100, h: 50 },
+    ]
+    const result = resolvePosition({ x: 10, y: 45, w: 80, h: 30 }, existing)
+    for (const box of existing) {
+      expect(overlaps({ ...result, w: 80, h: 30 }, box)).toBe(false)
+    }
+  })
+
+  it('is idempotent on an already-clear position', () => {
+    const existing = [{ x: 0, y: 0, w: 100, h: 100 }]
+    const clear = { x: 200, y: 200, w: 50, h: 50 }
+    expect(resolvePosition(clear, existing)).toEqual({ x: 200, y: 200 })
+  })
+})
+
+describe('clampResizeWidth', () => {
+  it('allows the proposed width when nothing is in the way', () => {
+    expect(clampResizeWidth({ x: 0, y: 0, h: 40 }, 300, [])).toBe(300)
+  })
+
+  it('clamps growth against a neighbour to its right', () => {
+    const existing = [{ x: 400, y: 0, w: 100, h: 40 }]
+    const result = clampResizeWidth({ x: 0, y: 0, h: 40 }, 500, existing)
+    expect(result).toBe(400 - MIN_GAP)
+  })
+
+  it('ignores a neighbour that does not vertically overlap', () => {
+    const existing = [{ x: 200, y: 500, w: 100, h: 40 }]
+    expect(clampResizeWidth({ x: 0, y: 0, h: 40 }, 500, existing)).toBe(500)
+  })
+
+  it('ignores a neighbour entirely to the left', () => {
+    const existing = [{ x: -200, y: 0, w: 100, h: 40 }]
+    expect(clampResizeWidth({ x: 0, y: 0, h: 40 }, 500, existing)).toBe(500)
+  })
+
+  it('never clamps below the minimum segment width', () => {
+    const existing = [{ x: 10, y: 0, w: 100, h: 40 }]
+    const result = clampResizeWidth({ x: 0, y: 0, h: 40 }, 500, existing)
+    expect(result).toBe(MIN_SEGMENT_WIDTH)
+  })
+})
+
+describe('idsWithinGap', () => {
+  it('returns ids of boxes within the threshold', () => {
+    const box = { x: 0, y: 0, w: 100, h: 40 }
+    const others = [
+      { id: 'near', x: 100 + GAP_HIGHLIGHT_THRESHOLD - 1, y: 0, w: 50, h: 40 },
+      { id: 'far', x: 500, y: 500, w: 50, h: 40 },
+    ]
+    expect(idsWithinGap(box, others)).toEqual(['near'])
+  })
+
+  it('excludes a box exactly at the threshold boundary plus one', () => {
+    const box = { x: 0, y: 0, w: 100, h: 40 }
+    const others = [{ id: 'just-out', x: 100 + GAP_HIGHLIGHT_THRESHOLD + 1, y: 0, w: 50, h: 40 }]
+    expect(idsWithinGap(box, others)).toEqual([])
+  })
+
+  it('includes overlapping boxes (gap of 0)', () => {
+    const box = { x: 0, y: 0, w: 100, h: 40 }
+    const others = [{ id: 'overlapping', x: 50, y: 0, w: 50, h: 40 }]
+    expect(idsWithinGap(box, others)).toEqual(['overlapping'])
   })
 })
