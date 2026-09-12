@@ -152,6 +152,8 @@ interface NotebookState {
   selectFolder: (id: string | null) => void
   /** Deletes a folder, every subfolder nested under it, and every file those folders contain (mirrors the backend's FK-cascading `delete_folder`, DESIGN.md §2.1). */
   deleteFolder: (id: string) => void
+  /** Drag-and-drop reparent (sidebar folder dropped onto another folder, or onto the root) — rejects moving a folder into itself or one of its own subfolders, and the same max-depth rule `createFolder` enforces. */
+  moveFolder: (id: string, newParentId: string | null) => MutationResult
 
   createFile: (folderId: string, rawName: string, content?: string) => MutationResult
   /** Editor pane title rename (DESIGN.md §5.2) — same validation/uniqueness rules as create. */
@@ -159,6 +161,8 @@ interface NotebookState {
   selectFile: (id: string | null) => void
   /** Deletes a single file/page. */
   deleteFile: (id: string) => void
+  /** Drag-and-drop move (page list file dropped onto a sidebar folder) — same per-folder name-uniqueness rule `createFile`/`renameFile` enforce. */
+  moveFile: (id: string, newFolderId: string) => MutationResult
   /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
   updateFileContent: (id: string, content: string) => void
   /** Canvas ↔ linear toggle (DESIGN.md §4.3, Phase 5 "Mode toggle") — persists via `ipc.setPageMode()`. */
@@ -257,6 +261,26 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       }
     }),
 
+  moveFolder: (id, newParentId) => {
+    const folder = get().folders[id]
+    if (!folder) return { ok: false, error: 'No such folder.' }
+    if (newParentId === folder.parentId) return { ok: true, id }
+    if (newParentId === id) return { ok: false, error: 'A folder cannot be moved into itself.' }
+    if (newParentId !== null && descendantFolderIds(get().folders, id).includes(newParentId)) {
+      return { ok: false, error: 'A folder cannot be moved into one of its own subfolders.' }
+    }
+
+    const parentDepth = newParentId ? folderDepthOf(get().folders, newParentId) : -1
+    if (parentDepth + 1 >= get().maxFolderDepth) {
+      return { ok: false, error: `Folders can be nested at most ${get().maxFolderDepth} levels deep.` }
+    }
+
+    const updated = { ...folder, parentId: newParentId }
+    set((state) => ({ folders: { ...state.folders, [id]: updated } }))
+    persist('saveFolder', ipc?.saveFolder(updated))
+    return { ok: true, id }
+  },
+
   createFile: (folderId, rawName, content = '') => {
     const name = rawName.trim()
     const validation = validateFileName(name)
@@ -304,6 +328,21 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       persist('deletePage', ipc?.deletePage(id))
       return { files, selectedFileId: state.selectedFileId === id ? null : state.selectedFileId }
     }),
+
+  moveFile: (id, newFolderId) => {
+    const file = get().files[id]
+    if (!file) return { ok: false, error: 'No such page.' }
+    if (newFolderId === file.folderId) return { ok: true, id }
+    if (!get().folders[newFolderId]) return { ok: false, error: 'No such folder.' }
+
+    const duplicate = Object.values(get().files).some((f) => f.folderId === newFolderId && f.id !== id && f.name === file.name)
+    if (duplicate) return { ok: false, error: `"${file.name}" already exists in that folder.` }
+
+    const updated = { ...file, folderId: newFolderId, updatedAt: Date.now() }
+    set((state) => ({ files: { ...state.files, [id]: updated } }))
+    persist('savePage', ipc?.savePage({ id, folderId: newFolderId, title: file.name }))
+    return { ok: true, id }
+  },
 
   updateFileContent: (id, content) =>
     set((state) => {

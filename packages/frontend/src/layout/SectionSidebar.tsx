@@ -2,8 +2,9 @@
 // names, file counts, expandable sub-folders, natural order, changeable
 // icons (built-in set — see FolderIconMenu.tsx for why "external import"
 // isn't built).
-import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
+import { type DragEvent, type KeyboardEvent, useMemo, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
+import { DRAG_MIME, getDragPayload, setDragPayload } from '../lib/dragAndDrop'
 import { DEFAULT_FOLDER_ICON } from '../lib/folderIcons'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
@@ -98,21 +99,64 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
   const toggleExpanded = useNotebookStore((s) => s.toggleFolderExpanded)
   const setFolderIcon = useNotebookStore((s) => s.setFolderIcon)
   const deleteFolder = useNotebookStore((s) => s.deleteFolder)
+  const moveFolder = useNotebookStore((s) => s.moveFolder)
+  const moveFile = useNotebookStore((s) => s.moveFile)
   const [addingChild, setAddingChild] = useState(false)
   const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [isDropTarget, setIsDropTarget] = useState(false)
   const iconButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const hasChildren = childFolders.length > 0
   const isSelected = selectedFolderId === folder.id
 
+  // Drag-and-drop reparent/move (right-click menu's "Delete Folder"'s
+  // sibling feature — moving a file or folder into another folder/
+  // subfolder by dragging it onto this row). Whether the drop is actually
+  // allowed (no cycles, no duplicate names, depth limit) is decided by
+  // `moveFolder`/`moveFile` themselves — this row only forwards the drop.
+  const onDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDropTarget(false)
+    const payload = getDragPayload(e)
+    if (!payload) return
+    if (payload.kind === 'folder') moveFolder(payload.id, folder.id)
+    else moveFile(payload.id, folder.id)
+  }
+
   return (
     <li>
       <div
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation()
+          setDragPayload(e, { kind: 'folder', id: folder.id })
+          setIsDragging(true)
+        }}
+        onDragEnd={() => setIsDragging(false)}
+        onDragOver={onDragOver}
+        onDragEnter={(e) => {
+          if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+          setIsDropTarget(true)
+        }}
+        onDragLeave={() => setIsDropTarget(false)}
+        onDrop={onDrop}
         className={
           'flex items-center gap-1 rounded px-1 py-0.5 text-sm ' +
-          (isSelected ? 'bg-blue-100 dark:bg-blue-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800')
+          (isDropTarget
+            ? 'bg-blue-200 dark:bg-blue-800/60'
+            : isSelected
+              ? 'bg-blue-100 dark:bg-blue-900/40'
+              : 'hover:bg-gray-100 dark:hover:bg-gray-800') +
+          (isDragging ? ' opacity-50' : '')
         }
         style={{ paddingLeft: depth * 12 }}
         onContextMenu={(e) => {
@@ -223,6 +267,8 @@ export function SectionSidebar() {
   // it queries every `button` descendant regardless of tree depth.
   const treeRef = useRef<HTMLUListElement | null>(null)
   useMenuKeyboardNav(treeRef, { autoFocus: false, itemSelector: 'button' })
+  const moveFolder = useNotebookStore((s) => s.moveFolder)
+  const [isRootDropTarget, setIsRootDropTarget] = useState(false)
 
   return (
     <aside
@@ -241,7 +287,31 @@ export function SectionSidebar() {
           +
         </button>
       </div>
-      <ul ref={treeRef} className="flex-1 overflow-y-auto px-1" aria-label="Folder tree">
+      <ul
+        ref={treeRef}
+        className={'flex-1 overflow-y-auto px-1 ' + (isRootDropTarget ? 'bg-blue-50 dark:bg-blue-950/30' : '')}
+        aria-label="Folder tree"
+        // Dropping a folder on empty tree space (not onto another folder
+        // row — those stop propagation in their own onDrop) moves it to
+        // the top level. Files have no "no folder" home, so a file drag
+        // dropped here is just ignored.
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+        }}
+        onDragEnter={(e) => {
+          if (!e.dataTransfer.types.includes(DRAG_MIME)) return
+          setIsRootDropTarget(true)
+        }}
+        onDragLeave={() => setIsRootDropTarget(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setIsRootDropTarget(false)
+          const payload = getDragPayload(e)
+          if (payload?.kind === 'folder') moveFolder(payload.id, null)
+        }}
+      >
         {rootFolders.map((folder) => (
           <FolderNode key={folder.id} folder={folder} depth={0} />
         ))}

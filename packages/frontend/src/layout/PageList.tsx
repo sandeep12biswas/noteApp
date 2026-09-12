@@ -3,6 +3,7 @@
 // uniqueness, and search by file name or by content.
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
+import { setDragPayload } from '../lib/dragAndDrop'
 import {
   DEFAULT_NOTEBOOK_ID,
   filesInFolderOf,
@@ -274,6 +275,8 @@ export function PageList() {
           <li key={file.id}>
             <button
               type="button"
+              draggable
+              onDragStart={(e) => setDragPayload(e, { kind: 'file', id: file.id })}
               onClick={() => selectFile(file.id)}
               onContextMenu={(e) => {
                 e.preventDefault()

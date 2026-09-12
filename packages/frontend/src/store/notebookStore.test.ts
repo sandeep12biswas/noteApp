@@ -291,3 +291,109 @@ describe('deleteFolder', () => {
     expect(() => useNotebookStore.getState().deleteFolder('missing')).not.toThrow()
   })
 })
+
+describe('moveFolder (drag-and-drop reparent)', () => {
+  it('moves a folder under a new parent', () => {
+    const store = useNotebookStore.getState()
+    const { id: a } = store.createFolder(null, 'A')
+    const { id: b } = store.createFolder(null, 'B')
+
+    const result = store.moveFolder(a!, b!)
+
+    expect(result.ok).toBe(true)
+    expect(useNotebookStore.getState().folders[a!]?.parentId).toBe(b)
+  })
+
+  it('moves a folder to the root when newParentId is null', () => {
+    const store = useNotebookStore.getState()
+    const { id: parent } = store.createFolder(null, 'Parent')
+    const { id: child } = store.createFolder(parent!, 'Child')
+
+    const result = store.moveFolder(child!, null)
+
+    expect(result.ok).toBe(true)
+    expect(useNotebookStore.getState().folders[child!]?.parentId).toBeNull()
+  })
+
+  it('rejects moving a folder into itself', () => {
+    const store = useNotebookStore.getState()
+    const { id } = store.createFolder(null, 'A')
+    const result = store.moveFolder(id!, id!)
+    expect(result.ok).toBe(false)
+  })
+
+  it('rejects moving a folder into one of its own subfolders', () => {
+    const store = useNotebookStore.getState()
+    const { id: parent } = store.createFolder(null, 'Parent')
+    const { id: child } = store.createFolder(parent!, 'Child')
+
+    const result = store.moveFolder(parent!, child!)
+
+    expect(result.ok).toBe(false)
+    expect(useNotebookStore.getState().folders[parent!]?.parentId).toBeNull()
+  })
+
+  it('enforces the configured max nesting depth', () => {
+    const store = useNotebookStore.getState()
+    useNotebookStore.setState({ maxFolderDepth: 2 })
+    const { id: top } = store.createFolder(null, 'Top')
+    const { id: mid } = store.createFolder(null, 'Mid')
+    const { id: other } = store.createFolder(null, 'Other')
+
+    // Nest `mid` under `top` first so it's at depth 1, then trying to move
+    // `other` under `mid` would put it at depth 2 — past the depth-2 limit.
+    store.moveFolder(mid!, top!)
+    const result = store.moveFolder(other!, mid!)
+
+    expect(result.ok).toBe(false)
+  })
+
+  it('is a no-op for an unknown id', () => {
+    const result = useNotebookStore.getState().moveFolder('missing', null)
+    expect(result.ok).toBe(false)
+  })
+})
+
+describe('moveFile (drag-and-drop move)', () => {
+  it('moves a file into another folder', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderA } = store.createFolder(null, 'A')
+    const { id: folderB } = store.createFolder(null, 'B')
+    const { id: fileId } = store.createFile(folderA!, 'Notes')
+
+    const result = store.moveFile(fileId!, folderB!)
+
+    expect(result.ok).toBe(true)
+    expect(useNotebookStore.getState().files[fileId!]?.folderId).toBe(folderB)
+  })
+
+  it('rejects moving into a folder that already has a same-named file', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderA } = store.createFolder(null, 'A')
+    const { id: folderB } = store.createFolder(null, 'B')
+    store.createFile(folderB!, 'Notes')
+    const { id: fileId } = store.createFile(folderA!, 'Notes')
+
+    const result = store.moveFile(fileId!, folderB!)
+
+    expect(result.ok).toBe(false)
+    expect(useNotebookStore.getState().files[fileId!]?.folderId).toBe(folderA)
+  })
+
+  it('rejects an unknown target folder', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderA } = store.createFolder(null, 'A')
+    const { id: fileId } = store.createFile(folderA!, 'Notes')
+
+    const result = store.moveFile(fileId!, 'missing-folder')
+
+    expect(result.ok).toBe(false)
+  })
+
+  it('is a no-op for an unknown file id', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderA } = store.createFolder(null, 'A')
+    const result = store.moveFile('missing', folderA!)
+    expect(result.ok).toBe(false)
+  })
+})
