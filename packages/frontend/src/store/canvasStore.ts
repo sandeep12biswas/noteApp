@@ -55,14 +55,23 @@ export const DEFAULT_SEGMENT_HEIGHT = 80
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 
+/**
+ * "Empty" means every top-level node is a paragraph with nothing in it —
+ * anything else (an atom block like a plugin's `pluginBlock`, a heading, a
+ * list, ...) makes the segment non-empty regardless of whether it has its
+ * own `content` array. A real bug found live via `e2e-electron`'s plugin
+ * lifecycle suite: the old check only special-cased the single-top-level-
+ * node case, and treated a node with no `content` field at all (true of
+ * every atom node, since atoms don't have child content) the same as an
+ * empty paragraph — so a segment holding only an inserted plugin block got
+ * silently auto-deleted the moment it lost focus, same as a truly blank one.
+ */
 function isEmptyDoc(content: Record<string, unknown>): boolean {
   const nodes = (content as { content?: unknown[] }).content ?? []
-  if (nodes.length === 0) return true
-  if (nodes.length === 1) {
-    const only = nodes[0] as { content?: unknown[] }
-    return !only.content || only.content.length === 0
-  }
-  return false
+  return nodes.every((n) => {
+    const node = n as { type?: string; content?: unknown[] }
+    return node.type === 'paragraph' && (!node.content || node.content.length === 0)
+  })
 }
 
 interface CanvasState {

@@ -69,6 +69,20 @@ describe('deleteIfEmptyAndUncolored (DESIGN.md §4.2 "coloured segments never au
     useCanvasStore.getState().deleteIfEmptyAndUncolored(id)
     expect(useCanvasStore.getState().segments[id]).toBeDefined()
   })
+
+  // Regression test for a real bug found live via e2e-electron/plugin-lifecycle.spec.ts:
+  // a segment holding only an atom node (no `content` array of its own —
+  // true of every plugin block) was misclassified as "empty" and
+  // auto-deleted on blur, same as a truly blank segment.
+  it('keeps a segment containing only an atom node (e.g. a plugin block)', () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().updateSegmentContent(id, {
+      type: 'doc',
+      content: [{ type: 'pluginBlock', attrs: { pluginId: 'com.sandeep.spreadsheet', blockType: 'spreadsheet', blockId: 'plugin-block-1', attrs: {} } }],
+    })
+    useCanvasStore.getState().deleteIfEmptyAndUncolored(id)
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+  })
 })
 
 describe('updateSegmentHeight cascade', () => {
