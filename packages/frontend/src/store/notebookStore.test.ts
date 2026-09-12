@@ -230,3 +230,64 @@ describe('makeId cross-session uniqueness', () => {
     expect(fileId).not.toMatch(/^file-\d+$/)
   })
 })
+
+describe('deleteFile', () => {
+  it('removes the file and clears selection if it was selected', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderId } = store.createFolder(null, 'Notes')
+    const { id: fileId } = store.createFile(folderId!, 'Todo')
+    store.selectFile(fileId!)
+
+    store.deleteFile(fileId!)
+
+    expect(useNotebookStore.getState().files[fileId!]).toBeUndefined()
+    expect(useNotebookStore.getState().selectedFileId).toBeNull()
+  })
+
+  it('is a no-op for an unknown id', () => {
+    expect(() => useNotebookStore.getState().deleteFile('missing')).not.toThrow()
+  })
+})
+
+describe('deleteFolder', () => {
+  it('removes the folder, its files, and nested subfolders/files', () => {
+    const store = useNotebookStore.getState()
+    const { id: parentId } = store.createFolder(null, 'Parent')
+    const { id: childId } = store.createFolder(parentId!, 'Child')
+    const { id: fileInParent } = store.createFile(parentId!, 'A')
+    const { id: fileInChild } = store.createFile(childId!, 'B')
+    store.selectFolder(childId!)
+    store.selectFile(fileInChild!)
+
+    store.deleteFolder(parentId!)
+
+    const state = useNotebookStore.getState()
+    expect(state.folders[parentId!]).toBeUndefined()
+    expect(state.folders[childId!]).toBeUndefined()
+    expect(state.files[fileInParent!]).toBeUndefined()
+    expect(state.files[fileInChild!]).toBeUndefined()
+    expect(state.selectedFolderId).toBeNull()
+    expect(state.selectedFileId).toBeNull()
+  })
+
+  it('leaves unrelated folders/files and selection untouched', () => {
+    const store = useNotebookStore.getState()
+    const { id: targetId } = store.createFolder(null, 'Target')
+    const { id: keepId } = store.createFolder(null, 'Keep')
+    const { id: keepFileId } = store.createFile(keepId!, 'Keeper')
+    store.selectFolder(keepId!)
+    store.selectFile(keepFileId!)
+
+    store.deleteFolder(targetId!)
+
+    const state = useNotebookStore.getState()
+    expect(state.folders[keepId!]).toBeDefined()
+    expect(state.files[keepFileId!]).toBeDefined()
+    expect(state.selectedFolderId).toBe(keepId)
+    expect(state.selectedFileId).toBe(keepFileId)
+  })
+
+  it('is a no-op for an unknown id', () => {
+    expect(() => useNotebookStore.getState().deleteFolder('missing')).not.toThrow()
+  })
+})

@@ -97,6 +97,7 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
   const selectFolder = useNotebookStore((s) => s.selectFolder)
   const toggleExpanded = useNotebookStore((s) => s.toggleFolderExpanded)
   const setFolderIcon = useNotebookStore((s) => s.setFolderIcon)
+  const deleteFolder = useNotebookStore((s) => s.deleteFolder)
   const [addingChild, setAddingChild] = useState(false)
   const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -186,8 +187,10 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
         <FolderContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          folderName={folder.name}
           onNewSubfolder={() => setAddingChild(true)}
           onRename={() => setRenaming(true)}
+          onDelete={() => deleteFolder(folder.id)}
           onClose={() => setContextMenu(null)}
         />
       )}

@@ -11,6 +11,7 @@ import {
   searchFilesByName,
   useNotebookStore,
 } from '../store/notebookStore'
+import { FileContextMenu } from './FileContextMenu'
 
 function allFoldersFlat(
   folders: Record<string, { id: string; name: string; parentId: string | null }>,
@@ -162,8 +163,10 @@ export function PageList() {
   const allFiles = useNotebookStore((s) => s.files)
   const selectedFileId = useNotebookStore((s) => s.selectedFileId)
   const selectFile = useNotebookStore((s) => s.selectFile)
+  const deleteFile = useNotebookStore((s) => s.deleteFile)
 
   const [showNewPage, setShowNewPage] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; fileName: string } | null>(null)
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState<SearchMode>('name')
   // Backend FTS5 content search (DESIGN.md §2.2, Phase 5 "Full-text
@@ -272,6 +275,10 @@ export function PageList() {
             <button
               type="button"
               onClick={() => selectFile(file.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id, fileName: file.name })
+              }}
               className={
                 'w-full truncate rounded px-1 py-1 text-left text-sm ' +
                 (file.id === selectedFileId
@@ -289,6 +296,16 @@ export function PageList() {
           </li>
         )}
       </ul>
+
+      {contextMenu && (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          fileName={contextMenu.fileName}
+          onDelete={() => deleteFile(contextMenu.fileId)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {showNewPage && <NewPageFlow onClose={() => setShowNewPage(false)} />}
     </section>

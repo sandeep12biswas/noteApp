@@ -59,6 +59,14 @@ export class TauriIPCAdapter implements IPCAdapter {
     })
   }
 
+  async deletePage(_id: string): Promise<void> {
+    throw new Error('TauriIPCAdapter.deletePage not implemented')
+  }
+
+  async deleteFolder(_id: string): Promise<void> {
+    throw new Error('TauriIPCAdapter.deleteFolder not implemented')
+  }
+
   async listSegments(pageId: string): Promise<Segment[]> {
     return unwrap(await commands.listSegments(pageId)) as unknown as Segment[]
   }

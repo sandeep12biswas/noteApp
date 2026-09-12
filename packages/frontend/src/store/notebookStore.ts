@@ -92,6 +92,18 @@ export function childFoldersOf(folders: Folders, parentId: string | null): Folde
   )
 }
 
+/** `id` plus every folder nested under it, any depth — used by `deleteFolder` to know which files/subfolders a folder delete must also remove. */
+export function descendantFolderIds(folders: Folders, id: string): string[] {
+  const result = [id]
+  for (let i = 0; i < result.length; i++) {
+    const current = result[i]
+    for (const f of Object.values(folders)) {
+      if (f.parentId === current) result.push(f.id)
+    }
+  }
+  return result
+}
+
 export function fileCountOf(files: Files, folderId: string): number {
   return Object.values(files).filter((f) => f.folderId === folderId).length
 }
@@ -138,11 +150,15 @@ interface NotebookState {
   toggleFolderExpanded: (id: string) => void
   setFolderIcon: (id: string, icon: string | null) => void
   selectFolder: (id: string | null) => void
+  /** Deletes a folder, every subfolder nested under it, and every file those folders contain (mirrors the backend's FK-cascading `delete_folder`, DESIGN.md §2.1). */
+  deleteFolder: (id: string) => void
 
   createFile: (folderId: string, rawName: string, content?: string) => MutationResult
   /** Editor pane title rename (DESIGN.md §5.2) — same validation/uniqueness rules as create. */
   renameFile: (id: string, rawName: string) => MutationResult
   selectFile: (id: string | null) => void
+  /** Deletes a single file/page. */
+  deleteFile: (id: string) => void
   /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
   updateFileContent: (id: string, content: string) => void
   /** Canvas ↔ linear toggle (DESIGN.md §4.3, Phase 5 "Mode toggle") — persists via `ipc.setPageMode()`. */
@@ -219,6 +235,28 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
 
   selectFolder: (id) => set({ selectedFolderId: id }),
 
+  deleteFolder: (id) =>
+    set((state) => {
+      if (!state.folders[id]) return state
+      const idsToRemove = new Set(descendantFolderIds(state.folders, id))
+
+      const folders = { ...state.folders }
+      for (const fid of idsToRemove) delete folders[fid]
+
+      const files = { ...state.files }
+      for (const [fileId, file] of Object.entries(state.files)) {
+        if (idsToRemove.has(file.folderId)) delete files[fileId]
+      }
+
+      persist('deleteFolder', ipc?.deleteFolder(id))
+      return {
+        folders,
+        files,
+        selectedFolderId: state.selectedFolderId && idsToRemove.has(state.selectedFolderId) ? null : state.selectedFolderId,
+        selectedFileId: state.selectedFileId && !files[state.selectedFileId] ? null : state.selectedFileId,
+      }
+    }),
+
   createFile: (folderId, rawName, content = '') => {
     const name = rawName.trim()
     const validation = validateFileName(name)
@@ -257,6 +295,15 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   },
 
   selectFile: (id) => set({ selectedFileId: id }),
+
+  deleteFile: (id) =>
+    set((state) => {
+      if (!state.files[id]) return state
+      const files = { ...state.files }
+      delete files[id]
+      persist('deletePage', ipc?.deletePage(id))
+      return { files, selectedFileId: state.selectedFileId === id ? null : state.selectedFileId }
+    }),
 
   updateFileContent: (id, content) =>
     set((state) => {

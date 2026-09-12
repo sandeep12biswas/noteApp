@@ -93,6 +93,8 @@ export interface IPCAdapter {
   listFolders(): Promise<Folder[]>
   savePage(page: { id: string; folderId: string; title: string }): Promise<void>
   listPages(folderId: string): Promise<Page[]>
+  deletePage(id: string): Promise<void>
+  deleteFolder(id: string): Promise<void>
   listSegments(pageId: string): Promise<Segment[]>
   saveSegment(seg: Segment): Promise<void>
   saveSegmentsBatch(segs: Segment[]): Promise<void>

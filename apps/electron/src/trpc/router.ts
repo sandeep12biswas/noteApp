@@ -45,6 +45,20 @@ export const appRouter = t.router({
     })
     .query(({ ctx, input }) => ctx.sidecar.request('list_pages', { folderId: input })),
 
+  deletePage: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('deletePage expects a string id')
+      return id
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('delete_page', { id: input })),
+
+  deleteFolder: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('deleteFolder expects a string id')
+      return id
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('delete_folder', { id: input })),
+
   listSegments: t.procedure
     .input((pageId: unknown): string => {
       if (typeof pageId !== 'string') throw new Error('listSegments expects a string pageId')

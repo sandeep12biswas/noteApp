@@ -26,6 +26,8 @@ interface ElectronRouter {
   listFolders: { query: () => Promise<Folder[]> }
   savePage: { mutate: (page: { id: string; folderId: string; title: string }) => Promise<void> }
   listPages: { query: (folderId: string) => Promise<Page[]> }
+  deletePage: { mutate: (id: string) => Promise<void> }
+  deleteFolder: { mutate: (id: string) => Promise<void> }
   listSegments: { query: (pageId: string) => Promise<Segment[]> }
   saveSegment: { mutate: (seg: Segment) => Promise<void> }
   saveSegmentsBatch: { mutate: (segs: Segment[]) => Promise<void> }
@@ -80,6 +82,14 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async listPages(folderId: string): Promise<Page[]> {
     return getClient().listPages.query(folderId)
+  }
+
+  async deletePage(id: string): Promise<void> {
+    await getClient().deletePage.mutate(id)
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    await getClient().deleteFolder.mutate(id)
   }
 
   async listSegments(pageId: string): Promise<Segment[]> {

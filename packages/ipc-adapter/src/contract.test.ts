@@ -61,6 +61,16 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.listPages('folder-1')).rejects.toThrow()
   })
 
+  it('deletePage rejects', async () => {
+    const adapter = create()
+    await expect(adapter.deletePage('page-1')).rejects.toThrow()
+  })
+
+  it('deleteFolder rejects', async () => {
+    const adapter = create()
+    await expect(adapter.deleteFolder('folder-1')).rejects.toThrow()
+  })
+
   it('listSegments rejects', async () => {
     const adapter = create()
     await expect(adapter.listSegments('page-1')).rejects.toThrow()

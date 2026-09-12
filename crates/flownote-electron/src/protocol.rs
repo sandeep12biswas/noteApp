@@ -85,6 +85,22 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             },
         },
 
+        "delete_page" => match req.params.get("id").and_then(Value::as_str) {
+            None => Response::err(req.id, "delete_page requires a string `id` param"),
+            Some(id) => match delete_page(conn, id) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e.to_string()),
+            },
+        },
+
+        "delete_folder" => match req.params.get("id").and_then(Value::as_str) {
+            None => Response::err(req.id, "delete_folder requires a string `id` param"),
+            Some(id) => match delete_folder(conn, id) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e.to_string()),
+            },
+        },
+
         "list_segments" => match req.params.get("pageId").and_then(Value::as_str) {
             None => Response::err(req.id, "list_segments requires a string `pageId` param"),
             Some(page_id) => match list_segments(conn, page_id) {
@@ -315,6 +331,66 @@ fn list_pages(conn: &Connection, folder_id: &str) -> Result<Vec<Value>, String> 
         })
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// Deletes a page and everything under it. `segments.page_id` and
+/// `blocks.segment_id` are both `ON DELETE CASCADE` (V1__init.sql), so one
+/// `DELETE FROM pages` removes the segments and blocks rows too — but
+/// `blocks_fts` is an external-content FTS5 table (`content = blocks`),
+/// which SQLite's foreign keys don't keep in sync on their own (same
+/// limitation `delete_segment` already has for a single segment). Collect
+/// the block ids *before* the cascading delete removes their source rows,
+/// then purge the matching `blocks_fts` rows after.
+fn delete_page(conn: &Connection, page_id: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("SELECT b.id FROM blocks b JOIN segments s ON b.segment_id = s.id WHERE s.page_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let block_ids: Vec<String> = stmt
+        .query_map([page_id], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+
+    conn.execute("DELETE FROM pages WHERE id = ?1", [page_id]).map_err(|e| e.to_string())?;
+    for block_id in block_ids {
+        conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [&block_id]).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Deletes a folder, every subfolder nested under it, and every page/segment/
+/// block those folders contain. `folders.parent_id` and `pages.folder_id`
+/// are both `ON DELETE CASCADE` (V2__folders_and_segment_content.sql), so a
+/// single `DELETE FROM folders` on the top folder cascades through the whole
+/// subtree down to `blocks` — the recursive CTE below only exists to collect
+/// block ids first, for the same `blocks_fts` cleanup `delete_page` needs.
+fn delete_folder(conn: &Connection, folder_id: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare(
+            "WITH RECURSIVE sub(id) AS (
+               SELECT ?1
+               UNION ALL
+               SELECT f.id FROM folders f JOIN sub ON f.parent_id = sub.id
+             )
+             SELECT b.id FROM blocks b
+             JOIN segments s ON b.segment_id = s.id
+             JOIN pages p ON s.page_id = p.id
+             WHERE p.folder_id IN (SELECT id FROM sub)",
+        )
+        .map_err(|e| e.to_string())?;
+    let block_ids: Vec<String> = stmt
+        .query_map([folder_id], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+
+    conn.execute("DELETE FROM folders WHERE id = ?1", [folder_id]).map_err(|e| e.to_string())?;
+    for block_id in block_ids {
+        conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [&block_id]).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 fn list_segments(conn: &Connection, page_id: &str) -> Result<Vec<Value>, String> {
@@ -1194,6 +1270,74 @@ mod tests {
         assert!(res.error.is_none());
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM segments", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn delete_page_cascades_to_segments_and_blocks() {
+        let conn = conn_with_page("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 40,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+
+        let res = dispatch(&conn, Request { id: 41, method: "delete_page".into(), params: json!({ "id": "page-1" }) });
+        assert!(res.error.is_none());
+
+        let pages: i64 = conn.query_row("SELECT COUNT(*) FROM pages", [], |row| row.get(0)).unwrap();
+        assert_eq!(pages, 0);
+        let segments: i64 = conn.query_row("SELECT COUNT(*) FROM segments", [], |row| row.get(0)).unwrap();
+        assert_eq!(segments, 0);
+    }
+
+    #[test]
+    fn delete_folder_cascades_to_subfolders_pages_and_segments() {
+        let conn = db::open_in_memory().unwrap();
+        dispatch(
+            &conn,
+            Request {
+                id: 42,
+                method: "save_folder".into(),
+                params: json!({ "id": "folder-1", "name": "Parent", "parentId": null, "icon": null, "expanded": false }),
+            },
+        );
+        dispatch(
+            &conn,
+            Request {
+                id: 43,
+                method: "save_folder".into(),
+                params: json!({ "id": "folder-2", "name": "Child", "parentId": "folder-1", "icon": null, "expanded": false }),
+            },
+        );
+        dispatch(
+            &conn,
+            Request {
+                id: 44,
+                method: "save_page".into(),
+                params: json!({ "id": "page-1", "folderId": "folder-2", "title": "Notes" }),
+            },
+        );
+        dispatch(
+            &conn,
+            Request {
+                id: 45,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+
+        let res = dispatch(&conn, Request { id: 46, method: "delete_folder".into(), params: json!({ "id": "folder-1" }) });
+        assert!(res.error.is_none());
+
+        let folders: i64 = conn.query_row("SELECT COUNT(*) FROM folders", [], |row| row.get(0)).unwrap();
+        assert_eq!(folders, 0);
+        let pages: i64 = conn.query_row("SELECT COUNT(*) FROM pages", [], |row| row.get(0)).unwrap();
+        assert_eq!(pages, 0);
+        let segments: i64 = conn.query_row("SELECT COUNT(*) FROM segments", [], |row| row.get(0)).unwrap();
+        assert_eq!(segments, 0);
     }
 
     /// `plugin_storage.plugin_id` has a `FOREIGN KEY ... REFERENCES
