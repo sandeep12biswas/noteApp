@@ -19,6 +19,19 @@
   text-underline-offset: 2px;
 }
 
+/* Removes the browser's own default focus outline on the contenteditable
+   `.ProseMirror` root (TipTap's editable element, in SegmentHost/
+   LinearSegmentHost) — with no explicit `outline` rule, that default paints
+   a solid ring in whatever color the OS/desktop theme's system accent is
+   (an amber/yellow ring on this Linux desktop's theme), drawn *around the
+   segment* while it's focused/being typed in. The segment's own
+   `border`/`border-transparent` classes (SegmentHost.tsx's `revealed` state)
+   already show which segment is active — this outline was a second,
+   unwanted ring on top of that. */
+.ProseMirror {
+  outline: none;
+}
+
 /* Heading sizes/weight inside the TipTap editor (`.ProseMirror` is the
    class TipTap puts on its editable root — see SegmentHost/LinearSegmentHost).
    Tailwind's preflight resets h1-h6 to `font-size: inherit; font-weight:

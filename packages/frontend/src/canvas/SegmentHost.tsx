@@ -9,7 +9,7 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
 import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, resolvePosition } from '../lib/collision'
-import { useCanvasStore, type Segment } from '../store/canvasStore'
+import { DEFAULT_SEGMENT_HEIGHT, useCanvasStore, type Segment } from '../store/canvasStore'
 import { useUIStore } from '../store/uiStore'
 import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
 import { insertPluginBlock } from './insertPluginBlock'
@@ -339,13 +339,22 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       role="textbox"
       aria-label="Segment"
       className={
-        'absolute min-h-[40px] rounded px-2 py-1 transition-colors ' +
+        'absolute rounded px-2 py-1 transition-colors ' +
         (revealed ? 'border' : 'border border-transparent hover:border-gray-200 dark:hover:border-gray-700')
       }
       style={{
         left: segment.x,
         top: segment.y,
         width: segment.w,
+        // A fixed floor (not `segment.h`, which the ResizeObserver below
+        // keeps overwriting with whatever the box currently measures at) —
+        // using `segment.h` here would let a segment's height ratchet
+        // upward forever: whatever it grows to becomes the next render's
+        // floor, so it could never shrink back down after a burst of typed
+        // text was deleted. `DEFAULT_SEGMENT_HEIGHT` (currently ~5 empty
+        // lines' worth) is the same constant every segment created via
+        // `CanvasRoot`'s click handler starts at.
+        minHeight: DEFAULT_SEGMENT_HEIGHT,
         zIndex: segment.zIndex,
         borderColor: segment.borderColor ?? undefined,
         backgroundColor: segment.fillColor ?? undefined,

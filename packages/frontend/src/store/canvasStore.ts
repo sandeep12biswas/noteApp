@@ -95,8 +95,26 @@ export interface Segment {
   updatedAt: number
 }
 
+// Fallback used only when the caller can't measure anything better (e.g.
+// `CanvasRoot` before its container has ever been laid out) — the normal
+// path now computes both at creation time: width from the editor pane's own
+// size, height from a multiple of the segment's natural one-line minimum.
+// See `CanvasRoot.tsx`'s `handleCanvasClick` for where those are derived.
 export const DEFAULT_SEGMENT_WIDTH = 320
-export const DEFAULT_SEGMENT_HEIGHT = 80
+// `SegmentHost.tsx`'s `min-h-[40px]` is exactly what one empty paragraph
+// (padding + one line of text) already renders at, so `ONE_LINE_HEIGHT`
+// isn't a guess so much as the same number written down in the one other
+// place that already encodes it. `EXTRA_LINE_HEIGHT_PX` is the height one
+// *additional* wrapped line adds beyond that first line (font-size default,
+// no padding/border — those are only paid once).
+const ONE_LINE_HEIGHT = 40
+const EXTRA_LINE_HEIGHT_PX = 24
+const DEFAULT_SEGMENT_LINES = 5
+// A brand-new segment starts tall enough for `DEFAULT_SEGMENT_LINES` empty
+// lines' worth of room, not just one — content typed beyond that still
+// grows the segment further via the existing ResizeObserver →
+// `updateSegmentHeight` path, same as before.
+export const DEFAULT_SEGMENT_HEIGHT = ONE_LINE_HEIGHT + EXTRA_LINE_HEIGHT_PX * (DEFAULT_SEGMENT_LINES - 1)
 
 const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
 

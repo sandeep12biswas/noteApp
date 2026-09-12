@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CanvasRoot } from './CanvasRoot'
-import { useCanvasStore } from '../store/canvasStore'
+import { DEFAULT_SEGMENT_HEIGHT, DEFAULT_SEGMENT_WIDTH, useCanvasStore } from '../store/canvasStore'
 import { useNotebookStore } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
 
@@ -41,6 +41,36 @@ describe('CanvasRoot', () => {
     if (!first || !second) throw new Error('expected two segments')
     const verticallyClear = second.y >= first.y + first.h + 8
     expect(verticallyClear).toBe(true)
+  })
+
+  it('defaults a new segment to half the editor pane width, not a fixed pixel constant', () => {
+    render(<CanvasRoot pageId="page-1" />)
+    const el = screen.getByTestId('canvas-root')
+    el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 900 }) as DOMRect
+
+    fireEvent.click(el)
+
+    const segments = Object.values(useCanvasStore.getState().segments)
+    expect(segments[0]?.w).toBe(450)
+  })
+
+  it('falls back to DEFAULT_SEGMENT_WIDTH when the pane has no measurable width yet', () => {
+    render(<CanvasRoot pageId="page-1" />)
+    const el = screen.getByTestId('canvas-root')
+    el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0 }) as DOMRect
+
+    fireEvent.click(el)
+
+    const segments = Object.values(useCanvasStore.getState().segments)
+    expect(segments[0]?.w).toBe(DEFAULT_SEGMENT_WIDTH)
+  })
+
+  it('defaults a new segment to the one-line minimum height', () => {
+    render(<CanvasRoot pageId="page-1" />)
+    fireEvent.click(screen.getByTestId('canvas-root'))
+
+    const segments = Object.values(useCanvasStore.getState().segments)
+    expect(segments[0]?.h).toBe(DEFAULT_SEGMENT_HEIGHT)
   })
 })
 

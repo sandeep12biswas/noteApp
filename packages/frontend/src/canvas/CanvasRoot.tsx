@@ -41,9 +41,18 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
       // corrects AABB coordinates").
       const rawX = (e.clientX - rect.left) / zoom
       const rawY = (e.clientY - rect.top) / zoom
+      // Default width: half the editor pane's own (unscaled) width, not a
+      // fixed pixel constant — falls back to `DEFAULT_SEGMENT_WIDTH` only
+      // when the container hasn't actually been laid out yet (0 width; true
+      // in jsdom tests that don't stub `getBoundingClientRect`). Height
+      // stays `DEFAULT_SEGMENT_HEIGHT` (the natural one-line minimum) —
+      // there's no content yet to measure a taller starting height from, and
+      // the segment grows from there as text is typed.
+      const paneWidth = rect.width / zoom
+      const width = paneWidth > 0 ? paneWidth * 0.5 : DEFAULT_SEGMENT_WIDTH
       const existing = aabbsForPage(pageId)
-      const { x, y } = findFreePosition(rawX, rawY, DEFAULT_SEGMENT_WIDTH, DEFAULT_SEGMENT_HEIGHT, existing)
-      createSegment(pageId, x, y)
+      const { x, y } = findFreePosition(rawX, rawY, width, DEFAULT_SEGMENT_HEIGHT, existing)
+      createSegment(pageId, x, y, width, DEFAULT_SEGMENT_HEIGHT)
     },
     [aabbsForPage, createSegment, pageId, zoom],
   )
