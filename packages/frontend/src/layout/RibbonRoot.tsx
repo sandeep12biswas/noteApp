@@ -12,11 +12,71 @@ import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
 import { getIPCAdapter } from '../store/notebookStore'
 import { sendRibbonAction } from '../plugins/PluginIPCBridge'
+import { captureFormat } from '../lib/formatPainter'
 import { FONT_FAMILIES, type FontFamilyOption } from '../lib/fontFamilies'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
 import { useFontStore } from '../store/fontStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
 import { ColorPickerMenu } from './ColorPickerMenu'
+
+// Format Painter — DESIGN-parity with Word/OneNote's paintbrush: click to
+// capture the current selection's formatting and arm a single application
+// (CanvasRoot.tsx's pointerup listener applies it to whatever gets selected
+// next, then auto-disarms); double-click arms "sticky" so it keeps applying
+// to every subsequent selection until Escape or clicking this button again.
+// A single click when already armed disarms it early (same as Word).
+// `click`/`dblclick` both fire on a real double-click (click, click,
+// dblclick in that order) — the timer below is the standard debounce so a
+// double-click's two leading `click` events don't already arm non-sticky
+// before the `dblclick` handler gets a chance to override it.
+function FormatPainterButton() {
+  const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
+  const armed = useUIStore((s) => s.formatPainter.armed)
+  const armFormatPainter = useUIStore((s) => s.armFormatPainter)
+  const disarmFormatPainter = useUIStore((s) => s.disarmFormatPainter)
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const arm = (sticky: boolean) => {
+    const editor = getActiveEditor()
+    if (!editor || editor.state.selection.empty) return
+    armFormatPainter(captureFormat(editor), sticky)
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label="Format Painter"
+      aria-pressed={armed}
+      title="Format Painter — select formatted text, click here, then select text to copy it onto (double-click to paint repeatedly)"
+      onClick={() => {
+        if (armed) {
+          disarmFormatPainter()
+          return
+        }
+        if (clickTimer.current) return
+        clickTimer.current = setTimeout(() => {
+          clickTimer.current = null
+          arm(false)
+        }, 250)
+      }}
+      onDoubleClick={() => {
+        if (clickTimer.current) {
+          clearTimeout(clickTimer.current)
+          clickTimer.current = null
+        }
+        arm(true)
+      }}
+      className={
+        'rounded px-1.5 py-1 text-sm font-medium ' +
+        (armed
+          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+          : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800')
+      }
+    >
+      🖌
+    </button>
+  )
+}
 
 // DESIGN.md §5.3 Home row: "Highlight · Text colour" — a real dropdown
 // picker (was previously just "click cycles through 5 fixed colours",
@@ -293,6 +353,7 @@ function HomeToolsPanel() {
       <RibbonButton label="Clear formatting" onClick={() => run((c) => c.unsetAllMarks().clearNodes().run())}>
         Clear
       </RibbonButton>
+      <FormatPainterButton />
       <Divider />
       <div className="flex items-center gap-0.5" role="group" aria-label="Lists">
         <RibbonButton label="Bulleted list" onClick={() => run((c) => c.toggleBulletList().run())}>

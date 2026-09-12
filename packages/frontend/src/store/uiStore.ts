@@ -3,6 +3,7 @@
 // lands with Phase 2's CanvasRoot work) since this is chrome state, not
 // document state.
 import { create } from 'zustand'
+import type { CapturedFormat } from '../lib/formatPainter'
 
 export const RIBBON_TABS = ['Home', 'Insert', 'Draw', 'View'] as const
 export type RibbonTab = (typeof RIBBON_TABS)[number]
@@ -35,6 +36,15 @@ interface UIState {
   resetZoom: () => void
   activeView: MainView
   setActiveView: (view: MainView) => void
+  // Format Painter (RibbonRoot.tsx's toggle button, CanvasRoot.tsx's
+  // pointerup applier, lib/formatPainter.ts's capture/apply) — chrome
+  // state, not document state, same as everything else in this store:
+  // "armed" means a format has been captured and is waiting to be painted
+  // onto the next selection; "sticky" (double-click to arm) keeps it armed
+  // across multiple applications instead of auto-disarming after one.
+  formatPainter: { armed: boolean; sticky: boolean; format: CapturedFormat | null }
+  armFormatPainter: (format: CapturedFormat, sticky: boolean) => void
+  disarmFormatPainter: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -46,4 +56,7 @@ export const useUIStore = create<UIState>((set) => ({
   resetZoom: () => set({ zoom: 1 }),
   activeView: 'notebook',
   setActiveView: (view) => set({ activeView: view }),
+  formatPainter: { armed: false, sticky: false, format: null },
+  armFormatPainter: (format, sticky) => set({ formatPainter: { armed: true, sticky, format } }),
+  disarmFormatPainter: () => set({ formatPainter: { armed: false, sticky: false, format: null } }),
 }))

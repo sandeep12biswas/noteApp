@@ -1,6 +1,9 @@
+import { Editor } from '@tiptap/core'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CanvasRoot } from './CanvasRoot'
+import { segmentEditorExtensions } from './segmentEditorExtensions'
+import type { CapturedFormat } from '../lib/formatPainter'
 import { DEFAULT_SEGMENT_HEIGHT, DEFAULT_SEGMENT_WIDTH, useCanvasStore } from '../store/canvasStore'
 import { useNotebookStore } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
@@ -99,5 +102,77 @@ describe('CanvasRoot zoom (Phase 6, DESIGN.md §10 "Zoom corrects AABB coordinat
   it('applies no transform at the default zoom', () => {
     render(<CanvasRoot pageId="page-1" />)
     expect(screen.getByTestId('canvas-root').style.transform).toBe('')
+  })
+})
+
+describe('Format Painter (RibbonRoot arms it, CanvasRoot applies it on pointerup)', () => {
+  const boldRedFormat: CapturedFormat = {
+    bold: true,
+    italic: false,
+    underline: false,
+    strike: false,
+    subscript: false,
+    superscript: false,
+    fontFamily: null,
+    fontSize: null,
+    color: '#ff0000',
+    highlightColor: null,
+    textAlign: null,
+  }
+
+  let editor: Editor
+  beforeEach(() => {
+    editor = new Editor({ extensions: segmentEditorExtensions, content: '<p>Hello world</p>' })
+    useCanvasStore.getState().registerEditor('seg-1', editor)
+    useCanvasStore.getState().setActiveSegment('seg-1')
+    useUIStore.setState({ formatPainter: { armed: false, sticky: false, format: null } })
+  })
+  afterEach(() => {
+    useCanvasStore.getState().unregisterEditor('seg-1')
+    editor.destroy()
+  })
+
+  it('applies the armed format to the active editor\'s selection on pointerup, then disarms (non-sticky)', () => {
+    editor.commands.setTextSelection({ from: 1, to: 6 }) // "Hello"
+    useUIStore.getState().armFormatPainter(boldRedFormat, false)
+    render(<CanvasRoot pageId="page-1" />)
+
+    fireEvent.pointerUp(screen.getByTestId('canvas-root'))
+
+    expect(editor.isActive('bold')).toBe(true)
+    expect(editor.getAttributes('textStyle').color).toBe('#ff0000')
+    expect(useUIStore.getState().formatPainter.armed).toBe(false)
+  })
+
+  it('stays armed after applying when sticky, for painting more than one spot', () => {
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+    useUIStore.getState().armFormatPainter(boldRedFormat, true)
+    render(<CanvasRoot pageId="page-1" />)
+
+    fireEvent.pointerUp(screen.getByTestId('canvas-root'))
+
+    expect(editor.isActive('bold')).toBe(true)
+    expect(useUIStore.getState().formatPainter.armed).toBe(true)
+  })
+
+  it('does nothing when the active editor has no selection (collapsed cursor)', () => {
+    useUIStore.getState().armFormatPainter(boldRedFormat, false)
+    render(<CanvasRoot pageId="page-1" />)
+
+    fireEvent.pointerUp(screen.getByTestId('canvas-root'))
+
+    expect(editor.isActive('bold')).toBe(false)
+    expect(useUIStore.getState().formatPainter.armed).toBe(true)
+  })
+
+  it('Escape disarms without applying anything', () => {
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+    useUIStore.getState().armFormatPainter(boldRedFormat, true)
+    render(<CanvasRoot pageId="page-1" />)
+
+    fireEvent.keyDown(screen.getByTestId('canvas-root'), { key: 'Escape' })
+
+    expect(useUIStore.getState().formatPainter.armed).toBe(false)
+    expect(editor.isActive('bold')).toBe(false)
   })
 })

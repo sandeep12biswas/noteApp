@@ -28,3 +28,39 @@ describe('resetZoom', () => {
     expect(useUIStore.getState().zoom).toBe(1)
   })
 })
+
+describe('Format Painter arm/disarm', () => {
+  const sampleFormat = {
+    bold: true,
+    italic: false,
+    underline: false,
+    strike: false,
+    subscript: false,
+    superscript: false,
+    fontFamily: null,
+    fontSize: null,
+    color: '#ff0000',
+    highlightColor: null,
+    textAlign: null,
+  }
+
+  beforeEach(() => {
+    useUIStore.setState({ formatPainter: { armed: false, sticky: false, format: null } })
+  })
+
+  it('armFormatPainter arms non-sticky by default', () => {
+    useUIStore.getState().armFormatPainter(sampleFormat, false)
+    expect(useUIStore.getState().formatPainter).toEqual({ armed: true, sticky: false, format: sampleFormat })
+  })
+
+  it('armFormatPainter can arm sticky', () => {
+    useUIStore.getState().armFormatPainter(sampleFormat, true)
+    expect(useUIStore.getState().formatPainter.sticky).toBe(true)
+  })
+
+  it('disarmFormatPainter clears armed state and the captured format', () => {
+    useUIStore.getState().armFormatPainter(sampleFormat, true)
+    useUIStore.getState().disarmFormatPainter()
+    expect(useUIStore.getState().formatPainter).toEqual({ armed: false, sticky: false, format: null })
+  })
+})

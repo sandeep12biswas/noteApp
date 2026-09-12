@@ -6,6 +6,7 @@
 // dependency between the two stores.
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { findFreePosition } from '../lib/collision'
+import { applyFormat } from '../lib/formatPainter'
 import { DEFAULT_SEGMENT_HEIGHT, DEFAULT_SEGMENT_WIDTH, useCanvasStore } from '../store/canvasStore'
 import { useUIStore } from '../store/uiStore'
 import { SegmentHost } from './SegmentHost'
@@ -18,8 +19,27 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
   const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
   const aabbsForPage = useCanvasStore((s) => s.aabbsForPage)
   const loadSegmentsForPage = useCanvasStore((s) => s.loadSegmentsForPage)
+  const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
   const zoom = useUIStore((s) => s.zoom)
+  const formatPainter = useUIStore((s) => s.formatPainter)
+  const disarmFormatPainter = useUIStore((s) => s.disarmFormatPainter)
   const handleTextChange = useSyncFileContent(pageId)
+
+  // Format Painter's "paint the next selection" half (RibbonRoot.tsx's
+  // button captures the format; this applies it) — a pointerup here catches
+  // the end of a text-selection drag no matter which segment/editor it
+  // happened in, since `getActiveEditor()` always resolves to whichever
+  // segment last received focus (SegmentHost.tsx's `onFocus`). Not armed,
+  // or nothing selected: no-op. Single-shot mode disarms after one
+  // application; sticky mode (double-click to arm) stays armed for
+  // painting several spots until Escape or the button again.
+  const handleFormatPainterApply = useCallback(() => {
+    if (!formatPainter.armed || !formatPainter.format) return
+    const editor = getActiveEditor()
+    if (!editor || editor.state.selection.empty) return
+    applyFormat(editor, formatPainter.format)
+    if (!formatPainter.sticky) disarmFormatPainter()
+  }, [formatPainter, getActiveEditor, disarmFormatPainter])
 
   const pageSegments = useMemo(() => Object.values(segments).filter((s) => s.pageId === pageId), [segments, pageId])
 
@@ -66,6 +86,10 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
       onClick={handleCanvasClick}
       onMouseDown={(e) => {
         if (e.target === containerRef.current) setActiveSegment(null)
+      }}
+      onPointerUp={handleFormatPainterApply}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && formatPainter.armed) disarmFormatPainter()
       }}
     >
       {pageSegments.length === 0 && (
