@@ -29,6 +29,51 @@ function persist(label: string, promise: Promise<unknown> | undefined): void {
   })
 }
 
+/**
+ * Debounced persistence for height-driven saves only (`updateSegmentHeight`
+ * and `cascadePushBelow`) — every other mutation here still calls `persist`
+ * directly, since a drag/resize/colour commit is already one discrete user
+ * action, not a rapid-fire stream. A growing segment's `ResizeObserver`
+ * fires once per layout tick while its content is still changing (e.g.
+ * every character typed on a wrapping line), and each tick was previously
+ * its own full `saveSegment`/`saveSegmentsBatch` round-trip — harmless
+ * correctness-wise (each call did use that tick's own freshest state) but
+ * needless IPC traffic, flagged as a real follow-up in EXECUTION_PLAN.md
+ * Phase 3. Coalesces into one batch write `HEIGHT_SAVE_DEBOUNCE_MS` after
+ * the last tick in a burst, always reading each segment's *current* store
+ * state at flush time (not whatever was passed in when scheduled) so nothing
+ * stale ever overwrites a newer in-memory value.
+ */
+const HEIGHT_SAVE_DEBOUNCE_MS = 100
+const pendingHeightSaveIds = new Set<string>()
+let heightSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleHeightPersist(ids: Iterable<string>, getSegment: (id: string) => Segment | undefined): void {
+  for (const id of ids) pendingHeightSaveIds.add(id)
+  if (heightSaveTimer) clearTimeout(heightSaveTimer)
+  heightSaveTimer = setTimeout(() => {
+    heightSaveTimer = null
+    const ids2 = [...pendingHeightSaveIds]
+    pendingHeightSaveIds.clear()
+    const segments = ids2.map(getSegment).filter((s): s is Segment => s !== undefined)
+    if (segments.length === 0) return
+    if (segments.length === 1) {
+      persist('saveSegment', ipc?.saveSegment(toWireSegment(segments[0]!)))
+    } else {
+      persist('saveSegmentsBatch', ipc?.saveSegmentsBatch(segments.map(toWireSegment)))
+    }
+  }, HEIGHT_SAVE_DEBOUNCE_MS)
+}
+
+/** Test-only: lets tests observe a debounce firing without waiting HEIGHT_SAVE_DEBOUNCE_MS in real time (used together with vi.useFakeTimers()) and reset between tests so a left-over timer from one test can't fire into the next. */
+export function __flushHeightSavesForTests(): void {
+  if (heightSaveTimer) {
+    clearTimeout(heightSaveTimer)
+    heightSaveTimer = null
+  }
+  pendingHeightSaveIds.clear()
+}
+
 function toWireSegment(s: Segment): Omit<Segment, 'createdAt' | 'updatedAt'> {
   const { id, pageId, x, y, w, h, zIndex, borderColor, fillColor, content } = s
   return { id, pageId, x, y, w, h, zIndex, borderColor, fillColor, content }
@@ -189,9 +234,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const seg = state.segments[id]
       if (!seg) return state
       const updated = { ...seg, h, updatedAt: Date.now() }
-      persist('saveSegment', ipc?.saveSegment(toWireSegment(updated)))
       return { segments: { ...state.segments, [id]: updated } }
     })
+    scheduleHeightPersist([id], (segId) => get().segments[segId])
     // Only a growing segment can newly overlap something below it.
     if (h > before.h) get().cascadePushBelow(id, new Set([id]), 0)
   },
@@ -237,7 +282,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       for (const p of pushed) next[p.id] = p
       return { segments: next }
     })
-    persist('saveSegmentsBatch', ipc?.saveSegmentsBatch(pushed.map(toWireSegment)))
+    scheduleHeightPersist(
+      pushed.map((p) => p.id),
+      (segId) => get().segments[segId],
+    )
 
     for (const p of pushed) {
       visited.add(p.id)

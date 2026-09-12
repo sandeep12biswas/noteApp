@@ -3,6 +3,7 @@ import {
   clampResizeWidth,
   findFreePosition,
   GAP_HIGHLIGHT_THRESHOLD,
+  gapLineFor,
   idsWithinGap,
   MIN_GAP,
   MIN_SEGMENT_WIDTH,
@@ -141,5 +142,39 @@ describe('idsWithinGap', () => {
     const box = { x: 0, y: 0, w: 100, h: 40 }
     const others = [{ id: 'overlapping', x: 50, y: 0, w: 50, h: 40 }]
     expect(idsWithinGap(box, others)).toEqual(['overlapping'])
+  })
+})
+
+describe('gapLineFor', () => {
+  it('draws a vertical line at the midpoint of a horizontal gap, spanning the y-overlap', () => {
+    const a = { x: 0, y: 0, w: 100, h: 40 }
+    const b = { x: 110, y: 10, w: 50, h: 40 } // 10px gap to the right, y-ranges overlap [10, 40]
+    const line = gapLineFor(a, b)
+    expect(line).toEqual({ x: 105, y: 10, w: 0, h: 30, orientation: 'vertical' })
+  })
+
+  it('is symmetric regardless of argument order', () => {
+    const a = { x: 0, y: 0, w: 100, h: 40 }
+    const b = { x: 110, y: 10, w: 50, h: 40 }
+    expect(gapLineFor(b, a)).toEqual(gapLineFor(a, b))
+  })
+
+  it('draws a horizontal line at the midpoint of a vertical gap, spanning the x-overlap', () => {
+    const a = { x: 0, y: 0, w: 100, h: 40 }
+    const b = { x: 20, y: 50, w: 100, h: 40 } // 10px gap below, x-ranges overlap [20, 100]
+    const line = gapLineFor(a, b)
+    expect(line).toEqual({ x: 20, y: 45, w: 80, h: 0, orientation: 'horizontal' })
+  })
+
+  it('returns null for diagonally/corner-separated boxes (no single unambiguous line)', () => {
+    const a = { x: 0, y: 0, w: 100, h: 40 }
+    const b = { x: 110, y: 50, w: 50, h: 40 } // gap on both axes
+    expect(gapLineFor(a, b)).toBeNull()
+  })
+
+  it('returns null for overlapping boxes (no gap to draw)', () => {
+    const a = { x: 0, y: 0, w: 100, h: 40 }
+    const b = { x: 50, y: 0, w: 50, h: 40 }
+    expect(gapLineFor(a, b)).toBeNull()
   })
 })

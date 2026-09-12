@@ -50,7 +50,7 @@ test('a stroke survives switching pages away and back, and a full app restart', 
   const blankLength = await inkLayerLength(page)
   expect(blankLength).toBeLessThan(drawnLength)
 
-  await page.getByRole('list', { name: 'Folder tree' }).getByRole('button', { name: 'Notes' }).click()
+  await page.getByRole('list', { name: 'Folder tree' }).getByRole('button', { name: 'Notes', exact: true }).click()
   await page.getByRole('list', { name: 'Files' }).getByRole('button', { name: 'Sketch' }).click()
   await page.waitForTimeout(300)
   expect(await inkLayerLength(page)).toBeGreaterThan(blankLength)
@@ -62,7 +62,7 @@ test('a stroke survives switching pages away and back, and a full app restart', 
   ctx = await launchApp({ userDataDir: ctx.userDataDir })
   page = ctx.page
 
-  await page.getByRole('list', { name: 'Folder tree' }).getByRole('button', { name: 'Notes' }).click()
+  await page.getByRole('list', { name: 'Folder tree' }).getByRole('button', { name: 'Notes', exact: true }).click()
   await page.getByRole('list', { name: 'Files' }).getByRole('button', { name: 'Sketch' }).click()
   await page.waitForTimeout(300)
   expect(await inkLayerLength(page)).toBeGreaterThan(blankLength)

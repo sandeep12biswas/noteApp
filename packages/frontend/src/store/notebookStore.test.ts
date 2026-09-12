@@ -43,6 +43,25 @@ describe('createFolder', () => {
   })
 })
 
+describe('setFolderIcon', () => {
+  it('sets a folder icon', () => {
+    const { id } = useNotebookStore.getState().createFolder(null, 'Projects')
+    useNotebookStore.getState().setFolderIcon(id!, '⭐')
+    expect(useNotebookStore.getState().folders[id!]?.icon).toBe('⭐')
+  })
+
+  it('clears back to the default with null', () => {
+    const { id } = useNotebookStore.getState().createFolder(null, 'Projects')
+    useNotebookStore.getState().setFolderIcon(id!, '⭐')
+    useNotebookStore.getState().setFolderIcon(id!, null)
+    expect(useNotebookStore.getState().folders[id!]?.icon).toBeNull()
+  })
+
+  it('is a no-op for a missing folder id', () => {
+    expect(() => useNotebookStore.getState().setFolderIcon('missing', '⭐')).not.toThrow()
+  })
+})
+
 describe('childFoldersOf', () => {
   it('returns only direct children, in natural order', () => {
     const store = useNotebookStore.getState()

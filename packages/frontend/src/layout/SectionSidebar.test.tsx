@@ -68,6 +68,22 @@ describe('SectionSidebar', () => {
     expect(screen.getByText('Child')).toBeInTheDocument()
   })
 
+  it('changes a folder icon via the icon picker, and can clear back to default', async () => {
+    const store = useNotebookStore.getState()
+    const { id } = store.createFolder(null, 'Notes')
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+
+    await user.click(screen.getByRole('button', { name: 'Change icon for Notes' }))
+    await user.click(screen.getByRole('menuitemradio', { name: 'Icon ⭐' }))
+    expect(useNotebookStore.getState().folders[id!]?.icon).toBe('⭐')
+    expect(screen.getByRole('button', { name: 'Change icon for Notes' })).toHaveTextContent('⭐')
+
+    await user.click(screen.getByRole('button', { name: 'Change icon for Notes' }))
+    await user.click(screen.getByRole('menuitem', { name: /Default/ }))
+    expect(useNotebookStore.getState().folders[id!]?.icon).toBeNull()
+  })
+
   it('renders the Plugins slot', () => {
     render(<SectionSidebar />)
     expect(screen.getByTestId('plugins-tab')).toBeInTheDocument()

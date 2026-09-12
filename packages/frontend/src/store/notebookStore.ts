@@ -136,7 +136,7 @@ interface NotebookState {
   createFolder: (parentId: string | null, rawName: string) => MutationResult
   renameFolder: (id: string, rawName: string) => void
   toggleFolderExpanded: (id: string) => void
-  setFolderIcon: (id: string, icon: string) => void
+  setFolderIcon: (id: string, icon: string | null) => void
   selectFolder: (id: string | null) => void
 
   createFile: (folderId: string, rawName: string, content?: string) => MutationResult

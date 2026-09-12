@@ -83,7 +83,7 @@ test.describe.serial('plugin lifecycle: install, use, disable/re-enable, uninsta
 
   test('the entered value survives navigating away and back (real SQLite round-trip)', async () => {
     await createFolderAndPage(page, 'Scratch', 'Other')
-    await page.getByRole('list', { name: 'Folder tree' }).getByRole('button', { name: 'Notes' }).click()
+    await page.getByRole('list', { name: 'Folder tree' }).getByRole('button', { name: 'Notes', exact: true }).click()
     await page.getByRole('list', { name: 'Files' }).getByRole('button', { name: 'Budget' }).click()
 
     await page.getByTestId(/^plugin-block-/).first().locator('iframe').waitFor()

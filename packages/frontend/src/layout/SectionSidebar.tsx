@@ -1,12 +1,14 @@
 // Folder sidebar — DESIGN.md §2.1: folder-only tree, auto-capitalized
-// names, file counts, expandable sub-folders, natural order. Icon
-// picking/import (§2.1) isn't built yet — `Folder.icon` exists in the store
-// for it to land in later without a shape change.
+// names, file counts, expandable sub-folders, natural order, changeable
+// icons (built-in set — see FolderIconMenu.tsx for why "external import"
+// isn't built).
 import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
+import { DEFAULT_FOLDER_ICON } from '../lib/folderIcons'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
+import { FolderIconMenu } from './FolderIconMenu'
 
 function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone: () => void }) {
   const [value, setValue] = useState('')
@@ -65,7 +67,10 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
   const selectedFolderId = useNotebookStore((s) => s.selectedFolderId)
   const selectFolder = useNotebookStore((s) => s.selectFolder)
   const toggleExpanded = useNotebookStore((s) => s.toggleFolderExpanded)
+  const setFolderIcon = useNotebookStore((s) => s.setFolderIcon)
   const [addingChild, setAddingChild] = useState(false)
+  const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null)
+  const iconButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const hasChildren = childFolders.length > 0
   const isSelected = selectedFolderId === folder.id
@@ -92,6 +97,19 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
           <span className="w-3 shrink-0" />
         )}
         <button
+          ref={iconButtonRef}
+          type="button"
+          aria-label={`Change icon for ${folder.name}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            const rect = iconButtonRef.current?.getBoundingClientRect()
+            setIconMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: e.clientX, y: e.clientY })
+          }}
+          className="shrink-0 rounded text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
+        >
+          {folder.icon ?? DEFAULT_FOLDER_ICON}
+        </button>
+        <button
           type="button"
           onClick={() => selectFolder(folder.id)}
           className="flex-1 truncate text-left"
@@ -102,6 +120,16 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
           {fileCount}
         </span>
       </div>
+
+      {iconMenu && (
+        <FolderIconMenu
+          x={iconMenu.x}
+          y={iconMenu.y}
+          activeIcon={folder.icon}
+          onPick={(icon) => setFolderIcon(folder.id, icon)}
+          onClose={() => setIconMenu(null)}
+        />
+      )}
 
       {folder.expanded && (
         <ul>

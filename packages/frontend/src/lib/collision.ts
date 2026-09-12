@@ -116,3 +116,47 @@ export function clampResizeWidth(
 export function idsWithinGap<T extends AABB & { id: string }>(box: AABB, others: T[], threshold: number = GAP_HIGHLIGHT_THRESHOLD): string[] {
   return others.filter((o) => gapBetween(box, o) <= threshold).map((o) => o.id)
 }
+
+export interface GapLine {
+  x: number
+  y: number
+  w: number
+  h: number
+  /** `vertical` = a north-south line spanning a horizontal gap; `horizontal` = an east-west line spanning a vertical gap. */
+  orientation: 'horizontal' | 'vertical'
+}
+
+/**
+ * The exact 1px dashed gap-indicator line between two boxes that are
+ * cleanly separated along one axis (side-by-side or stacked, not
+ * diagonally at a corner) — DESIGN.md Phase 3's gap highlight follow-up
+ * ("a dashed line reading the actual gap", not just a brightened border).
+ * Positioned at the midpoint between the two facing edges, spanning
+ * whatever range the boxes overlap along the perpendicular axis. Returns
+ * `null` for boxes with no clean shared axis (diagonal/corner-adjacent, or
+ * already touching/overlapping on both axes) — there's no single
+ * unambiguous line to draw for those, so the caller falls back to the
+ * border highlight alone.
+ */
+export function gapLineFor(a: AABB, b: AABB): GapLine | null {
+  const dx = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0)
+  const dy = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0)
+
+  if (dx > 0 && dy === 0) {
+    const aIsLeft = a.x + a.w <= b.x
+    const lineX = aIsLeft ? (a.x + a.w + b.x) / 2 : (b.x + b.w + a.x) / 2
+    const y = Math.max(a.y, b.y)
+    const h = Math.min(a.y + a.h, b.y + b.h) - y
+    return { x: lineX, y, w: 0, h, orientation: 'vertical' }
+  }
+
+  if (dy > 0 && dx === 0) {
+    const aIsAbove = a.y + a.h <= b.y
+    const lineY = aIsAbove ? (a.y + a.h + b.y) / 2 : (b.y + b.h + a.y) / 2
+    const x = Math.max(a.x, b.x)
+    const w = Math.min(a.x + a.w, b.x + b.w) - x
+    return { x, y: lineY, w, h: 0, orientation: 'horizontal' }
+  }
+
+  return null
+}
