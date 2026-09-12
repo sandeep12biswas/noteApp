@@ -68,6 +68,50 @@ describe('SectionSidebar', () => {
     expect(screen.getByText('Child')).toBeInTheDocument()
   })
 
+  it('creates a nested subfolder via the "+" button, without requiring the parent to already be expanded', async () => {
+    const store = useNotebookStore.getState()
+    const { id: parentId } = store.createFolder(null, 'Parent')
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+
+    // Parent has no children yet, so it starts with no expand arrow and isn't expanded.
+    expect(useNotebookStore.getState().folders[parentId!]?.expanded).toBe(false)
+    await user.click(screen.getByRole('button', { name: 'New subfolder in Parent' }))
+    await user.type(screen.getByRole('textbox', { name: 'New folder name' }), 'child{Enter}')
+
+    const parentFolders = Object.values(useNotebookStore.getState().folders).filter((f) => f.parentId === parentId)
+    expect(parentFolders).toHaveLength(1)
+    expect(parentFolders[0]?.name).toBe('Child')
+  })
+
+  it('right-click opens a menu with New subfolder and Rename', async () => {
+    const store = useNotebookStore.getState()
+    const { id } = store.createFolder(null, 'Notes')
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText('Notes') })
+    const menu = screen.getByRole('menu', { name: 'Folder actions' })
+    expect(menu).toBeInTheDocument()
+
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: 'Rename Notes' })
+    await user.clear(input)
+    await user.type(input, 'Renamed{Enter}')
+    expect(useNotebookStore.getState().folders[id!]?.name).toBe('Renamed')
+  })
+
+  it('right-click "New subfolder" opens the same new-folder input as the "+" button', async () => {
+    const store = useNotebookStore.getState()
+    store.createFolder(null, 'Notes')
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText('Notes') })
+    await user.click(screen.getByRole('menuitem', { name: 'New subfolder' }))
+    expect(screen.getByRole('textbox', { name: 'New folder name' })).toBeInTheDocument()
+  })
+
   it('changes a folder icon via the icon picker, and can clear back to default', async () => {
     const store = useNotebookStore.getState()
     const { id } = store.createFolder(null, 'Notes')

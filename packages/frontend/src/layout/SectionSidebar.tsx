@@ -8,6 +8,7 @@ import { DEFAULT_FOLDER_ICON } from '../lib/folderIcons'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
+import { FolderContextMenu } from './FolderContextMenu'
 import { FolderIconMenu } from './FolderIconMenu'
 
 function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone: () => void }) {
@@ -59,6 +60,34 @@ function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone:
   )
 }
 
+function RenameFolderInput({ folder, onDone }: { folder: Folder; onDone: () => void }) {
+  const [value, setValue] = useState(folder.name)
+  const renameFolder = useNotebookStore((s) => s.renameFolder)
+
+  const submit = () => {
+    if (value.trim().length > 0 && value.trim() !== folder.name) renameFolder(folder.id, value)
+    onDone()
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') submit()
+    if (e.key === 'Escape') onDone()
+  }
+
+  return (
+    <input
+      autoFocus
+      aria-label={`Rename ${folder.name}`}
+      className="flex-1 rounded border border-blue-400 px-1 py-0.5 text-sm outline-none"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={onKeyDown}
+      onBlur={submit}
+      onClick={(e) => e.stopPropagation()}
+    />
+  )
+}
+
 function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
   const allFolders = useNotebookStore((s) => s.folders)
   const allFiles = useNotebookStore((s) => s.files)
@@ -70,6 +99,8 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
   const setFolderIcon = useNotebookStore((s) => s.setFolderIcon)
   const [addingChild, setAddingChild] = useState(false)
   const [iconMenu, setIconMenu] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [renaming, setRenaming] = useState(false)
   const iconButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const hasChildren = childFolders.length > 0
@@ -83,6 +114,11 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
           (isSelected ? 'bg-blue-100 dark:bg-blue-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800')
         }
         style={{ paddingLeft: depth * 12 }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setContextMenu({ x: e.clientX, y: e.clientY })
+        }}
       >
         {hasChildren ? (
           <button
@@ -109,16 +145,31 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
         >
           {folder.icon ?? DEFAULT_FOLDER_ICON}
         </button>
-        <button
-          type="button"
-          onClick={() => selectFolder(folder.id)}
-          className="flex-1 truncate text-left"
-        >
-          {folder.name}
-        </button>
+        {renaming ? (
+          <RenameFolderInput folder={folder} onDone={() => setRenaming(false)} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => selectFolder(folder.id)}
+            className="flex-1 truncate text-left"
+          >
+            {folder.name}
+          </button>
+        )}
         <span className="text-xs text-gray-400" aria-label={`${fileCount} files`}>
           {fileCount}
         </span>
+        <button
+          type="button"
+          aria-label={`New subfolder in ${folder.name}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setAddingChild(true)
+          }}
+          className="shrink-0 text-xs text-gray-400 hover:text-blue-600"
+        >
+          +
+        </button>
       </div>
 
       {iconMenu && (
@@ -131,11 +182,22 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
         />
       )}
 
-      {folder.expanded && (
+      {contextMenu && (
+        <FolderContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onNewSubfolder={() => setAddingChild(true)}
+          onRename={() => setRenaming(true)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {(folder.expanded || addingChild) && (
         <ul>
-          {childFolders.map((child) => (
-            <FolderNode key={child.id} folder={child} depth={depth + 1} />
-          ))}
+          {folder.expanded &&
+            childFolders.map((child) => (
+              <FolderNode key={child.id} folder={child} depth={depth + 1} />
+            ))}
           {addingChild && <NewFolderInput parentId={folder.id} onDone={() => setAddingChild(false)} />}
         </ul>
       )}
