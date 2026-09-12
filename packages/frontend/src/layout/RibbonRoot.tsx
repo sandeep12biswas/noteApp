@@ -6,49 +6,79 @@
 // slot, matching DESIGN.md §9.2 registerRibbonGroup's insertion point. The
 // Draw tab is the one exception: it's the ink layer's tool switcher
 // (DESIGN.md §5.5), since Draw mode itself is just "this tab is active".
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import { useCanvasStore } from '../store/canvasStore'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
 import { getIPCAdapter } from '../store/notebookStore'
 import { sendRibbonAction } from '../plugins/PluginIPCBridge'
+import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
+import { ColorPickerMenu } from './ColorPickerMenu'
 
-// DESIGN.md §5.3 Home row: "Highlight · Text colour" — each button cycles
-// through a fixed palette on repeated clicks and shows the current colour
-// as an underbar beneath its letter, Word-style, rather than opening a
-// picker (there's no room for one in an 88px ribbon).
-const HIGHLIGHT_CYCLE = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff'] as const
-const TEXT_COLOR_CYCLE = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#d97706'] as const
-
-function ColorCycleButton({
+// DESIGN.md §5.3 Home row: "Highlight · Text colour" — a real dropdown
+// picker (was previously just "click cycles through 5 fixed colours",
+// which had no way to reach anything else). The letter button applies the
+// current colour on click (same one-click-reapply UX as before); a small
+// caret button next to it opens `ColorPickerMenu`'s wider preset grid +
+// native colour-wheel input.
+function ColorDropdownButton({
   label,
   letter,
   colors,
   onApply,
+  onClear,
 }: {
   label: string
   letter: string
   colors: readonly string[]
   onApply: (color: string) => void
+  onClear?: () => void
 }) {
-  const [index, setIndex] = useState(0)
+  const [current, setCurrent] = useState<string>(colors[0]!)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const caretRef = useRef<HTMLButtonElement | null>(null)
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={`${label}: ${colors[index]}`}
-      onClick={() => {
-        const color = colors[index]!
-        onApply(color)
-        setIndex((i) => (i + 1) % colors.length)
-      }}
-      className="flex flex-col items-center rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-    >
-      <span>{letter}</span>
-      <span className="mt-0.5 h-0.5 w-4 rounded" style={{ backgroundColor: colors[index] }} />
-    </button>
+    <div className="flex items-start">
+      <button
+        type="button"
+        aria-label={label}
+        title={`${label}: ${current}`}
+        onClick={() => onApply(current)}
+        className="flex flex-col items-center rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        <span>{letter}</span>
+        <span className="mt-0.5 h-0.5 w-4 rounded" style={{ backgroundColor: current }} />
+      </button>
+      <button
+        ref={caretRef}
+        type="button"
+        aria-label={`${label} options`}
+        onClick={() => {
+          const rect = caretRef.current?.getBoundingClientRect()
+          setMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: 0, y: 0 })
+        }}
+        className="rounded px-0.5 py-1 text-[10px] text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+      >
+        ▾
+      </button>
+      {menu && (
+        <ColorPickerMenu
+          x={menu.x}
+          y={menu.y}
+          label={label}
+          colors={colors}
+          activeColor={current}
+          onPick={(color) => {
+            setCurrent(color)
+            onApply(color)
+          }}
+          onClear={onClear}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </div>
   )
 }
 
@@ -129,17 +159,19 @@ function HomeToolsPanel() {
         </RibbonButton>
       </div>
       <Divider />
-      <ColorCycleButton
+      <ColorDropdownButton
         label="Highlight"
         letter="H"
-        colors={HIGHLIGHT_CYCLE}
+        colors={HIGHLIGHT_COLORS}
         onApply={(color) => getActiveEditor()?.chain().focus().toggleHighlight({ color }).run()}
+        onClear={() => getActiveEditor()?.chain().focus().unsetHighlight().run()}
       />
-      <ColorCycleButton
+      <ColorDropdownButton
         label="Text colour"
         letter="A"
-        colors={TEXT_COLOR_CYCLE}
+        colors={TEXT_COLORS}
         onApply={(color) => getActiveEditor()?.chain().focus().setColor(color).run()}
+        onClear={() => getActiveEditor()?.chain().focus().unsetColor().run()}
       />
       <RibbonButton label="Clear formatting" onClick={() => run((c) => c.unsetAllMarks().clearNodes().run())}>
         Clear
