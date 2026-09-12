@@ -33,6 +33,10 @@ const GENERIC: FontFamilyOption[] = [
 
 // Windows/Office-bundled fonts.
 const WINDOWS: FontFamilyOption[] = [
+  // Office's default typeface since 2023-24, replacing Calibri — only on
+  // newer Windows/Office installs, hence the Calibri fallback before the
+  // generic tail.
+  { label: 'Aptos', value: 'Aptos, Calibri, sans-serif', group: 'Windows' },
   { label: 'Arial', value: 'Arial, Helvetica, sans-serif', group: 'Windows' },
   { label: 'Calibri', value: 'Calibri, sans-serif', group: 'Windows' },
   { label: 'Cambria', value: 'Cambria, serif', group: 'Windows' },
