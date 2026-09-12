@@ -1,1 +1,41 @@
 @import 'tailwindcss';
+
+/* Manual light/dark toggle (store/themeStore.ts) overrides OS
+   prefers-color-scheme by adding/removing `.dark` on <html>. Tailwind v4
+   has no config file, so this custom-variant line is what switches
+   `dark:` utilities from a bare media query to "class on an ancestor",
+   letting `.dark` force dark mode independent of the OS — the existing
+   `dark:` classes across every layout/canvas component need no changes,
+   only the activation mechanism changes. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Spell-check misspelling indicator (canvas/spellcheckExtension.ts) — a
+   plain custom class, not an assembled Tailwind utility string, since the
+   class only ever exists as a literal inside a ProseMirror `Decoration`
+   spec (never in a scanned template), sidestepping any question of
+   whether Tailwind's JIT would pick it up. */
+.spellcheck-error {
+  text-decoration: underline wavy #ef4444 1px;
+  text-underline-offset: 2px;
+}
+
+/* Heading sizes/weight inside the TipTap editor (`.ProseMirror` is the
+   class TipTap puts on its editable root — see SegmentHost/LinearSegmentHost).
+   Tailwind's preflight resets h1-h6 to `font-size: inherit; font-weight:
+   inherit;`, so without this the H1/H2/H3 ribbon buttons toggled the right
+   node but it rendered identically to a paragraph (issue #1). */
+.ProseMirror h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.ProseMirror h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.ProseMirror h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+}

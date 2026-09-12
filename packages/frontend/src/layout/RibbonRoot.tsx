@@ -6,48 +6,81 @@
 // slot, matching DESIGN.md §9.2 registerRibbonGroup's insertion point. The
 // Draw tab is the one exception: it's the ink layer's tool switcher
 // (DESIGN.md §5.5), since Draw mode itself is just "this tab is active".
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import { useCanvasStore } from '../store/canvasStore'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
 import { getIPCAdapter } from '../store/notebookStore'
+import { sendRibbonAction } from '../plugins/PluginIPCBridge'
+import { FONT_FAMILIES, type FontFamilyOption } from '../lib/fontFamilies'
+import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
+import { useFontStore } from '../store/fontStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
+import { ColorPickerMenu } from './ColorPickerMenu'
 
-// DESIGN.md §5.3 Home row: "Highlight · Text colour" — each button cycles
-// through a fixed palette on repeated clicks and shows the current colour
-// as an underbar beneath its letter, Word-style, rather than opening a
-// picker (there's no room for one in an 88px ribbon).
-const HIGHLIGHT_CYCLE = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff'] as const
-const TEXT_COLOR_CYCLE = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#d97706'] as const
-
-function ColorCycleButton({
+// DESIGN.md §5.3 Home row: "Highlight · Text colour" — a real dropdown
+// picker (was previously just "click cycles through 5 fixed colours",
+// which had no way to reach anything else). The letter button applies the
+// current colour on click (same one-click-reapply UX as before); a small
+// caret button next to it opens `ColorPickerMenu`'s wider preset grid +
+// native colour-wheel input.
+function ColorDropdownButton({
   label,
   letter,
   colors,
   onApply,
+  onClear,
 }: {
   label: string
   letter: string
   colors: readonly string[]
   onApply: (color: string) => void
+  onClear?: () => void
 }) {
-  const [index, setIndex] = useState(0)
+  const [current, setCurrent] = useState<string>(colors[0]!)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const caretRef = useRef<HTMLButtonElement | null>(null)
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={`${label}: ${colors[index]}`}
-      onClick={() => {
-        const color = colors[index]!
-        onApply(color)
-        setIndex((i) => (i + 1) % colors.length)
-      }}
-      className="flex flex-col items-center rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-    >
-      <span>{letter}</span>
-      <span className="mt-0.5 h-0.5 w-4 rounded" style={{ backgroundColor: colors[index] }} />
-    </button>
+    <div className="flex items-start">
+      <button
+        type="button"
+        aria-label={label}
+        title={`${label}: ${current}`}
+        onClick={() => onApply(current)}
+        className="flex flex-col items-center rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        <span>{letter}</span>
+        <span className="mt-0.5 h-0.5 w-4 rounded" style={{ backgroundColor: current }} />
+      </button>
+      <button
+        ref={caretRef}
+        type="button"
+        aria-label={`${label} options`}
+        onClick={() => {
+          const rect = caretRef.current?.getBoundingClientRect()
+          setMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: 0, y: 0 })
+        }}
+        className="rounded px-0.5 py-1 text-[10px] text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+      >
+        ▾
+      </button>
+      {menu && (
+        <ColorPickerMenu
+          x={menu.x}
+          y={menu.y}
+          label={label}
+          colors={colors}
+          activeColor={current}
+          onPick={(color) => {
+            setCurrent(color)
+            onApply(color)
+          }}
+          onClear={onClear}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </div>
   )
 }
 
@@ -88,6 +121,116 @@ function Divider() {
   return <div className="h-5 w-px self-center bg-gray-200 dark:bg-gray-700" role="separator" />
 }
 
+const SELECT_CLASSNAME =
+  'rounded border border-gray-200 bg-white px-1 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
+
+// FONT_FAMILIES is a flat list ordered Generic -> Windows -> Linux -> Web
+// fonts (lib/fontFamilies.ts's own doc comment); grouped here into
+// `<optgroup>`s so a list this long (Windows/Office + Linux distro fonts,
+// per the user's ask, alongside the handful of Google Fonts already there)
+// stays scannable in a plain `<select>` instead of one long flat list.
+const FONT_GROUPS: [string, FontFamilyOption[]][] = (() => {
+  const order: string[] = []
+  const byGroup = new Map<string, FontFamilyOption[]>()
+  for (const f of FONT_FAMILIES) {
+    if (!byGroup.has(f.group)) {
+      order.push(f.group)
+      byGroup.set(f.group, [])
+    }
+    byGroup.get(f.group)!.push(f)
+  }
+  return order.map((group) => [group, byGroup.get(group)!])
+})()
+
+// One ribbon font-family picker doing double duty — a plain native
+// `<select>` (this app has no dropdown/menu library; the closest existing
+// precedent for a native control is ColorPickerMenu.tsx's
+// `<input type="color">`), listing lib/fontFamilies.ts's curated preset
+// list. Picking a font both (a) applies it to the current selection/cursor
+// via the usual getActiveEditor() dispatch path, exactly like every other
+// ribbon command, and (b) becomes the persisted default (store/fontStore.ts)
+// that any brand-new, still-empty segment starts with from then on
+// (canvas/applyDefaultFontIfNew.ts) — one choice serves both asks, rather
+// than a separate "apply now" control and a separate "set default" control
+// for what a user experiences as a single decision ("use this font").
+// Initialized from the persisted default (not blank) since that's the most
+// useful starting display; like ColorDropdownButton, it's local state, not
+// a live read of the current selection's mark (RibbonRoot.tsx's own doc
+// comment already covers why: `getActiveEditor()` is deliberately
+// non-reactive).
+function FontFamilySelect() {
+  const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
+  const defaultFont = useFontStore((s) => s.defaultFont)
+  const setDefaultFont = useFontStore((s) => s.setDefaultFont)
+  const [current, setCurrent] = useState(defaultFont)
+
+  return (
+    <select
+      aria-label="Font family"
+      title="Font family"
+      className={SELECT_CLASSNAME}
+      value={current}
+      onChange={(e) => {
+        const value = e.target.value
+        setCurrent(value)
+        setDefaultFont(value)
+        const chain = getActiveEditor()?.chain().focus()
+        if (value) chain?.setFontFamily(value).run()
+        else chain?.unsetFontFamily().run()
+      }}
+    >
+      {FONT_GROUPS.map(([group, options]) => (
+        <optgroup key={group} label={group}>
+          {options.map((f) => (
+            <option key={f.label} value={f.value}>
+              {f.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
+// The same point sizes Word's own font-size dropdown offers (8-72,
+// clustered tighter in the body-text range and wider apart above 28),
+// extended down to 6 (this app's own minimum — Word's box technically
+// accepts anything down to 1, but doesn't list it).
+const FONT_SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72] as const
+const FONT_SIZE_DEFAULT = 10
+
+// Font size — a plain native `<select>`, same idiom as FontFamilySelect
+// right next to it (this app has no dropdown/menu library). TipTap has no
+// built-in font-size mark (canvas/fontSizeExtension.ts is a small local
+// one, same TextStyle piggyback as Color/FontFamily). Like
+// FontFamilySelect, the displayed size is local state, not a live read of
+// the current selection's mark (`getActiveEditor()` is deliberately
+// non-reactive — see this file's own doc comment above `RibbonButton`).
+function FontSizeSelect() {
+  const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
+  const [size, setSize] = useState(FONT_SIZE_DEFAULT)
+
+  return (
+    <select
+      aria-label="Font size"
+      title="Font size"
+      className={SELECT_CLASSNAME}
+      value={size}
+      onChange={(e) => {
+        const next = Number(e.target.value)
+        setSize(next)
+        getActiveEditor()?.chain().focus().setFontSize(`${next}px`).run()
+      }}
+    >
+      {FONT_SIZES.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function HomeToolsPanel() {
   const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
   const run = (fn: (chain: ReturnType<NonNullable<ReturnType<typeof getActiveEditor>>['chain']>) => void) => {
@@ -105,6 +248,11 @@ function HomeToolsPanel() {
         <RibbonButton label="Redo" onClick={() => run((c) => c.redo().run())}>
           ↷
         </RibbonButton>
+      </div>
+      <Divider />
+      <div className="flex items-center gap-1" role="group" aria-label="Font">
+        <FontFamilySelect />
+        <FontSizeSelect />
       </div>
       <Divider />
       <div className="flex items-center gap-0.5" role="group" aria-label="Text style">
@@ -128,17 +276,19 @@ function HomeToolsPanel() {
         </RibbonButton>
       </div>
       <Divider />
-      <ColorCycleButton
+      <ColorDropdownButton
         label="Highlight"
         letter="H"
-        colors={HIGHLIGHT_CYCLE}
+        colors={HIGHLIGHT_COLORS}
         onApply={(color) => getActiveEditor()?.chain().focus().toggleHighlight({ color }).run()}
+        onClear={() => getActiveEditor()?.chain().focus().unsetHighlight().run()}
       />
-      <ColorCycleButton
+      <ColorDropdownButton
         label="Text colour"
         letter="A"
-        colors={TEXT_COLOR_CYCLE}
+        colors={TEXT_COLORS}
         onApply={(color) => getActiveEditor()?.chain().focus().setColor(color).run()}
+        onClear={() => getActiveEditor()?.chain().focus().unsetColor().run()}
       />
       <RibbonButton label="Clear formatting" onClick={() => run((c) => c.unsetAllMarks().clearNodes().run())}>
         Clear
@@ -204,11 +354,16 @@ function PluginRibbonGroups({ ribbonTab }: { ribbonTab: RibbonTab }) {
   const forThisTab = Object.values(groups).filter((g) => g.ribbonTab === ribbonTab)
   if (forThisTab.length === 0) return null
   return (
-    <div className="flex gap-2 border-l border-gray-200 pl-2 dark:border-gray-700">
+    <div className="flex items-center gap-2 border-l border-gray-200 pl-2 dark:border-gray-700">
       {forThisTab.map((g) => (
-        <span key={`${g.pluginId}/${g.id}`} className="text-xs text-gray-500">
-          {g.label}
-        </span>
+        <div key={`${g.pluginId}/${g.id}`} className="flex items-center gap-1" role="group" aria-label={g.label}>
+          <span className="text-xs text-gray-400">{g.label}</span>
+          {g.buttons.map((b) => (
+            <RibbonButton key={b.id} label={b.label} onClick={() => sendRibbonAction(g.pluginId, g.id, b.id)}>
+              {b.label}
+            </RibbonButton>
+          ))}
+        </div>
       ))}
     </div>
   )

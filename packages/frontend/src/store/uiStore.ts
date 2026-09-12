@@ -21,6 +21,11 @@ function clampZoom(z: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 100) / 100))
 }
 
+// DESIGN.md §9.5 Plugin Manager UI — a dedicated "Plugins" tab in the left
+// sidebar swaps the main content area (`PageList` + `EditorPane`) for the
+// Plugin Manager, the same way switching ribbon tabs swaps the ribbon panel.
+export type MainView = 'notebook' | 'plugins'
+
 interface UIState {
   activeRibbonTab: RibbonTab
   setActiveRibbonTab: (tab: RibbonTab) => void
@@ -28,6 +33,8 @@ interface UIState {
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
+  activeView: MainView
+  setActiveView: (view: MainView) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -37,4 +44,6 @@ export const useUIStore = create<UIState>((set) => ({
   zoomIn: () => set((s) => ({ zoom: clampZoom(s.zoom + ZOOM_STEP) })),
   zoomOut: () => set((s) => ({ zoom: clampZoom(s.zoom - ZOOM_STEP) })),
   resetZoom: () => set({ zoom: 1 }),
+  activeView: 'notebook',
+  setActiveView: (view) => set({ activeView: view }),
 }))

@@ -1,9 +1,8 @@
 // ExtensionPointRegistry — DESIGN.md §8.1 table row, §7.1's `CanvasStore.
-// pluginExts`. An empty Zustand slice until Phase 7 gives plugins a way to
-// register into it (`PluginIPCBridge` routing `registerX()` SDK calls
-// here); `CanvasRoot`, `RibbonRoot`, `SlashMenu` (Phase 4), `SectionSidebar`
-// and `SidePanel` (Phase 7) all consult it and render nothing extra until
-// then — this is that plumbing, not the features built on top of it.
+// pluginExts`. Populated by `PluginIPCBridge` routing `registerX()` SDK
+// calls here (Phase 7); `CanvasRoot`/`pluginBlockNode` (block types),
+// `RibbonRoot` (ribbon groups), `SlashMenu` (slash commands) and
+// `SectionSidebar` (section tabs) all consult it.
 //
 // Every entry is namespaced by the registering plugin's id (DESIGN.md §10
 // "TipTap schema conflict" — block type names collide across plugins
@@ -15,6 +14,9 @@ export interface BlockTypeExtension {
   pluginId: string
   id: string
   label: string
+  /** Resolved asset path (DESIGN.md §9.4 `plugin.resolveAsset()`) the host loads in each block instance's own sandboxed iframe. */
+  renderPath: string
+  defaultAttrs: Record<string, unknown>
 }
 
 export interface SectionTabExtension {
@@ -28,12 +30,15 @@ export interface RibbonGroupExtension {
   id: string
   ribbonTab: 'Home' | 'Insert' | 'Draw' | 'View'
   label: string
+  buttons: { id: string; label: string }[]
 }
 
 export interface SlashCommandExtension {
   pluginId: string
   id: string
   label: string
+  /** Matches a registered `BlockTypeExtension.id` — inserting this command creates a block of that type. */
+  blockType: string
 }
 
 export interface SidePanelExtension {
@@ -60,7 +65,7 @@ interface ExtensionRegistryState {
   registerRibbonGroup: (ext: RibbonGroupExtension) => void
   registerSlashCommand: (ext: SlashCommandExtension) => void
   registerSidePanel: (ext: SidePanelExtension) => void
-  /** Drops every registration for one plugin — called on disable/uninstall (Phase 7). */
+  /** Drops every registration for one plugin — called on disable/uninstall. */
   unregisterPlugin: (pluginId: string) => void
 }
 

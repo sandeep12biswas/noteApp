@@ -8,12 +8,16 @@
 // (DESIGN.md §4.6/Phase 3) — the store only gets one commit, on release.
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
-import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, idsWithinGap, resolvePosition } from '../lib/collision'
+import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, resolvePosition } from '../lib/collision'
 import { useCanvasStore, type Segment } from '../store/canvasStore'
 import { useUIStore } from '../store/uiStore'
+import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
+import { insertPluginBlock } from './insertPluginBlock'
 import { SegmentColorMenu } from './SegmentColorMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
+import { misspelledWordAt } from './spellcheckExtension'
 import { SlashMenu } from './SlashMenu'
+import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 
 const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
 
@@ -47,16 +51,21 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const highlightedRef = useRef<Set<string>>(new Set())
+  const gapLineElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
   const isActive = activeSegmentId === segment.id
 
   const [colorMenu, setColorMenu] = useState<{ x: number; y: number } | null>(null)
   // `charPos` is the ProseMirror position right after the "/" — needed to
   // delete it before applying the chosen block type.
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; charPos: number } | null>(null)
+  const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
 
   const editor = useEditor({
     extensions: segmentEditorExtensions,
     content: segment.content,
+    // Chromium's own native spellcheck would otherwise double-underline
+    // alongside spellcheckExtension.ts's decoration.
+    editorProps: { attributes: { spellcheck: 'false' } },
     onUpdate: ({ editor }) => {
       const json = editor.getJSON()
       updateSegmentContent(segment.id, json)
@@ -85,6 +94,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     },
     onFocus: () => setActiveSegment(segment.id),
     onBlur: () => deleteIfEmptyAndUncolored(segment.id),
+    onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
 
   useEffect(() => {
@@ -140,6 +150,45 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     const state = useCanvasStore.getState()
     for (const id of highlightedRef.current) setHighlighted(state.segmentEls.get(id), false)
     highlightedRef.current = new Set()
+    for (const el of gapLineElsRef.current.values()) el.remove()
+    gapLineElsRef.current.clear()
+  }
+
+  /**
+   * One dashed `<div>` per near neighbour, positioned in the shared
+   * canvas-root coordinate space (this segment's own `containerRef`'s
+   * parent — the same ancestor `left`/`top: segment.x/y` are already
+   * relative to, so no separate scale/offset math is needed) rather than
+   * inside this segment's own subtree, since a gap line spans *between*
+   * two segments' boxes. DESIGN.md Phase 3's gap-highlight follow-up: the
+   * border brighten alone didn't show exactly where the gap was; this
+   * draws it. Reuses `gapLineFor`'s `null` return (diagonal/corner
+   * neighbours) to just fall back to the border highlight for those.
+   */
+  const updateGapLine = (id: string, movingBox: { x: number; y: number; w: number; h: number }, neighbourBox: { x: number; y: number; w: number; h: number }) => {
+    const line = gapLineFor(movingBox, neighbourBox)
+    if (!line) {
+      gapLineElsRef.current.get(id)?.remove()
+      gapLineElsRef.current.delete(id)
+      return
+    }
+    let el = gapLineElsRef.current.get(id)
+    if (!el) {
+      const canvasEl = containerRef.current?.parentElement
+      if (!canvasEl) return
+      el = document.createElement('div')
+      el.setAttribute('data-testid', 'gap-line')
+      el.style.position = 'absolute'
+      el.style.pointerEvents = 'none'
+      canvasEl.appendChild(el)
+      gapLineElsRef.current.set(id, el)
+    }
+    el.style.left = `${line.x}px`
+    el.style.top = `${line.y}px`
+    el.style.width = `${line.w}px`
+    el.style.height = `${line.h}px`
+    el.style.borderTop = line.orientation === 'horizontal' ? `1px dashed ${HIGHLIGHT_COLOR}` : ''
+    el.style.borderLeft = line.orientation === 'vertical' ? `1px dashed ${HIGHLIGHT_COLOR}` : ''
   }
 
   const updateHighlights = (box: { x: number; y: number; w: number; h: number }) => {
@@ -150,8 +199,18 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       .map((s) => ({ id: s.id, x: s.x, y: s.y, w: s.w, h: s.h }))
     const near = new Set(idsWithinGap(box, neighbours, GAP_HIGHLIGHT_THRESHOLD))
 
-    for (const id of highlightedRef.current) if (!near.has(id)) setHighlighted(state.segmentEls.get(id), false)
-    for (const id of near) if (!highlightedRef.current.has(id)) setHighlighted(state.segmentEls.get(id), true)
+    for (const id of highlightedRef.current) {
+      if (!near.has(id)) {
+        setHighlighted(state.segmentEls.get(id), false)
+        gapLineElsRef.current.get(id)?.remove()
+        gapLineElsRef.current.delete(id)
+      }
+    }
+    for (const id of near) {
+      if (!highlightedRef.current.has(id)) setHighlighted(state.segmentEls.get(id), true)
+      const neighbour = neighbours.find((n) => n.id === id)
+      if (neighbour) updateGapLine(id, box, neighbour)
+    }
     highlightedRef.current = near
   }
 
@@ -265,6 +324,12 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     setSlashMenu(null)
   }
 
+  const applyPluginBlock = (pluginId: string, slashCommandId: string) => {
+    if (!editor || !slashMenu) return
+    insertPluginBlock(editor, slashMenu.charPos, pluginId, slashCommandId)
+    setSlashMenu(null)
+  }
+
   const revealed = isActive || segment.borderColor !== null
 
   return (
@@ -289,6 +354,12 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
+        const pos = editor?.view.posAtCoords({ left: e.clientX, top: e.clientY })
+        const hit = editor && pos ? misspelledWordAt(editor.view, pos.pos) : null
+        if (hit) {
+          setSpellMenu({ x: e.clientX, y: e.clientY, ...hit })
+          return
+        }
         setColorMenu({ x: e.clientX, y: e.clientY })
       }}
     >
@@ -326,8 +397,19 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           x={slashMenu.x}
           y={slashMenu.y}
           onSelectCore={applyCoreBlock}
-          onSelectPlugin={() => setSlashMenu(null)}
+          onSelectPlugin={applyPluginBlock}
           onClose={() => setSlashMenu(null)}
+        />
+      )}
+      {spellMenu && editor && (
+        <SpellingSuggestionMenu
+          x={spellMenu.x}
+          y={spellMenu.y}
+          word={spellMenu.word}
+          from={spellMenu.from}
+          to={spellMenu.to}
+          editor={editor}
+          onClose={() => setSpellMenu(null)}
         />
       )}
     </div>

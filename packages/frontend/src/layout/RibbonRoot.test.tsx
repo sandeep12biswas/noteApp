@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RibbonRoot } from './RibbonRoot'
@@ -42,14 +42,9 @@ describe('RibbonRoot Draw tab', () => {
   })
 })
 
-describe('RibbonRoot Home tab colour cycling (DESIGN.md §4.3)', () => {
-  it('cycles the Highlight underbar colour and applies it to the active editor on each click', async () => {
-    const user = userEvent.setup()
-    render(<RibbonRoot />)
-
-    const applied: string[] = []
+describe('RibbonRoot Home tab colour dropdown (DESIGN.md §5.3)', () => {
+  function stubHighlight(applied: string[]) {
     useCanvasStore.setState({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getActiveEditor: () =>
         ({
           chain: () => ({
@@ -58,17 +53,70 @@ describe('RibbonRoot Home tab colour cycling (DESIGN.md §4.3)', () => {
                 applied.push(color)
                 return { run: () => {} }
               },
+              unsetHighlight: () => {
+                applied.push('none')
+                return { run: () => {} }
+              },
             }),
           }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }) as any,
     })
+  }
+
+  it('clicking the letter re-applies the current colour to the active editor', async () => {
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    const applied: string[] = []
+    stubHighlight(applied)
 
     const button = screen.getByRole('button', { name: 'Highlight' })
     await user.click(button)
     await user.click(button)
 
-    expect(applied).toEqual(['#fef08a', '#bbf7d0'])
+    // Defaults to the palette's first colour until the dropdown picks a different one.
+    expect(applied).toEqual(['#fef08a', '#fef08a'])
+  })
+
+  it('the dropdown offers more than the old 5-colour cycle, and picking a swatch applies it', async () => {
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    const applied: string[] = []
+    stubHighlight(applied)
+
+    await user.click(screen.getByRole('button', { name: 'Highlight options' }))
+    const menu = screen.getByRole('menu', { name: 'Highlight' })
+    const swatches = within(menu).getAllByRole('menuitemradio')
+    expect(swatches.length).toBeGreaterThan(5)
+
+    await user.click(within(menu).getByRole('menuitemradio', { name: 'Highlight #bbf7d0' }))
+    expect(applied).toEqual(['#bbf7d0'])
+    // The letter button now shows/re-applies the newly picked colour.
+    await user.click(screen.getByRole('button', { name: 'Highlight' }))
+    expect(applied).toEqual(['#bbf7d0', '#bbf7d0'])
+  })
+
+  it('"None" clears the highlight via unsetHighlight', async () => {
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    const applied: string[] = []
+    stubHighlight(applied)
+
+    await user.click(screen.getByRole('button', { name: 'Highlight options' }))
+    await user.click(screen.getByRole('menuitem', { name: 'None' }))
+    expect(applied).toEqual(['none'])
+  })
+
+  it('the custom colour input applies whatever colour it is set to', async () => {
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    const applied: string[] = []
+    stubHighlight(applied)
+
+    await user.click(screen.getByRole('button', { name: 'Highlight options' }))
+    const input = screen.getByLabelText('Custom highlight')
+    fireEvent.change(input, { target: { value: '#123456' } })
+    expect(applied).toEqual(['#123456'])
   })
 })
 

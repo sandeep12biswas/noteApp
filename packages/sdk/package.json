@@ -1,0 +1,12 @@
+{
+  "name": "@flownote/sdk",
+  "private": true,
+  "version": "0.0.1-alpha.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {}
+}

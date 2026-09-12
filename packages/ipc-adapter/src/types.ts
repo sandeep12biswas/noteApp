@@ -67,11 +67,24 @@ export interface SyncEvent {
   payload: unknown
 }
 
+// Matches `flownote-plugin.json` (DESIGN.md §9.3) plus the two columns
+// `plugins` (Rust) tracks itself (`enabled`, `installedAt`) — both
+// `install_plugin` and `get_installed_plugins` return this full shape so
+// `PluginManager` never needs a second round-trip to read a plugin's
+// declared permissions/extensionPoints/entry before creating its iframe.
 export interface PluginManifest {
   id: string
   name: string
   version: string
+  description: string
+  author: string
+  entry: string
+  sdkVersion: string
+  permissions: string[]
+  extensionPoints: string[]
+  minAppVersion: string
   enabled: boolean
+  installedAt: number
 }
 
 export interface IPCAdapter {
@@ -86,6 +99,9 @@ export interface IPCAdapter {
   deleteSegment(id: string): Promise<void>
   saveBlock(block: Block): Promise<void>
   saveInkLayer(pageId: string, dataUrl: string): Promise<void>
+  getInkLayer(pageId: string): Promise<string | null>
+  addDictionaryWord(word: string): Promise<void>
+  listDictionaryWords(): Promise<string[]>
   mergeSegments(idA: string, idB: string): Promise<void>
   search(query: string, notebookId: string): Promise<SearchResult[]>
   setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void>
@@ -98,4 +114,6 @@ export interface IPCAdapter {
   getInstalledPlugins(): Promise<PluginManifest[]>
   pluginStorageGet(pluginId: string, key: string): Promise<string | null>
   pluginStorageSet(pluginId: string, key: string, value: string): Promise<void>
+  pluginStorageDelete(pluginId: string, key: string): Promise<void>
+  pluginStorageList(pluginId: string): Promise<string[]>
 }

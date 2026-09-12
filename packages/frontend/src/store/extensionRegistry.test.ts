@@ -13,7 +13,9 @@ describe('extensionRegistry', () => {
   })
 
   it('registers entries namespaced by plugin id', () => {
-    useExtensionRegistry.getState().registerRibbonGroup({ pluginId: 'com.example.foo', id: 'toolbar', ribbonTab: 'Insert', label: 'Foo' })
+    useExtensionRegistry
+      .getState()
+      .registerRibbonGroup({ pluginId: 'com.example.foo', id: 'toolbar', ribbonTab: 'Insert', label: 'Foo', buttons: [] })
     const groups = Object.values(useExtensionRegistry.getState().ribbonGroups)
     expect(groups).toHaveLength(1)
     expect(groups[0]).toMatchObject({ pluginId: 'com.example.foo', label: 'Foo' })
@@ -21,9 +23,9 @@ describe('extensionRegistry', () => {
 
   it('unregisterPlugin drops every extension point for that plugin, leaving others', () => {
     const store = useExtensionRegistry.getState()
-    store.registerBlockType({ pluginId: 'com.example.foo', id: 'a', label: 'A' })
-    store.registerRibbonGroup({ pluginId: 'com.example.foo', id: 'b', ribbonTab: 'Home', label: 'B' })
-    store.registerBlockType({ pluginId: 'com.example.bar', id: 'c', label: 'C' })
+    store.registerBlockType({ pluginId: 'com.example.foo', id: 'a', label: 'A', renderPath: 'a.html', defaultAttrs: {} })
+    store.registerRibbonGroup({ pluginId: 'com.example.foo', id: 'b', ribbonTab: 'Home', label: 'B', buttons: [] })
+    store.registerBlockType({ pluginId: 'com.example.bar', id: 'c', label: 'C', renderPath: 'c.html', defaultAttrs: {} })
 
     store.unregisterPlugin('com.example.foo')
 

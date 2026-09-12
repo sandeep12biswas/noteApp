@@ -1,3 +1,10 @@
 packages:
   - apps/*
   - packages/*
+  # The reference spreadsheet plugin (EXECUTION_PLAN.md Phase 7, DESIGN.md
+  # §9.7) — a real *external* plugin wouldn't be in this workspace at all
+  # (DESIGN.md §9.1 "plugin developers never clone or modify the main
+  # FlowNote repo"); this one is, purely so it can depend on `@flownote/sdk`
+  # via `workspace:*` and get compiled the same way every other package
+  # here does, for this repo's own reference/test purposes.
+  - plugins/*

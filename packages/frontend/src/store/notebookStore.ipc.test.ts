@@ -49,6 +49,18 @@ describe('notebookStore IPCAdapter wiring', () => {
     }
   })
 
+  it('persists a folder icon change via saveFolder', () => {
+    const ipc = mockAdapter()
+    setIPCAdapter(ipc)
+    try {
+      const { id } = useNotebookStore.getState().createFolder(null, 'Work')
+      useNotebookStore.getState().setFolderIcon(id!, '⭐')
+      expect(ipc.saveFolder).toHaveBeenLastCalledWith(expect.objectContaining({ id, icon: '⭐' }))
+    } finally {
+      setIPCAdapter(null)
+    }
+  })
+
   it('does not throw when no adapter is set', () => {
     setIPCAdapter(null)
     expect(() => useNotebookStore.getState().createFolder(null, 'Work')).not.toThrow()

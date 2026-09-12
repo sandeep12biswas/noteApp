@@ -28,8 +28,16 @@ test('dragging a segment toward another stops at the 8px minimum gap', async ({ 
 
   await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
   await page.mouse.down()
-  await page.mouse.move(handleBox.x + handleBox.width / 2, firstBox.top + firstBox.height / 2, { steps: 10 })
+  // Aligned with segment A's own x-range and just below it, within the
+  // gap-highlight threshold — a clean vertical gap (not diagonal), the
+  // case DESIGN.md Phase 3's dashed gap-line follow-up should draw one for.
+  await page.mouse.move(firstBox.left + firstBox.width / 2, firstBox.top + firstBox.height + 10, { steps: 10 })
+  await expect(page.locator('[data-testid="gap-line"]')).toHaveCount(1)
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, firstBox.top + firstBox.height / 2, { steps: 5 })
   await page.mouse.up()
+  // The gap-line overlay is drag/resize-only scaffolding — dropped once the move commits.
+  await expect(page.locator('[data-testid="gap-line"]')).toHaveCount(0)
 
   const finalBoxes = await segments.evaluateAll((els) => els.map((el) => el.getBoundingClientRect()))
   const [a, b] = finalBoxes as [DOMRect, DOMRect]

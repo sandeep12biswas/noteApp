@@ -6,7 +6,8 @@
     "tsc": "pnpm -r --if-present run typecheck",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:electron": "playwright test --config=e2e-electron/playwright.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1",

@@ -30,8 +30,20 @@ interface ElectronRouter {
   saveSegment: { mutate: (seg: Segment) => Promise<void> }
   saveSegmentsBatch: { mutate: (segs: Segment[]) => Promise<void> }
   deleteSegment: { mutate: (id: string) => Promise<void> }
+  saveInkLayer: { mutate: (input: { pageId: string; dataUrl: string }) => Promise<void> }
+  getInkLayer: { query: (pageId: string) => Promise<string | null> }
+  addDictionaryWord: { mutate: (word: string) => Promise<void> }
+  listDictionaryWords: { query: () => Promise<string[]> }
   setPageMode: { mutate: (input: { pageId: string; mode: 'canvas' | 'linear' }) => Promise<void> }
   search: { query: (input: { query: string; notebookId: string }) => Promise<SearchResult[]> }
+  installPlugin: { mutate: (source: string) => Promise<PluginManifest> }
+  uninstallPlugin: { mutate: (id: string) => Promise<void> }
+  setPluginEnabled: { mutate: (input: { id: string; enabled: boolean }) => Promise<void> }
+  getInstalledPlugins: { query: () => Promise<PluginManifest[]> }
+  pluginStorageGet: { query: (input: { pluginId: string; key: string }) => Promise<string | null> }
+  pluginStorageSet: { mutate: (input: { pluginId: string; key: string; value: string }) => Promise<void> }
+  pluginStorageDelete: { mutate: (input: { pluginId: string; key: string }) => Promise<void> }
+  pluginStorageList: { query: (pluginId: string) => Promise<string[]> }
 }
 
 let client: ElectronRouter | null = null
@@ -90,8 +102,20 @@ export class ElectronIPCAdapter implements IPCAdapter {
     throw new Error('ElectronIPCAdapter.saveBlock not implemented')
   }
 
-  async saveInkLayer(_pageId: string, _dataUrl: string): Promise<void> {
-    throw new Error('ElectronIPCAdapter.saveInkLayer not implemented')
+  async saveInkLayer(pageId: string, dataUrl: string): Promise<void> {
+    await getClient().saveInkLayer.mutate({ pageId, dataUrl })
+  }
+
+  async getInkLayer(pageId: string): Promise<string | null> {
+    return getClient().getInkLayer.query(pageId)
+  }
+
+  async addDictionaryWord(word: string): Promise<void> {
+    await getClient().addDictionaryWord.mutate(word)
+  }
+
+  async listDictionaryWords(): Promise<string[]> {
+    return getClient().listDictionaryWords.query()
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {
@@ -115,27 +139,35 @@ export class ElectronIPCAdapter implements IPCAdapter {
     throw new Error('ElectronIPCAdapter.aiComplete not implemented')
   }
 
-  async installPlugin(_source: string): Promise<PluginManifest> {
-    throw new Error('ElectronIPCAdapter.installPlugin not implemented')
+  async installPlugin(source: string): Promise<PluginManifest> {
+    return getClient().installPlugin.mutate(source)
   }
 
-  async uninstallPlugin(_id: string): Promise<void> {
-    throw new Error('ElectronIPCAdapter.uninstallPlugin not implemented')
+  async uninstallPlugin(id: string): Promise<void> {
+    await getClient().uninstallPlugin.mutate(id)
   }
 
-  async setPluginEnabled(_id: string, _enabled: boolean): Promise<void> {
-    throw new Error('ElectronIPCAdapter.setPluginEnabled not implemented')
+  async setPluginEnabled(id: string, enabled: boolean): Promise<void> {
+    await getClient().setPluginEnabled.mutate({ id, enabled })
   }
 
   async getInstalledPlugins(): Promise<PluginManifest[]> {
-    throw new Error('ElectronIPCAdapter.getInstalledPlugins not implemented')
+    return getClient().getInstalledPlugins.query()
   }
 
-  async pluginStorageGet(_pluginId: string, _key: string): Promise<string | null> {
-    throw new Error('ElectronIPCAdapter.pluginStorageGet not implemented')
+  async pluginStorageGet(pluginId: string, key: string): Promise<string | null> {
+    return getClient().pluginStorageGet.query({ pluginId, key })
   }
 
-  async pluginStorageSet(_pluginId: string, _key: string, _value: string): Promise<void> {
-    throw new Error('ElectronIPCAdapter.pluginStorageSet not implemented')
+  async pluginStorageSet(pluginId: string, key: string, value: string): Promise<void> {
+    await getClient().pluginStorageSet.mutate({ pluginId, key, value })
+  }
+
+  async pluginStorageDelete(pluginId: string, key: string): Promise<void> {
+    await getClient().pluginStorageDelete.mutate({ pluginId, key })
+  }
+
+  async pluginStorageList(pluginId: string): Promise<string[]> {
+    return getClient().pluginStorageList.query(pluginId)
   }
 }

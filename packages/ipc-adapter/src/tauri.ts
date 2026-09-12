@@ -83,8 +83,20 @@ export class TauriIPCAdapter implements IPCAdapter {
     throw new Error('TauriIPCAdapter.saveBlock not implemented')
   }
 
-  async saveInkLayer(_pageId: string, _dataUrl: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.saveInkLayer not implemented')
+  async saveInkLayer(pageId: string, dataUrl: string): Promise<void> {
+    unwrap(await commands.saveInkLayer(pageId, dataUrl))
+  }
+
+  async getInkLayer(pageId: string): Promise<string | null> {
+    return unwrap(await commands.getInkLayer(pageId))
+  }
+
+  async addDictionaryWord(word: string): Promise<void> {
+    unwrap(await commands.addDictionaryWord(word))
+  }
+
+  async listDictionaryWords(): Promise<string[]> {
+    return unwrap(await commands.listDictionaryWords())
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {
@@ -130,5 +142,13 @@ export class TauriIPCAdapter implements IPCAdapter {
 
   async pluginStorageSet(_pluginId: string, _key: string, _value: string): Promise<void> {
     throw new Error('TauriIPCAdapter.pluginStorageSet not implemented')
+  }
+
+  async pluginStorageDelete(_pluginId: string, _key: string): Promise<void> {
+    throw new Error('TauriIPCAdapter.pluginStorageDelete not implemented')
+  }
+
+  async pluginStorageList(_pluginId: string): Promise<string[]> {
+    throw new Error('TauriIPCAdapter.pluginStorageList not implemented')
   }
 }

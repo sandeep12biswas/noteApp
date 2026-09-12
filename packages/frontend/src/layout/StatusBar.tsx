@@ -3,6 +3,7 @@
 // dedicated ribbon button for it, since this is where DESIGN.md already
 // says the current mode gets displayed.
 import { useNotebookStore } from '../store/notebookStore'
+import { ThemeToggle } from './ThemeToggle'
 
 export function StatusBar() {
   const selectedFileId = useNotebookStore((s) => s.selectedFileId)
@@ -17,6 +18,7 @@ export function StatusBar() {
       data-testid="status-bar"
     >
       <span>0 words</span>
+      <ThemeToggle />
       {selectedFileId ? (
         <button
           type="button"

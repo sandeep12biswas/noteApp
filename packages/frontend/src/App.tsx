@@ -3,6 +3,7 @@ import { resolveIPCAdapter } from '@flownote/ipc-adapter'
 import { AppShell } from './layout/AppShell'
 import { setIPCAdapter as setCanvasIPCAdapter } from './store/canvasStore'
 import { setIPCAdapter as setInkIPCAdapter } from './canvas/InkLayer'
+import { hydratePersonalDictionary, setIPCAdapter as setSpellIPCAdapter } from './lib/spellcheck'
 import { setIPCAdapter as setNotebookIPCAdapter, useNotebookStore } from './store/notebookStore'
 
 export default function App() {
@@ -14,11 +15,13 @@ export default function App() {
     // browser) this rejects and the app just runs with client-only state,
     // same as before this wiring existed.
     resolveIPCAdapter()
-      .then((ipc) => {
+      .then(async (ipc) => {
         setNotebookIPCAdapter(ipc)
         setCanvasIPCAdapter(ipc)
         setInkIPCAdapter(ipc)
-        return useNotebookStore.getState().hydrateFromIPC()
+        setSpellIPCAdapter(ipc)
+        await useNotebookStore.getState().hydrateFromIPC()
+        await hydratePersonalDictionary()
       })
       .catch(() => {
         // No IPC transport (e.g. running the frontend standalone in a

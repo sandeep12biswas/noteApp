@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- Same import map trick PluginManager's registration-iframe wrapper
+         uses — see that file's `buildEntryDocumentHtml`/`pluginAssetUrl` for
+         why a plain bare-specifier import needs one inside a sandboxed
+         iframe, and why `flownote-plugin://` rather than a `file://`-relative
+         path (a sandboxed iframe's opaque origin can't load `file://`
+         subresources at all, regardless of path). -->
+    <script type="importmap">
+      { "imports": { "@flownote/sdk": "flownote-plugin:///sdk/index.js" } }
+    </script>
+    <style>
+      body {
+        margin: 0;
+        padding: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+    <script type="module" src="./grid.js"></script>
+  </body>
+</html>
