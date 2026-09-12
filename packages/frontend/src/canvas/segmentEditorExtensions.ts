@@ -19,6 +19,7 @@ import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
 import { PluginBlock } from '../plugins/pluginBlockNode'
+import { FontSize } from './fontSizeExtension'
 import { Spellcheck } from './spellcheckExtension'
 
 export const segmentEditorExtensions = [
@@ -32,6 +33,10 @@ export const segmentEditorExtensions = [
   // Ribbon font-family picker (RibbonRoot.tsx's FontFamilySelect) — piggybacks
   // on TextStyle the same way Color does; lib/fontFamilies.ts is the preset list.
   FontFamily,
+  // Ribbon font-size stepper (RibbonRoot.tsx's FontSizeStepper) — same
+  // TextStyle piggyback; TipTap v2 has no official font-size package, so
+  // this is a small local extension (fontSizeExtension.ts).
+  FontSize,
   Highlight.configure({ multicolor: true }),
   TaskList,
   TaskItem.configure({ nested: true }),

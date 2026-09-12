@@ -192,6 +192,43 @@ function FontFamilySelect() {
   )
 }
 
+const FONT_SIZE_MIN = 8
+const FONT_SIZE_MAX = 96
+const FONT_SIZE_STEP = 2
+const FONT_SIZE_DEFAULT = 16
+
+// Font-size increase/decrease — TipTap has no built-in font-size mark
+// (canvas/fontSizeExtension.ts is a small local one, same TextStyle
+// piggyback as Color/FontFamily). A stepper (A- / size / A+), not a
+// dropdown, since size is a continuous-ish scale a user nudges up or down
+// rather than picks from a short named list — same reasoning that put
+// Zoom in/out in the View tab as +/- buttons, not a select. Like
+// FontFamilySelect, the displayed size is local state, not a live read of
+// the current selection's mark (`getActiveEditor()` is deliberately
+// non-reactive — see this file's own doc comment above `RibbonButton`).
+function FontSizeStepper() {
+  const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
+  const [size, setSize] = useState(FONT_SIZE_DEFAULT)
+
+  const apply = (next: number) => {
+    const clamped = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, next))
+    setSize(clamped)
+    getActiveEditor()?.chain().focus().setFontSize(`${clamped}px`).run()
+  }
+
+  return (
+    <div className="flex items-center gap-0.5" role="group" aria-label="Font size">
+      <RibbonButton label="Decrease font size" onClick={() => apply(size - FONT_SIZE_STEP)}>
+        A−
+      </RibbonButton>
+      <span className="w-5 text-center text-xs text-gray-500 dark:text-gray-400">{size}</span>
+      <RibbonButton label="Increase font size" onClick={() => apply(size + FONT_SIZE_STEP)}>
+        A+
+      </RibbonButton>
+    </div>
+  )
+}
+
 function HomeToolsPanel() {
   const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
   const run = (fn: (chain: ReturnType<NonNullable<ReturnType<typeof getActiveEditor>>['chain']>) => void) => {
@@ -213,6 +250,7 @@ function HomeToolsPanel() {
       <Divider />
       <div className="flex items-center gap-1" role="group" aria-label="Font">
         <FontFamilySelect />
+        <FontSizeStepper />
       </div>
       <Divider />
       <div className="flex items-center gap-0.5" role="group" aria-label="Text style">
