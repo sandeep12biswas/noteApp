@@ -3,7 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "description": "FlowNote — Linux desktop shell (Electron)",
-  "author": "Sandeep Biswas",
+  "author": {
+    "name": "Sandeep Biswas",
+    "email": "sandeep12.biswas@gmail.com"
+  },
+  "homepage": "https://github.com/sandeep12biswas/noteApp",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

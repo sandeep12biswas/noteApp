@@ -13,6 +13,11 @@ executableName: flownote
 directories:
   output: release
   buildResources: build
+# package.json's `name` is the scoped "@flownote/electron" — electron-builder's
+# default artifactName template embeds that raw, producing an unwritable
+# "release/@flownote/..." path (the "@flownote" segment is read as a
+# directory). Override with productName instead, which has no slash.
+artifactName: '${productName}-${version}-${arch}.${ext}'
 files:
   - dist/**/*
   - package.json
@@ -26,3 +31,4 @@ linux:
     - deb
     - AppImage
   category: Office
+  maintainer: Sandeep Biswas <sandeep12.biswas@gmail.com>
