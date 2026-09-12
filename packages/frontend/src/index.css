@@ -9,3 +9,24 @@
   text-decoration: underline wavy #ef4444 1px;
   text-underline-offset: 2px;
 }
+
+/* Heading sizes/weight inside the TipTap editor (`.ProseMirror` is the
+   class TipTap puts on its editable root — see SegmentHost/LinearSegmentHost).
+   Tailwind's preflight resets h1-h6 to `font-size: inherit; font-weight:
+   inherit;`, so without this the H1/H2/H3 ribbon buttons toggled the right
+   node but it rendered identically to a paragraph (issue #1). */
+.ProseMirror h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.ProseMirror h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.ProseMirror h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
