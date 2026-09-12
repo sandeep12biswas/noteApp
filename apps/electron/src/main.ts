@@ -65,6 +65,10 @@ function spawnSidecar(): SupervisedProcess {
 }
 
 function createWindow(sidecar: SidecarSupervisor): void {
+  // Theme (light/dark/system) is renderer-owned and localStorage-persisted
+  // (packages/frontend/src/store/themeStore.ts) — nativeTheme.themeSource
+  // sync is deferred since no native chrome/dialogs exist yet on the
+  // primary Linux shell to benefit from it.
   const win = new BrowserWindow({
     width: 1200,
     height: 800,

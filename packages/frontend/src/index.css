@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/* Manual light/dark toggle (store/themeStore.ts) overrides OS
+   prefers-color-scheme by adding/removing `.dark` on <html>. Tailwind v4
+   has no config file, so this custom-variant line is what switches
+   `dark:` utilities from a bare media query to "class on an ancestor",
+   letting `.dark` force dark mode independent of the OS — the existing
+   `dark:` classes across every layout/canvas component need no changes,
+   only the activation mechanism changes. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Spell-check misspelling indicator (canvas/spellcheckExtension.ts) — a
    plain custom class, not an assembled Tailwind utility string, since the
    class only ever exists as a literal inside a ProseMirror `Decoration`

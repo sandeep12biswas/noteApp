@@ -30,7 +30,9 @@ describe('StatusBar mode toggle', () => {
   it('shows "Canvas" as a static label when no page is selected', () => {
     render(<StatusBar />)
     expect(screen.getByText('Canvas')).toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // No mode-toggle button when there's no selected page — the theme
+    // toggle (ThemeToggle.tsx) is unrelated and always renders.
+    expect(screen.queryByRole('button', { name: /switch to/i })).not.toBeInTheDocument()
   })
 
   it('shows the selected page\'s mode and toggles it on click', async () => {
