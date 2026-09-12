@@ -11,6 +11,7 @@ import { useCanvasStore } from '../store/canvasStore'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
 import { getIPCAdapter } from '../store/notebookStore'
+import { sendRibbonAction } from '../plugins/PluginIPCBridge'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
 
 // DESIGN.md §5.3 Home row: "Highlight · Text colour" — each button cycles
@@ -204,11 +205,16 @@ function PluginRibbonGroups({ ribbonTab }: { ribbonTab: RibbonTab }) {
   const forThisTab = Object.values(groups).filter((g) => g.ribbonTab === ribbonTab)
   if (forThisTab.length === 0) return null
   return (
-    <div className="flex gap-2 border-l border-gray-200 pl-2 dark:border-gray-700">
+    <div className="flex items-center gap-2 border-l border-gray-200 pl-2 dark:border-gray-700">
       {forThisTab.map((g) => (
-        <span key={`${g.pluginId}/${g.id}`} className="text-xs text-gray-500">
-          {g.label}
-        </span>
+        <div key={`${g.pluginId}/${g.id}`} className="flex items-center gap-1" role="group" aria-label={g.label}>
+          <span className="text-xs text-gray-400">{g.label}</span>
+          {g.buttons.map((b) => (
+            <RibbonButton key={b.id} label={b.label} onClick={() => sendRibbonAction(g.pluginId, g.id, b.id)}>
+              {b.label}
+            </RibbonButton>
+          ))}
+        </div>
       ))}
     </div>
   )

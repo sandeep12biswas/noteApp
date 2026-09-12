@@ -131,4 +131,12 @@ export class TauriIPCAdapter implements IPCAdapter {
   async pluginStorageSet(_pluginId: string, _key: string, _value: string): Promise<void> {
     throw new Error('TauriIPCAdapter.pluginStorageSet not implemented')
   }
+
+  async pluginStorageDelete(_pluginId: string, _key: string): Promise<void> {
+    throw new Error('TauriIPCAdapter.pluginStorageDelete not implemented')
+  }
+
+  async pluginStorageList(_pluginId: string): Promise<string[]> {
+    throw new Error('TauriIPCAdapter.pluginStorageList not implemented')
+  }
 }

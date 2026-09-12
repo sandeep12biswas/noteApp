@@ -17,3 +17,13 @@ if (typeof document !== 'undefined') {
     document.elementFromPoint = () => null
   }
 }
+
+// jsdom has no Blob-backed object URL store — `PluginManager` wraps a
+// plugin's entry script in a `blob:` URL so a sandboxed iframe can load it
+// without a real file on disk. Real browsers implement both fully; a
+// counter-based fake URL is enough for jsdom not to crash on it.
+if (typeof URL !== 'undefined' && !URL.createObjectURL) {
+  let nextBlobUrlId = 1
+  URL.createObjectURL = () => `blob:mock-${nextBlobUrlId++}`
+  URL.revokeObjectURL = () => {}
+}

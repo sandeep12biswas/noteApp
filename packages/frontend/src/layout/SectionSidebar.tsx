@@ -6,6 +6,7 @@ import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
+import { useUIStore } from '../store/uiStore'
 
 function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone: () => void }) {
   const [value, setValue] = useState('')
@@ -121,6 +122,8 @@ export function SectionSidebar() {
   // Plugin-registered section tabs (DESIGN.md §9.2 `registerSectionTab`) —
   // empty until Phase 7's PluginManager populates the registry.
   const pluginSectionTabs = useExtensionRegistry((s) => s.sectionTabs)
+  const activeView = useUIStore((s) => s.activeView)
+  const setActiveView = useUIStore((s) => s.setActiveView)
   // Phase 6 "Accessibility pass" — same roving arrow-key nav as PageList's
   // file list, for the same reason (DESIGN.md "keyboard navigation in
   // section/page lists"); works across nested `FolderNode`s for free since
@@ -154,14 +157,20 @@ export function SectionSidebar() {
           <li className="p-2 text-sm text-gray-400">No folders yet</li>
         )}
       </ul>
-      <div
-        className="border-t border-gray-200 p-2 text-sm text-gray-400 dark:border-gray-800"
-        data-testid="plugins-tab"
-      >
+      <div className="border-t border-gray-200 p-2 dark:border-gray-800" data-testid="plugins-tab">
         {/* Plugins tab — DESIGN.md §9.5 Plugin Manager UI entry point */}
-        Plugins
+        <button
+          type="button"
+          aria-pressed={activeView === 'plugins'}
+          onClick={() => setActiveView(activeView === 'plugins' ? 'notebook' : 'plugins')}
+          className={
+            'text-sm ' + (activeView === 'plugins' ? 'font-medium text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300')
+          }
+        >
+          Plugins
+        </button>
         {Object.values(pluginSectionTabs).map((tab) => (
-          <div key={`${tab.pluginId}/${tab.id}`} className="pt-1 text-xs">
+          <div key={`${tab.pluginId}/${tab.id}`} className="pt-1 text-xs text-gray-400">
             {tab.label}
           </div>
         ))}

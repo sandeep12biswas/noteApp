@@ -78,6 +78,12 @@ importers:
       '@flownote/ipc-adapter':
         specifier: workspace:*
         version: link:../ipc-adapter
+      '@flownote/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@tiptap/core':
+        specifier: ^2
+        version: 2.27.3(@tiptap/pm@2.27.3)
       '@tiptap/extension-color':
         specifier: ^2
         version: 2.27.3(@tiptap/core@2.27.3(@tiptap/pm@2.27.3))(@tiptap/extension-text-style@2.27.3(@tiptap/core@2.27.3(@tiptap/pm@2.27.3)))
@@ -175,6 +181,14 @@ importers:
       electron-trpc:
         specifier: ^0.7.1
         version: 0.7.1(@trpc/client@10.45.2(@trpc/server@10.45.2))(@trpc/server@10.45.2)(electron@32.3.3)
+
+  packages/sdk: {}
+
+  plugins/spreadsheet:
+    dependencies:
+      '@flownote/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
 
 packages:
 

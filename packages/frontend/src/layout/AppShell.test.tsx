@@ -5,7 +5,7 @@ import { useUIStore } from '../store/uiStore'
 
 afterEach(cleanup)
 beforeEach(() => {
-  useUIStore.setState({ activeRibbonTab: 'Home' })
+  useUIStore.setState({ activeRibbonTab: 'Home', activeView: 'notebook' })
 })
 
 describe('AppShell', () => {
@@ -42,5 +42,24 @@ describe('AppShell', () => {
     expect(screen.getByRole('tab', { name: 'Insert' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'false')
     expect(screen.getByRole('tabpanel', { name: 'Insert ribbon panel' })).toBeInTheDocument()
+  })
+})
+
+describe('AppShell Plugin Manager entry point (DESIGN.md §9.5)', () => {
+  it('clicking Plugins swaps PageList/EditorPane for the Plugin Manager UI, and clicking again swaps back', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(<AppShell />)
+
+    expect(screen.getByTestId('page-list')).toBeInTheDocument()
+    expect(screen.queryByTestId('plugin-manager-ui')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plugins' }))
+    expect(screen.getByTestId('plugin-manager-ui')).toBeInTheDocument()
+    expect(screen.queryByTestId('page-list')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plugins' }))
+    expect(screen.getByTestId('page-list')).toBeInTheDocument()
+    expect(screen.queryByTestId('plugin-manager-ui')).not.toBeInTheDocument()
   })
 })

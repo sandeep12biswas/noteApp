@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, idsWithinGap, resolvePosition } from '../lib/collision'
 import { useCanvasStore, type Segment } from '../store/canvasStore'
 import { useUIStore } from '../store/uiStore'
+import { insertPluginBlock } from './insertPluginBlock'
 import { SegmentColorMenu } from './SegmentColorMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { SlashMenu } from './SlashMenu'
@@ -265,6 +266,12 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     setSlashMenu(null)
   }
 
+  const applyPluginBlock = (pluginId: string, slashCommandId: string) => {
+    if (!editor || !slashMenu) return
+    insertPluginBlock(editor, slashMenu.charPos, pluginId, slashCommandId)
+    setSlashMenu(null)
+  }
+
   const revealed = isActive || segment.borderColor !== null
 
   return (
@@ -326,7 +333,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           x={slashMenu.x}
           y={slashMenu.y}
           onSelectCore={applyCoreBlock}
-          onSelectPlugin={() => setSlashMenu(null)}
+          onSelectPlugin={applyPluginBlock}
           onClose={() => setSlashMenu(null)}
         />
       )}

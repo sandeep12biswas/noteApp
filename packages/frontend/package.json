@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@flownote/ipc-adapter": "workspace:*",
+    "@flownote/sdk": "workspace:*",
+    "@tiptap/core": "^2",
     "@tiptap/extension-color": "^2",
     "@tiptap/extension-font-family": "^2",
     "@tiptap/extension-highlight": "^2",

@@ -17,9 +17,14 @@ import TextAlign from '@tiptap/extension-text-align'
 import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
+import { PluginBlock } from '../plugins/pluginBlockNode'
 
 export const segmentEditorExtensions = [
   StarterKit,
+  // One generic node for every plugin block type (DESIGN.md §9.2
+  // `registerBlockType`) — always present, never added/removed per plugin;
+  // see pluginBlockNode.tsx's module doc for why.
+  PluginBlock,
   TextStyle,
   Color,
   Highlight.configure({ multicolor: true }),

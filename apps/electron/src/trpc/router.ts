@@ -74,6 +74,47 @@ export const appRouter = t.router({
   search: t.procedure
     .input((input: unknown): { query: string; notebookId: string } => input as never)
     .query(({ ctx, input }) => ctx.sidecar.request('search', { query: input.query, notebookId: input.notebookId })),
+
+  installPlugin: t.procedure
+    .input((source: unknown): string => {
+      if (typeof source !== 'string') throw new Error('installPlugin expects a string source')
+      return source
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('install_plugin', { source: input })),
+
+  uninstallPlugin: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('uninstallPlugin expects a string id')
+      return id
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('uninstall_plugin', { id: input })),
+
+  setPluginEnabled: t.procedure
+    .input((input: unknown): { id: string; enabled: boolean } => input as never)
+    .mutation(({ ctx, input }) => ctx.sidecar.request('set_plugin_enabled', { id: input.id, enabled: input.enabled })),
+
+  getInstalledPlugins: t.procedure.query(({ ctx }) => ctx.sidecar.request('get_installed_plugins')),
+
+  pluginStorageGet: t.procedure
+    .input((input: unknown): { pluginId: string; key: string } => input as never)
+    .query(({ ctx, input }) => ctx.sidecar.request('plugin_storage_get', { pluginId: input.pluginId, key: input.key })),
+
+  pluginStorageSet: t.procedure
+    .input((input: unknown): { pluginId: string; key: string; value: string } => input as never)
+    .mutation(({ ctx, input }) =>
+      ctx.sidecar.request('plugin_storage_set', { pluginId: input.pluginId, key: input.key, value: input.value }),
+    ),
+
+  pluginStorageDelete: t.procedure
+    .input((input: unknown): { pluginId: string; key: string } => input as never)
+    .mutation(({ ctx, input }) => ctx.sidecar.request('plugin_storage_delete', { pluginId: input.pluginId, key: input.key })),
+
+  pluginStorageList: t.procedure
+    .input((pluginId: unknown): string => {
+      if (typeof pluginId !== 'string') throw new Error('pluginStorageList expects a string pluginId')
+      return pluginId
+    })
+    .query(({ ctx, input }) => ctx.sidecar.request('plugin_storage_list', { pluginId: input })),
 })
 
 export type AppRouter = typeof appRouter

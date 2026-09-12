@@ -150,4 +150,14 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
       adapter.pluginStorageSet('com.example.plugin', 'key', 'value'),
     ).rejects.toThrow()
   })
+
+  it('pluginStorageDelete rejects', async () => {
+    const adapter = create()
+    await expect(adapter.pluginStorageDelete('com.example.plugin', 'key')).rejects.toThrow()
+  })
+
+  it('pluginStorageList rejects', async () => {
+    const adapter = create()
+    await expect(adapter.pluginStorageList('com.example.plugin')).rejects.toThrow()
+  })
 })
