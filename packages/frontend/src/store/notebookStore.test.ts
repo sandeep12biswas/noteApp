@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { loadLastOpenedPage } from '../lib/lastOpenedPage'
 import {
   DEFAULT_MAX_FOLDER_DEPTH,
   childFoldersOf,
@@ -395,5 +396,38 @@ describe('moveFile (drag-and-drop move)', () => {
     const { id: folderA } = store.createFolder(null, 'A')
     const result = store.moveFile('missing', folderA!)
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('selectFile remembers the last opened page', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('persists the folder and file id when opening a real file', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderId } = store.createFolder(null, 'Notes')
+    const { id: fileId } = store.createFile(folderId!, 'Todo')
+
+    store.selectFile(fileId!)
+
+    expect(loadLastOpenedPage()).toEqual({ folderId, fileId })
+  })
+
+  it('does not touch the persisted page when deselecting (selectFile(null))', () => {
+    const store = useNotebookStore.getState()
+    const { id: folderId } = store.createFolder(null, 'Notes')
+    const { id: fileId } = store.createFile(folderId!, 'Todo')
+    store.selectFile(fileId!)
+
+    store.selectFile(null)
+
+    expect(loadLastOpenedPage()).toEqual({ folderId, fileId })
+    expect(useNotebookStore.getState().selectedFileId).toBeNull()
+  })
+
+  it('does not persist for an unknown file id', () => {
+    useNotebookStore.getState().selectFile('missing')
+    expect(loadLastOpenedPage()).toBeNull()
   })
 })

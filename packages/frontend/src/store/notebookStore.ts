@@ -10,6 +10,7 @@ import type { IPCAdapter } from '@flownote/ipc-adapter'
 import { create } from 'zustand'
 import { capitalizeFirstLetter, validateFileName } from '../lib/validation'
 import { naturalSortBy } from '../lib/naturalSort'
+import { saveLastOpenedPage } from '../lib/lastOpenedPage'
 
 let ipc: IPCAdapter | null = null
 
@@ -318,7 +319,17 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     return { ok: true, id }
   },
 
-  selectFile: (id) => set({ selectedFileId: id }),
+  selectFile: (id) => {
+    // Remembers the opened page (lib/lastOpenedPage.ts) so the next launch
+    // reopens it instead of starting on an empty canvas — only on an actual
+    // open, not a deselect (`id === null`, e.g. `deleteFile` clearing the
+    // current selection sets `selectedFileId` directly, bypassing this).
+    if (id) {
+      const file = get().files[id]
+      if (file) saveLastOpenedPage(file.folderId, id)
+    }
+    set({ selectedFileId: id })
+  },
 
   deleteFile: (id) =>
     set((state) => {
