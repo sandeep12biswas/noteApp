@@ -192,40 +192,42 @@ function FontFamilySelect() {
   )
 }
 
-const FONT_SIZE_MIN = 8
-const FONT_SIZE_MAX = 96
-const FONT_SIZE_STEP = 2
-const FONT_SIZE_DEFAULT = 16
+// The same point sizes Word's own font-size dropdown offers (8-72,
+// clustered tighter in the body-text range and wider apart above 28),
+// extended down to 6 (this app's own minimum — Word's box technically
+// accepts anything down to 1, but doesn't list it).
+const FONT_SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72] as const
+const FONT_SIZE_DEFAULT = 10
 
-// Font-size increase/decrease — TipTap has no built-in font-size mark
-// (canvas/fontSizeExtension.ts is a small local one, same TextStyle
-// piggyback as Color/FontFamily). A stepper (A- / size / A+), not a
-// dropdown, since size is a continuous-ish scale a user nudges up or down
-// rather than picks from a short named list — same reasoning that put
-// Zoom in/out in the View tab as +/- buttons, not a select. Like
+// Font size — a plain native `<select>`, same idiom as FontFamilySelect
+// right next to it (this app has no dropdown/menu library). TipTap has no
+// built-in font-size mark (canvas/fontSizeExtension.ts is a small local
+// one, same TextStyle piggyback as Color/FontFamily). Like
 // FontFamilySelect, the displayed size is local state, not a live read of
 // the current selection's mark (`getActiveEditor()` is deliberately
 // non-reactive — see this file's own doc comment above `RibbonButton`).
-function FontSizeStepper() {
+function FontSizeSelect() {
   const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
   const [size, setSize] = useState(FONT_SIZE_DEFAULT)
 
-  const apply = (next: number) => {
-    const clamped = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, next))
-    setSize(clamped)
-    getActiveEditor()?.chain().focus().setFontSize(`${clamped}px`).run()
-  }
-
   return (
-    <div className="flex items-center gap-0.5" role="group" aria-label="Font size">
-      <RibbonButton label="Decrease font size" onClick={() => apply(size - FONT_SIZE_STEP)}>
-        A−
-      </RibbonButton>
-      <span className="w-5 text-center text-xs text-gray-500 dark:text-gray-400">{size}</span>
-      <RibbonButton label="Increase font size" onClick={() => apply(size + FONT_SIZE_STEP)}>
-        A+
-      </RibbonButton>
-    </div>
+    <select
+      aria-label="Font size"
+      title="Font size"
+      className={SELECT_CLASSNAME}
+      value={size}
+      onChange={(e) => {
+        const next = Number(e.target.value)
+        setSize(next)
+        getActiveEditor()?.chain().focus().setFontSize(`${next}px`).run()
+      }}
+    >
+      {FONT_SIZES.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
   )
 }
 
@@ -250,7 +252,7 @@ function HomeToolsPanel() {
       <Divider />
       <div className="flex items-center gap-1" role="group" aria-label="Font">
         <FontFamilySelect />
-        <FontSizeStepper />
+        <FontSizeSelect />
       </div>
       <Divider />
       <div className="flex items-center gap-0.5" role="group" aria-label="Text style">
