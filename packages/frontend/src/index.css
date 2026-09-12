@@ -39,3 +39,40 @@
   font-weight: 600;
   line-height: 1.4;
 }
+
+/* Checklist layout (@tiptap/extension-task-list + extension-task-item,
+   registered in canvas/segmentEditorExtensions.ts). The extensions render
+   plain `<li><label><input><span></label><div>content</div></li>` nodes
+   with no built-in styling, so without this the checkbox and its text
+   stack as separate blocks instead of sitting on one line (issue: "checkbox
+   should be followed by text"). Enter-key continuation is already handled
+   by TaskItem's own keymap (splitListItem), so no JS changes are needed
+   here — this CSS is what makes each new line actually look right. */
+.ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+.ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 0.25rem;
+}
+.ProseMirror ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.5em;
+  margin-right: 0.5rem;
+  user-select: none;
+}
+.ProseMirror ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+}
+.ProseMirror ul[data-type='taskList'] li > div > p {
+  margin: 0;
+}
+.ProseMirror ul[data-type='taskList'] li[data-checked='true'] > div > p {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
