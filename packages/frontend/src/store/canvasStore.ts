@@ -111,7 +111,7 @@ const EMPTY_DOC = { type: 'doc', content: [{ type: 'paragraph' }] }
  * empty paragraph — so a segment holding only an inserted plugin block got
  * silently auto-deleted the moment it lost focus, same as a truly blank one.
  */
-function isEmptyDoc(content: Record<string, unknown>): boolean {
+export function isEmptyDoc(content: Record<string, unknown>): boolean {
   const nodes = (content as { content?: unknown[] }).content ?? []
   return nodes.every((n) => {
     const node = n as { type?: string; content?: unknown[] }

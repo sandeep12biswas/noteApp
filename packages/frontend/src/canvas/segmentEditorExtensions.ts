@@ -8,6 +8,7 @@
 // (Phase 4) failed to open in linear mode with "There is no mark type
 // highlight in this schema" until both editors shared this list.
 import Color from '@tiptap/extension-color'
+import FontFamily from '@tiptap/extension-font-family'
 import Highlight from '@tiptap/extension-highlight'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
@@ -28,6 +29,9 @@ export const segmentEditorExtensions = [
   PluginBlock,
   TextStyle,
   Color,
+  // Ribbon font-family picker (RibbonRoot.tsx's FontFamilySelect) — piggybacks
+  // on TextStyle the same way Color does; lib/fontFamilies.ts is the preset list.
+  FontFamily,
   Highlight.configure({ multicolor: true }),
   TaskList,
   TaskItem.configure({ nested: true }),

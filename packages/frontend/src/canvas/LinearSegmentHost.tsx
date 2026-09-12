@@ -10,6 +10,7 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useState } from 'react'
 import { useCanvasStore, type Segment } from '../store/canvasStore'
+import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { misspelledWordAt } from './spellcheckExtension'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
@@ -33,6 +34,7 @@ export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment;
       onTextChange(segment.id, editor.getText())
     },
     onFocus: () => setActiveSegment(segment.id),
+    onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
 
   useEffect(() => {

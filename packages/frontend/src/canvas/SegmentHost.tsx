@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, resolvePosition } from '../lib/collision'
 import { useCanvasStore, type Segment } from '../store/canvasStore'
 import { useUIStore } from '../store/uiStore'
+import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
 import { insertPluginBlock } from './insertPluginBlock'
 import { SegmentColorMenu } from './SegmentColorMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
@@ -93,6 +94,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     },
     onFocus: () => setActiveSegment(segment.id),
     onBlur: () => deleteIfEmptyAndUncolored(segment.id),
+    onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
 
   useEffect(() => {
