@@ -14,7 +14,9 @@ import { useUIStore } from '../store/uiStore'
 import { insertPluginBlock } from './insertPluginBlock'
 import { SegmentColorMenu } from './SegmentColorMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
+import { misspelledWordAt } from './spellcheckExtension'
 import { SlashMenu } from './SlashMenu'
+import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 
 const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
 
@@ -55,10 +57,14 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   // `charPos` is the ProseMirror position right after the "/" — needed to
   // delete it before applying the chosen block type.
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; charPos: number } | null>(null)
+  const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
 
   const editor = useEditor({
     extensions: segmentEditorExtensions,
     content: segment.content,
+    // Chromium's own native spellcheck would otherwise double-underline
+    // alongside spellcheckExtension.ts's decoration.
+    editorProps: { attributes: { spellcheck: 'false' } },
     onUpdate: ({ editor }) => {
       const json = editor.getJSON()
       updateSegmentContent(segment.id, json)
@@ -346,6 +352,12 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
+        const pos = editor?.view.posAtCoords({ left: e.clientX, top: e.clientY })
+        const hit = editor && pos ? misspelledWordAt(editor.view, pos.pos) : null
+        if (hit) {
+          setSpellMenu({ x: e.clientX, y: e.clientY, ...hit })
+          return
+        }
         setColorMenu({ x: e.clientX, y: e.clientY })
       }}
     >
@@ -385,6 +397,17 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           onSelectCore={applyCoreBlock}
           onSelectPlugin={applyPluginBlock}
           onClose={() => setSlashMenu(null)}
+        />
+      )}
+      {spellMenu && editor && (
+        <SpellingSuggestionMenu
+          x={spellMenu.x}
+          y={spellMenu.y}
+          word={spellMenu.word}
+          from={spellMenu.from}
+          to={spellMenu.to}
+          editor={editor}
+          onClose={() => setSpellMenu(null)}
         />
       )}
     </div>

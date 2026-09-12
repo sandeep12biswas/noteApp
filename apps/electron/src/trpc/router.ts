@@ -78,6 +78,15 @@ export const appRouter = t.router({
     })
     .query(({ ctx, input }) => ctx.sidecar.request('get_ink_layer', { pageId: input })),
 
+  addDictionaryWord: t.procedure
+    .input((word: unknown): string => {
+      if (typeof word !== 'string') throw new Error('addDictionaryWord expects a string word')
+      return word
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('add_dictionary_word', { word: input })),
+
+  listDictionaryWords: t.procedure.query(({ ctx }) => ctx.sidecar.request('list_dictionary_words', {})),
+
   setPageMode: t.procedure
     .input((input: unknown): { pageId: string; mode: 'canvas' | 'linear' } => input as never)
     .mutation(({ ctx, input }) => ctx.sidecar.request('set_page_mode', { pageId: input.pageId, mode: input.mode })),

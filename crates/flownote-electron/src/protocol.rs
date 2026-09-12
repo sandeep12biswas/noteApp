@@ -132,6 +132,19 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             },
         },
 
+        "add_dictionary_word" => match req.params.get("word").and_then(Value::as_str) {
+            None => Response::err(req.id, "add_dictionary_word requires a string `word` param"),
+            Some(word) => match add_dictionary_word(conn, word) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e),
+            },
+        },
+
+        "list_dictionary_words" => match list_dictionary_words(conn) {
+            Ok(words) => Response::ok(req.id, Value::Array(words.into_iter().map(Value::String).collect())),
+            Err(e) => Response::err(req.id, e),
+        },
+
         "search" => match search(conn, &req.params) {
             Ok(results) => Response::ok(req.id, Value::Array(results)),
             Err(e) => Response::err(req.id, e.to_string()),
@@ -488,6 +501,25 @@ fn get_ink_layer(conn: &Connection, page_id: &str) -> Result<Value, String> {
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("no such page: {page_id}"))
         .map(|ink_layer| ink_layer.map(Value::String).unwrap_or(Value::Null))
+}
+
+/// "Add to Dictionary" — global, not scoped to a page/plugin (V5 migration's
+/// `dictionary_words` table). Lower-cased before storing so "Add to
+/// Dictionary" on "Sandeep" and later typing "sandeep" both match; `INSERT
+/// OR IGNORE` makes repeated adds of the same word a no-op rather than an
+/// error.
+fn add_dictionary_word(conn: &Connection, word: &str) -> Result<(), String> {
+    let lower = word.to_lowercase();
+    conn.execute("INSERT OR IGNORE INTO dictionary_words (word) VALUES (?1)", [&lower]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Ordered by `added_at` so a future "manage my dictionary" UI lists words
+/// in the order they were added, not alphabetically/by rowid.
+fn list_dictionary_words(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare("SELECT word FROM dictionary_words ORDER BY added_at").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 /// Full-text search over segment content (DESIGN.md §2.2, Phase 5 "Full-text
@@ -994,6 +1026,45 @@ mod tests {
         dispatch(&conn, Request { id: 68, method: "save_ink_layer".into(), params: json!({ "pageId": "page-1", "dataUrl": "page-1's ink" }) });
         let other = dispatch(&conn, Request { id: 69, method: "get_ink_layer".into(), params: json!({ "pageId": "page-2" }) });
         assert_eq!(other.result.unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn list_dictionary_words_returns_empty_for_a_fresh_database() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(&conn, Request { id: 70, method: "list_dictionary_words".into(), params: Value::Null });
+        assert_eq!(res.result.unwrap(), json!([]));
+    }
+
+    #[test]
+    fn add_dictionary_word_then_list_round_trips() {
+        let conn = db::open_in_memory().unwrap();
+        dispatch(&conn, Request { id: 71, method: "add_dictionary_word".into(), params: json!({ "word": "flownotex" }) });
+        let res = dispatch(&conn, Request { id: 72, method: "list_dictionary_words".into(), params: Value::Null });
+        assert_eq!(res.result.unwrap(), json!(["flownotex"]));
+    }
+
+    #[test]
+    fn add_dictionary_word_lowercases_before_storing() {
+        let conn = db::open_in_memory().unwrap();
+        dispatch(&conn, Request { id: 73, method: "add_dictionary_word".into(), params: json!({ "word": "Sandeep" }) });
+        let res = dispatch(&conn, Request { id: 74, method: "list_dictionary_words".into(), params: Value::Null });
+        assert_eq!(res.result.unwrap(), json!(["sandeep"]));
+    }
+
+    #[test]
+    fn add_dictionary_word_is_idempotent_for_duplicate_word() {
+        let conn = db::open_in_memory().unwrap();
+        dispatch(&conn, Request { id: 75, method: "add_dictionary_word".into(), params: json!({ "word": "flownotex" }) });
+        dispatch(&conn, Request { id: 76, method: "add_dictionary_word".into(), params: json!({ "word": "flownotex" }) });
+        let res = dispatch(&conn, Request { id: 77, method: "list_dictionary_words".into(), params: Value::Null });
+        assert_eq!(res.result.unwrap(), json!(["flownotex"]));
+    }
+
+    #[test]
+    fn add_dictionary_word_errors_on_missing_word_param() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(&conn, Request { id: 78, method: "add_dictionary_word".into(), params: Value::Null });
+        assert!(res.error.unwrap().contains("requires a string `word`"));
     }
 
     #[test]

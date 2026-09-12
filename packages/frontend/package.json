@@ -24,8 +24,10 @@
     "@tiptap/extension-text-align": "^2",
     "@tiptap/extension-text-style": "^2",
     "@tiptap/extension-underline": "^2",
+    "@tiptap/pm": "^2",
     "@tiptap/react": "^2",
     "@tiptap/starter-kit": "^2",
+    "nspell": "^2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5"
@@ -39,6 +41,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^4",
+    "dictionary-en": "^4",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.7.2",
     "vite": "^5"

@@ -32,6 +32,8 @@ interface ElectronRouter {
   deleteSegment: { mutate: (id: string) => Promise<void> }
   saveInkLayer: { mutate: (input: { pageId: string; dataUrl: string }) => Promise<void> }
   getInkLayer: { query: (pageId: string) => Promise<string | null> }
+  addDictionaryWord: { mutate: (word: string) => Promise<void> }
+  listDictionaryWords: { query: () => Promise<string[]> }
   setPageMode: { mutate: (input: { pageId: string; mode: 'canvas' | 'linear' }) => Promise<void> }
   search: { query: (input: { query: string; notebookId: string }) => Promise<SearchResult[]> }
   installPlugin: { mutate: (source: string) => Promise<PluginManifest> }
@@ -106,6 +108,14 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async getInkLayer(pageId: string): Promise<string | null> {
     return getClient().getInkLayer.query(pageId)
+  }
+
+  async addDictionaryWord(word: string): Promise<void> {
+    await getClient().addDictionaryWord.mutate(word)
+  }
+
+  async listDictionaryWords(): Promise<string[]> {
+    return getClient().listDictionaryWords.query()
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {

@@ -38,6 +38,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "page_ink_layer",
         sql: include_str!("../migrations/V4__page_ink_layer.sql"),
     },
+    Migration {
+        version: 5,
+        name: "dictionary_words",
+        sql: include_str!("../migrations/V5__dictionary_words.sql"),
+    },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -88,6 +93,7 @@ mod tests {
             "plugins",
             "plugin_storage",
             "folders",
+            "dictionary_words",
         ];
         for table in expected_tables {
             let count: i64 = conn
@@ -103,7 +109,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 4);
+        assert_eq!(applied, 5);
     }
 
     #[test]

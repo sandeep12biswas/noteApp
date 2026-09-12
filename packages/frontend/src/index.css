@@ -1,1 +1,11 @@
 @import 'tailwindcss';
+
+/* Spell-check misspelling indicator (canvas/spellcheckExtension.ts) — a
+   plain custom class, not an assembled Tailwind utility string, since the
+   class only ever exists as a literal inside a ProseMirror `Decoration`
+   spec (never in a scanned template), sidestepping any question of
+   whether Tailwind's JIT would pick it up. */
+.spellcheck-error {
+  text-decoration: underline wavy #ef4444 1px;
+  text-underline-offset: 2px;
+}

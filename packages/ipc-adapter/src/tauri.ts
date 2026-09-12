@@ -91,6 +91,14 @@ export class TauriIPCAdapter implements IPCAdapter {
     return unwrap(await commands.getInkLayer(pageId))
   }
 
+  async addDictionaryWord(word: string): Promise<void> {
+    unwrap(await commands.addDictionaryWord(word))
+  }
+
+  async listDictionaryWords(): Promise<string[]> {
+    return unwrap(await commands.listDictionaryWords())
+  }
+
   async mergeSegments(_idA: string, _idB: string): Promise<void> {
     throw new Error('TauriIPCAdapter.mergeSegments not implemented')
   }

@@ -18,6 +18,7 @@ import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
 import { PluginBlock } from '../plugins/pluginBlockNode'
+import { Spellcheck } from './spellcheckExtension'
 
 export const segmentEditorExtensions = [
   StarterKit,
@@ -41,4 +42,8 @@ export const segmentEditorExtensions = [
   // toggling both on the same selection stacks them instead of swapping.
   Subscript.extend({ excludes: 'superscript' }),
   Superscript.extend({ excludes: 'subscript' }),
+  // Live wavy-underline spell-check (DESIGN.md-adjacent feature) — see
+  // spellcheckExtension.ts's own module doc for why this must be shared
+  // between both views like everything else here.
+  Spellcheck,
 ]
