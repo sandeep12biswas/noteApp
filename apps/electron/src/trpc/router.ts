@@ -67,6 +67,17 @@ export const appRouter = t.router({
     })
     .mutation(({ ctx, input }) => ctx.sidecar.request('delete_segment', { id: input })),
 
+  saveInkLayer: t.procedure
+    .input((input: unknown): { pageId: string; dataUrl: string } => input as never)
+    .mutation(({ ctx, input }) => ctx.sidecar.request('save_ink_layer', { pageId: input.pageId, dataUrl: input.dataUrl })),
+
+  getInkLayer: t.procedure
+    .input((pageId: unknown): string => {
+      if (typeof pageId !== 'string') throw new Error('getInkLayer expects a string pageId')
+      return pageId
+    })
+    .query(({ ctx, input }) => ctx.sidecar.request('get_ink_layer', { pageId: input })),
+
   setPageMode: t.procedure
     .input((input: unknown): { pageId: string; mode: 'canvas' | 'linear' } => input as never)
     .mutation(({ ctx, input }) => ctx.sidecar.request('set_page_mode', { pageId: input.pageId, mode: input.mode })),

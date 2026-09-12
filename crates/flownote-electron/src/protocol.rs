@@ -119,6 +119,19 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             Err(e) => Response::err(req.id, e.to_string()),
         },
 
+        "save_ink_layer" => match save_ink_layer(conn, &req.params) {
+            Ok(()) => Response::ok(req.id, Value::Null),
+            Err(e) => Response::err(req.id, e),
+        },
+
+        "get_ink_layer" => match req.params.get("pageId").and_then(Value::as_str) {
+            None => Response::err(req.id, "get_ink_layer requires a string `pageId` param"),
+            Some(page_id) => match get_ink_layer(conn, page_id) {
+                Ok(value) => Response::ok(req.id, value),
+                Err(e) => Response::err(req.id, e),
+            },
+        },
+
         "search" => match search(conn, &req.params) {
             Ok(results) => Response::ok(req.id, Value::Array(results)),
             Err(e) => Response::err(req.id, e.to_string()),
@@ -444,6 +457,37 @@ fn set_page_mode(conn: &Connection, params: &Value) -> Result<(), String> {
         return Err(format!("no such page: {page_id}"));
     }
     Ok(())
+}
+
+/// Persists a page's ink layer as a PNG data URL (DESIGN.md §5.5) — the V4
+/// migration's `pages.ink_layer` column, one blob per page rather than
+/// decomposed into strokes (same "simplest thing that round-trips" call V2
+/// made for `segments.content`).
+fn save_ink_layer(conn: &Connection, params: &Value) -> Result<(), String> {
+    let page_id = params.get("pageId").and_then(Value::as_str).ok_or("save_ink_layer requires `pageId`")?;
+    let data_url = params.get("dataUrl").and_then(Value::as_str).ok_or("save_ink_layer requires `dataUrl`")?;
+    let now = now_ms();
+    let changed = conn
+        .execute(
+            "UPDATE pages SET ink_layer = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![data_url, now, page_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("no such page: {page_id}"));
+    }
+    Ok(())
+}
+
+/// Returns `null` for a page with no ink layer saved yet (never drawn on),
+/// same as `plugin_storage_get` returning `null` for an unset key — the
+/// frontend treats both identically ("nothing to load").
+fn get_ink_layer(conn: &Connection, page_id: &str) -> Result<Value, String> {
+    conn.query_row("SELECT ink_layer FROM pages WHERE id = ?1", [page_id], |row| row.get::<_, Option<String>>(0))
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no such page: {page_id}"))
+        .map(|ink_layer| ink_layer.map(Value::String).unwrap_or(Value::Null))
 }
 
 /// Full-text search over segment content (DESIGN.md §2.2, Phase 5 "Full-text
@@ -891,6 +935,65 @@ mod tests {
             Request { id: 23, method: "set_page_mode".into(), params: json!({ "pageId": "missing", "mode": "linear" }) },
         );
         assert!(res.error.unwrap().contains("no such page"));
+    }
+
+    #[test]
+    fn get_ink_layer_returns_null_for_a_page_never_drawn_on() {
+        let conn = conn_with_page("page-1");
+        let res = dispatch(&conn, Request { id: 60, method: "get_ink_layer".into(), params: json!({ "pageId": "page-1" }) });
+        assert_eq!(res.result.unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn save_ink_layer_then_get_ink_layer_round_trips() {
+        let conn = conn_with_page("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 61,
+                method: "save_ink_layer".into(),
+                params: json!({ "pageId": "page-1", "dataUrl": "data:image/png;base64,abc123" }),
+            },
+        );
+        let res = dispatch(&conn, Request { id: 62, method: "get_ink_layer".into(), params: json!({ "pageId": "page-1" }) });
+        assert_eq!(res.result.unwrap(), json!("data:image/png;base64,abc123"));
+    }
+
+    #[test]
+    fn save_ink_layer_overwrites_the_previous_stroke() {
+        let conn = conn_with_page("page-1");
+        dispatch(&conn, Request { id: 63, method: "save_ink_layer".into(), params: json!({ "pageId": "page-1", "dataUrl": "first" }) });
+        dispatch(&conn, Request { id: 64, method: "save_ink_layer".into(), params: json!({ "pageId": "page-1", "dataUrl": "second" }) });
+        let res = dispatch(&conn, Request { id: 65, method: "get_ink_layer".into(), params: json!({ "pageId": "page-1" }) });
+        assert_eq!(res.result.unwrap(), json!("second"));
+    }
+
+    #[test]
+    fn save_ink_layer_errors_on_missing_page() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(&conn, Request { id: 66, method: "save_ink_layer".into(), params: json!({ "pageId": "missing", "dataUrl": "x" }) });
+        assert!(res.error.unwrap().contains("no such page"));
+    }
+
+    #[test]
+    fn get_ink_layer_errors_on_missing_page() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(&conn, Request { id: 67, method: "get_ink_layer".into(), params: json!({ "pageId": "missing" }) });
+        assert!(res.error.unwrap().contains("no such page"));
+    }
+
+    #[test]
+    fn ink_layer_is_isolated_per_page() {
+        let conn = conn_with_page("page-1");
+        conn.execute(
+            "INSERT INTO pages (id, notebook_id, title, mode, created_at, updated_at)
+             VALUES ('page-2', 'nb-1', 'Other', 'canvas', 0, 0)",
+            [],
+        )
+        .unwrap();
+        dispatch(&conn, Request { id: 68, method: "save_ink_layer".into(), params: json!({ "pageId": "page-1", "dataUrl": "page-1's ink" }) });
+        let other = dispatch(&conn, Request { id: 69, method: "get_ink_layer".into(), params: json!({ "pageId": "page-2" }) });
+        assert_eq!(other.result.unwrap(), Value::Null);
     }
 
     #[test]

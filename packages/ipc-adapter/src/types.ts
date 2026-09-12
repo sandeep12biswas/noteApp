@@ -99,6 +99,7 @@ export interface IPCAdapter {
   deleteSegment(id: string): Promise<void>
   saveBlock(block: Block): Promise<void>
   saveInkLayer(pageId: string, dataUrl: string): Promise<void>
+  getInkLayer(pageId: string): Promise<string | null>
   mergeSegments(idA: string, idB: string): Promise<void>
   search(query: string, notebookId: string): Promise<SearchResult[]>
   setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void>

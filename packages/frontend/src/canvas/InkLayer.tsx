@@ -2,7 +2,13 @@
 // (`pointer-events: none`) at rest and interactive only in Draw mode; sized
 // via `ResizeObserver` with `devicePixelRatio` for retina displays;
 // serialised to a PNG data URL and persisted via `ipc.saveInkLayer()` after
-// each stroke. Stacks above `CanvasRoot` in the editor pane.
+// each stroke, and loaded back via `ipc.getInkLayer()` whenever `pageId`
+// changes. Stacks above `CanvasRoot` in the editor pane.
+//
+// This component isn't remounted between pages (EditorPane.tsx doesn't key
+// it by pageId — only the `pageId` prop changes), so the load-on-page-open
+// effect below must explicitly clear the previous page's drawing itself;
+// there's no unmount to do it for free.
 import { useEffect, useRef } from 'react'
 import type { IPCAdapter } from '@flownote/ipc-adapter'
 import { useInkStore, TOOL_WIDTH } from '../store/inkStore'
@@ -55,6 +61,37 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
     observer.observe(container)
     return () => observer.disconnect()
   }, [])
+
+  // Load (or clear) this page's persisted ink layer whenever `pageId`
+  // changes. Guarded by `cancelled` against a stale response landing after
+  // the user has already switched to a *different* page (two `getInkLayer`
+  // calls racing, e.g. a slow first response overtaken by a fast second).
+  useEffect(() => {
+    if (!ipc) return
+    let cancelled = false
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    ipc
+      .getInkLayer(pageId)
+      .then((dataUrl) => {
+        if (cancelled || !dataUrl) return
+        const c = canvasRef.current
+        const context = c?.getContext('2d')
+        if (!c || !context) return
+        const img = new Image()
+        img.onload = () => context.drawImage(img, 0, 0, c.clientWidth, c.clientHeight)
+        img.src = dataUrl
+      })
+      .catch((err: unknown) => {
+        // eslint-disable-next-line no-console -- best-effort load, same pattern as `persist()`'s save
+        console.error('InkLayer: getInkLayer failed', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pageId])
 
   const persist = () => {
     const canvas = canvasRef.current

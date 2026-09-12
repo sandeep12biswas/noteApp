@@ -30,8 +30,16 @@ export interface LaunchedApp {
   userDataDir: string
 }
 
-export async function launchApp(): Promise<LaunchedApp> {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flownote-e2e-'))
+/**
+ * Launches the app with a fresh temp `--user-data-dir` (so a fresh SQLite
+ * file), or reuses one passed via `userDataDir` — for a spec verifying
+ * something survives a full app *restart* against the same on-disk
+ * database (`ink-layer-persistence.spec.ts`): close the first `LaunchedApp`
+ * with `app.close()` directly (not `closeApp`, which deletes the
+ * directory), then relaunch with `{ userDataDir: previous.userDataDir }`.
+ */
+export async function launchApp(options?: { userDataDir?: string }): Promise<LaunchedApp> {
+  const userDataDir = options?.userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'flownote-e2e-'))
   const app = await electron.launch({
     executablePath: electronBin,
     args: [

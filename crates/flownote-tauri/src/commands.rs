@@ -258,6 +258,29 @@ fn delete_segment_impl(conn: &Connection, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Mirrors `flownote-electron/src/protocol.rs`'s `save_ink_layer` — see its
+/// doc comment for why this is on `pages`, not `segments` (a stray, unused
+/// `ink_layer` column already exists on the latter from V1).
+fn save_ink_layer_impl(conn: &Connection, page_id: &str, data_url: &str) -> Result<(), String> {
+    let changed = conn
+        .execute("UPDATE pages SET ink_layer = ?1, updated_at = ?2 WHERE id = ?3", rusqlite::params![data_url, now_ms(), page_id])
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("no such page: {page_id}"));
+    }
+    Ok(())
+}
+
+/// Mirrors `flownote-electron/src/protocol.rs`'s `get_ink_layer` — `None`
+/// covers both "page has no ink layer saved yet" and is distinguished from
+/// "no such page" by the `Result`, same split as that function.
+fn get_ink_layer_impl(conn: &Connection, page_id: &str) -> Result<Option<String>, String> {
+    conn.query_row("SELECT ink_layer FROM pages WHERE id = ?1", [page_id], |row| row.get::<_, Option<String>>(0))
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no such page: {page_id}"))
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn save_folder(state: State<AppState>, folder: FolderInput) -> Result<(), String> {
@@ -315,6 +338,20 @@ pub fn save_segments_batch(state: State<AppState>, segments: Vec<SegmentInput>) 
 pub fn delete_segment(state: State<AppState>, id: String) -> Result<(), String> {
     let conn = state.pool.get().map_err(|e| e.to_string())?;
     delete_segment_impl(&conn, &id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_ink_layer(state: State<AppState>, page_id: String, data_url: String) -> Result<(), String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    save_ink_layer_impl(&conn, &page_id, &data_url)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_ink_layer(state: State<AppState>, page_id: String) -> Result<Option<String>, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    get_ink_layer_impl(&conn, &page_id)
 }
 
 #[cfg(test)]
@@ -529,5 +566,32 @@ mod tests {
         delete_segment_impl(&conn, "seg-1").unwrap();
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM segments", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn get_ink_layer_returns_none_for_a_page_never_drawn_on() {
+        let conn = conn_with_page("page-1");
+        assert_eq!(get_ink_layer_impl(&conn, "page-1").unwrap(), None);
+    }
+
+    #[test]
+    fn save_ink_layer_then_get_ink_layer_round_trips() {
+        let conn = conn_with_page("page-1");
+        save_ink_layer_impl(&conn, "page-1", "data:image/png;base64,abc123").unwrap();
+        assert_eq!(get_ink_layer_impl(&conn, "page-1").unwrap(), Some("data:image/png;base64,abc123".into()));
+    }
+
+    #[test]
+    fn save_ink_layer_errors_on_missing_page() {
+        let conn = db::open_in_memory().unwrap();
+        let err = save_ink_layer_impl(&conn, "missing", "x").unwrap_err();
+        assert!(err.contains("no such page"));
+    }
+
+    #[test]
+    fn get_ink_layer_errors_on_missing_page() {
+        let conn = db::open_in_memory().unwrap();
+        let err = get_ink_layer_impl(&conn, "missing").unwrap_err();
+        assert!(err.contains("no such page"));
     }
 }

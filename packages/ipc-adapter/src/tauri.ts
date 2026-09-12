@@ -83,8 +83,12 @@ export class TauriIPCAdapter implements IPCAdapter {
     throw new Error('TauriIPCAdapter.saveBlock not implemented')
   }
 
-  async saveInkLayer(_pageId: string, _dataUrl: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.saveInkLayer not implemented')
+  async saveInkLayer(pageId: string, dataUrl: string): Promise<void> {
+    unwrap(await commands.saveInkLayer(pageId, dataUrl))
+  }
+
+  async getInkLayer(pageId: string): Promise<string | null> {
+    return unwrap(await commands.getInkLayer(pageId))
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {

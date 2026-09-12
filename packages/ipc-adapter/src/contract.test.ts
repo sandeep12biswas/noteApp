@@ -93,6 +93,11 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.saveInkLayer('page-1', 'data:image/png;base64,')).rejects.toThrow()
   })
 
+  it('getInkLayer rejects', async () => {
+    const adapter = create()
+    await expect(adapter.getInkLayer('page-1')).rejects.toThrow()
+  })
+
   it('mergeSegments rejects', async () => {
     const adapter = create()
     await expect(adapter.mergeSegments('seg-1', 'seg-2')).rejects.toThrow()

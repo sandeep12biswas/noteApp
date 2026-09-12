@@ -30,6 +30,8 @@ interface ElectronRouter {
   saveSegment: { mutate: (seg: Segment) => Promise<void> }
   saveSegmentsBatch: { mutate: (segs: Segment[]) => Promise<void> }
   deleteSegment: { mutate: (id: string) => Promise<void> }
+  saveInkLayer: { mutate: (input: { pageId: string; dataUrl: string }) => Promise<void> }
+  getInkLayer: { query: (pageId: string) => Promise<string | null> }
   setPageMode: { mutate: (input: { pageId: string; mode: 'canvas' | 'linear' }) => Promise<void> }
   search: { query: (input: { query: string; notebookId: string }) => Promise<SearchResult[]> }
   installPlugin: { mutate: (source: string) => Promise<PluginManifest> }
@@ -98,8 +100,12 @@ export class ElectronIPCAdapter implements IPCAdapter {
     throw new Error('ElectronIPCAdapter.saveBlock not implemented')
   }
 
-  async saveInkLayer(_pageId: string, _dataUrl: string): Promise<void> {
-    throw new Error('ElectronIPCAdapter.saveInkLayer not implemented')
+  async saveInkLayer(pageId: string, dataUrl: string): Promise<void> {
+    await getClient().saveInkLayer.mutate({ pageId, dataUrl })
+  }
+
+  async getInkLayer(pageId: string): Promise<string | null> {
+    return getClient().getInkLayer.query(pageId)
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {
