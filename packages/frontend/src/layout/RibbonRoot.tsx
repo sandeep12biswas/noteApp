@@ -124,16 +124,27 @@ function Divider() {
 const SELECT_CLASSNAME =
   'rounded border border-gray-200 bg-white px-1 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
 
-// Ribbon font-family picker — a plain native `<select>` (this app has no
-// dropdown/menu library; the closest existing precedent for a native
-// control is ColorPickerMenu.tsx's `<input type="color">`), listing
-// lib/fontFamilies.ts's curated preset list. Like ColorDropdownButton, its
-// displayed value is local state, not a live read of the current
-// selection's mark (RibbonRoot.tsx's own doc comment already covers why:
-// `getActiveEditor()` is deliberately non-reactive).
+// One ribbon font-family picker doing double duty — a plain native
+// `<select>` (this app has no dropdown/menu library; the closest existing
+// precedent for a native control is ColorPickerMenu.tsx's
+// `<input type="color">`), listing lib/fontFamilies.ts's curated preset
+// list. Picking a font both (a) applies it to the current selection/cursor
+// via the usual getActiveEditor() dispatch path, exactly like every other
+// ribbon command, and (b) becomes the persisted default (store/fontStore.ts)
+// that any brand-new, still-empty segment starts with from then on
+// (canvas/applyDefaultFontIfNew.ts) — one choice serves both asks, rather
+// than a separate "apply now" control and a separate "set default" control
+// for what a user experiences as a single decision ("use this font").
+// Initialized from the persisted default (not blank) since that's the most
+// useful starting display; like ColorDropdownButton, it's local state, not
+// a live read of the current selection's mark (RibbonRoot.tsx's own doc
+// comment already covers why: `getActiveEditor()` is deliberately
+// non-reactive).
 function FontFamilySelect() {
   const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
-  const [current, setCurrent] = useState('')
+  const defaultFont = useFontStore((s) => s.defaultFont)
+  const setDefaultFont = useFontStore((s) => s.setDefaultFont)
+  const [current, setCurrent] = useState(defaultFont)
 
   return (
     <select
@@ -144,35 +155,11 @@ function FontFamilySelect() {
       onChange={(e) => {
         const value = e.target.value
         setCurrent(value)
+        setDefaultFont(value)
         const chain = getActiveEditor()?.chain().focus()
         if (value) chain?.setFontFamily(value).run()
         else chain?.unsetFontFamily().run()
       }}
-    >
-      {FONT_FAMILIES.map((f) => (
-        <option key={f.label} value={f.value}>
-          {f.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-// Persisted "default font" preference (store/fontStore.ts) — separate
-// control from FontFamilySelect above: this one doesn't touch the active
-// editor at all, it only sets what a brand-new segment starts with
-// (canvas/applyDefaultFontIfNew.ts).
-function DefaultFontSelect() {
-  const defaultFont = useFontStore((s) => s.defaultFont)
-  const setDefaultFont = useFontStore((s) => s.setDefaultFont)
-
-  return (
-    <select
-      aria-label="Default font for new notes"
-      title="Default font for new notes"
-      className={SELECT_CLASSNAME}
-      value={defaultFont}
-      onChange={(e) => setDefaultFont(e.target.value)}
     >
       {FONT_FAMILIES.map((f) => (
         <option key={f.label} value={f.value}>
@@ -204,8 +191,6 @@ function HomeToolsPanel() {
       <Divider />
       <div className="flex items-center gap-1" role="group" aria-label="Font">
         <FontFamilySelect />
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">Default:</span>
-        <DefaultFontSelect />
       </div>
       <Divider />
       <div className="flex items-center gap-0.5" role="group" aria-label="Text style">
