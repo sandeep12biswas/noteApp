@@ -12,7 +12,7 @@ import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
 import { getIPCAdapter } from '../store/notebookStore'
 import { sendRibbonAction } from '../plugins/PluginIPCBridge'
-import { FONT_FAMILIES } from '../lib/fontFamilies'
+import { FONT_FAMILIES, type FontFamilyOption } from '../lib/fontFamilies'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
 import { useFontStore } from '../store/fontStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
@@ -124,6 +124,24 @@ function Divider() {
 const SELECT_CLASSNAME =
   'rounded border border-gray-200 bg-white px-1 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
 
+// FONT_FAMILIES is a flat list ordered Generic -> Windows -> Linux -> Web
+// fonts (lib/fontFamilies.ts's own doc comment); grouped here into
+// `<optgroup>`s so a list this long (Windows/Office + Linux distro fonts,
+// per the user's ask, alongside the handful of Google Fonts already there)
+// stays scannable in a plain `<select>` instead of one long flat list.
+const FONT_GROUPS: [string, FontFamilyOption[]][] = (() => {
+  const order: string[] = []
+  const byGroup = new Map<string, FontFamilyOption[]>()
+  for (const f of FONT_FAMILIES) {
+    if (!byGroup.has(f.group)) {
+      order.push(f.group)
+      byGroup.set(f.group, [])
+    }
+    byGroup.get(f.group)!.push(f)
+  }
+  return order.map((group) => [group, byGroup.get(group)!])
+})()
+
 // One ribbon font-family picker doing double duty — a plain native
 // `<select>` (this app has no dropdown/menu library; the closest existing
 // precedent for a native control is ColorPickerMenu.tsx's
@@ -161,10 +179,14 @@ function FontFamilySelect() {
         else chain?.unsetFontFamily().run()
       }}
     >
-      {FONT_FAMILIES.map((f) => (
-        <option key={f.label} value={f.value}>
-          {f.label}
-        </option>
+      {FONT_GROUPS.map(([group, options]) => (
+        <optgroup key={group} label={group}>
+          {options.map((f) => (
+            <option key={f.label} value={f.value}>
+              {f.label}
+            </option>
+          ))}
+        </optgroup>
       ))}
     </select>
   )
