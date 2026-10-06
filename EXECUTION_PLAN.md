@@ -189,4 +189,55 @@ Since the repo currently contains only `README.md`:
 
 ---
 
+## Current Priority Order to Build
+
+Every ⬜ item still open across Phases 1–7 and the Features section above,
+gathered in one place and ranked — re-derive this list (don't hand-maintain
+it in parallel) whenever a priority-ranked view is needed again; update it
+in place as items land.
+
+### P1 — Core promised functionality that's effectively missing
+
+| Task | Details |
+|---|---|
+| CRDT sync | `crates/flownote-sync` is still the `cargo new` placeholder (Phase 5). Explicitly deferred as "materially bigger than the other three tasks." One of the app's headline architectural promises (offline-first sync); nothing exists yet beyond `resolvePosition()` (Phase 3), already in place as the mitigation DESIGN.md §10 calls for once remote events exist. |
+| Real Ollama AI integration | Only the graceful-failure half is built (Phase 6) — a friendly "AI unavailable" message via `AIInsertPanel`. The actual `ollama-rs` health check, streaming completion, and Claude API fallback were never built; `aiComplete()` still unconditionally rejects on both `IPCAdapter`s. |
+
+### P2 — Windows/macOS platform parity (everything is Linux-only right now)
+
+| Task | Details |
+|---|---|
+| Tauri shell verification | Compiles/tests locally only; never run against a real Windows or macOS machine. Called out as an unverified gap in Phases 1, 3, 5, 6, and 7. |
+| Tauri `IPCAdapter` method gaps | Several methods are stub-throws on `TauriIPCAdapter` that are fully implemented on `ElectronIPCAdapter`: `mergeSegments`, `saveBlock`, and the file-attachment feature's four new methods (`saveAttachment`/`getAttachment`/`deleteAttachment`/`openAttachment`). |
+| CI matrix never confirmed green on GitHub Actions | `.github/workflows/ci.yml` exists and runs locally-equivalent commands, but was never actually pushed/verified passing on the real `ubuntu`/`windows`/`macos` runners — nothing guards against regressions automatically yet. |
+
+### P3 — Plugin ecosystem isn't actually usable end-to-end yet
+
+| Task | Details |
+|---|---|
+| Real plugin install flow | `install_plugin` only accepts raw manifest JSON; a built `.fnp` package (which `@flownote/cli pack` already produces) can't actually be installed into the app. |
+| Plugin network permission enforcement | A plugin's declared `network:fetch` permission isn't CSP-enforced — only storage/registration permissions are checked today. A real security gap, not just a missing feature. |
+| Plugin Manager UI — Browse & Developer tabs | Only "Installed" is built (`PluginManagerUI.tsx`); no registry browsing, no local-folder hot-reload/console/`postMessage` inspector. |
+| `plugin.resolveAsset()` | Declared in the `@flownote/sdk` shape, never implemented. |
+| Spreadsheet reference plugin gaps | No ribbon group registered (`registerRibbonGroup` path exists, unused); doesn't serialize to Markdown in linear mode. |
+| SDK/CLI publishing + a registry | `@flownote/sdk`/`@flownote/cli` not published to npm; no plugin registry exists at all — blocks any real external plugin development. |
+
+### P4 — Known correctness/completeness gaps in recently-shipped features
+
+| Task | Details |
+|---|---|
+| File attachments: orphaned-file cleanup | Deleting just the embedded node from a segment's text (without deleting the whole segment) doesn't garbage-collect its on-disk file — only an explicit segment/page/folder delete does. |
+| Plugin blocks don't serialize to Markdown | Flagged back in Phase 5's mode-toggle note, deferred to Phase 7, never picked up there either. |
+
+### P5 — Polish / minor / documentation
+
+| Task | Details |
+|---|---|
+| Ribbon buttons don't live-reflect selection state | Bold/Italic/etc. don't show "pressed" based on cursor position — a deliberate, documented limitation (`editorRefs` is non-reactive by design), not an oversight. |
+| Folder icon "external import" | Only the built-in 12-emoji set exists (`FolderIconMenu.tsx`) — an uploaded custom image isn't supported (`Folder.icon` is a single string field; would need new asset storage). |
+| No documented manual plugin sandbox-escape test | Phase 7's own testing gate asked for one; not attempted. |
+| Stale doc cross-reference | The Features section's "File attachment" row still says "No DESIGN.md section added for this yet" — out of date since DESIGN.md §2.5 was added afterward. |
+
+---
+
 *FlowNote · Execution Plan · derived from DESIGN.md §9 (Notion "FlowNote — Canvas Editor Architecture" v1.4, §9 Implementation Plan) · September 2026*
