@@ -14,6 +14,8 @@ import type { SidecarSupervisor } from '../sidecarSupervisor'
 
 export interface Context {
   sidecar: SidecarSupervisor
+  /** `shell.openPath` (main.ts) — injected rather than importing `electron` here directly, same reasoning as `sidecar` itself. */
+  openPath: (path: string) => Promise<string>
 }
 
 const t = initTRPC.context<Context>().create()
@@ -80,6 +82,42 @@ export const appRouter = t.router({
       return id
     })
     .mutation(({ ctx, input }) => ctx.sidecar.request('delete_segment', { id: input })),
+
+  saveAttachment: t.procedure
+    .input((input: unknown): { id: string; segmentId: string; fileName: string; mimeType: string; dataBase64: string } => input as never)
+    .mutation(({ ctx, input }) =>
+      ctx.sidecar.request('save_attachment', {
+        id: input.id,
+        segmentId: input.segmentId,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        dataBase64: input.dataBase64,
+      }),
+    ),
+
+  getAttachment: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('getAttachment expects a string id')
+      return id
+    })
+    .query(({ ctx, input }) => ctx.sidecar.request('get_attachment', { id: input })),
+
+  deleteAttachment: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('deleteAttachment expects a string id')
+      return id
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('delete_attachment', { id: input })),
+
+  openAttachment: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('openAttachment expects a string id')
+      return id
+    })
+    .mutation(async ({ ctx, input }) => {
+      const attachment = (await ctx.sidecar.request('get_attachment', { id: input })) as { path: string }
+      await ctx.openPath(attachment.path)
+    }),
 
   saveInkLayer: t.procedure
     .input((input: unknown): { pageId: string; dataUrl: string } => input as never)

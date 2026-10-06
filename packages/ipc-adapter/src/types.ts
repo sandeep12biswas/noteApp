@@ -55,6 +55,20 @@ export interface Block {
   // TODO
 }
 
+// File attachment support (EXECUTION_PLAN.md "Features") — a segment can
+// hold zero or more attachments, referenced by id from an `attachmentBlock`
+// node inside that segment's TipTap content
+// (packages/frontend/src/canvas/attachmentBlockNode.tsx). This carries only
+// metadata; the actual bytes live on disk, served to the renderer via the
+// `flownote-attachment://<id>` scheme (apps/electron/src/main.ts) rather
+// than round-tripped through this IPC layer as JSON.
+export interface Attachment {
+  id: string
+  fileName: string
+  mimeType: string
+  size: number
+}
+
 export interface SearchResult {
   pageId: string
   segmentId: string
@@ -100,6 +114,11 @@ export interface IPCAdapter {
   saveSegmentsBatch(segs: Segment[]): Promise<void>
   deleteSegment(id: string): Promise<void>
   saveBlock(block: Block): Promise<void>
+  saveAttachment(id: string, segmentId: string, fileName: string, mimeType: string, dataBase64: string): Promise<Attachment>
+  getAttachment(id: string): Promise<Attachment & { path: string }>
+  deleteAttachment(id: string): Promise<void>
+  /** Opens the attachment's file with the OS's default handler (Electron's `shell.openPath`) — not supported on every platform's IPCAdapter yet. */
+  openAttachment(id: string): Promise<void>
   saveInkLayer(pageId: string, dataUrl: string): Promise<void>
   getInkLayer(pageId: string): Promise<string | null>
   addDictionaryWord(word: string): Promise<void>

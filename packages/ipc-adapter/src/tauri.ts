@@ -1,5 +1,6 @@
 import { commands, type SegmentInput } from './generated/tauri-bindings'
 import type {
+  Attachment,
   Block,
   Folder,
   IPCAdapter,
@@ -85,6 +86,22 @@ export class TauriIPCAdapter implements IPCAdapter {
 
   async deleteSegment(id: string): Promise<void> {
     unwrap(await commands.deleteSegment(id))
+  }
+
+  async saveAttachment(_id: string, _segmentId: string, _fileName: string, _mimeType: string, _dataBase64: string): Promise<Attachment> {
+    throw new Error('TauriIPCAdapter.saveAttachment not implemented')
+  }
+
+  async getAttachment(_id: string): Promise<Attachment & { path: string }> {
+    throw new Error('TauriIPCAdapter.getAttachment not implemented')
+  }
+
+  async deleteAttachment(_id: string): Promise<void> {
+    throw new Error('TauriIPCAdapter.deleteAttachment not implemented')
+  }
+
+  async openAttachment(_id: string): Promise<void> {
+    throw new Error('TauriIPCAdapter.openAttachment not implemented')
   }
 
   async saveBlock(_block: Block): Promise<void> {

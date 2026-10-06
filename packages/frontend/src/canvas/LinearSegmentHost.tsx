@@ -9,8 +9,11 @@
 // mode is purely a rendering choice, not a second copy of editing state.
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useState } from 'react'
+import { handleAttachmentPaste } from '../lib/attachmentPaste'
 import { useCanvasStore, type Segment } from '../store/canvasStore'
+import { getIPCAdapter } from '../store/notebookStore'
 import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
+import { AttachmentChoiceMenu } from './AttachmentChoiceMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { misspelledWordAt } from './spellcheckExtension'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
@@ -24,11 +27,22 @@ export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment;
   // (a separate, pre-existing gap) — this is the only right-click behavior
   // this view has, so it's an unconditional open-if-hit, not a branch.
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
+  const [attachmentChoice, setAttachmentChoice] = useState<{
+    x: number
+    y: number
+    fileName: string
+    onChoose: (mode: 'file' | 'embed') => void
+  } | null>(null)
 
   const editor = useEditor({
     extensions: segmentEditorExtensions,
     content: segment.content,
-    editorProps: { attributes: { spellcheck: 'false' } },
+    editorProps: {
+      attributes: { spellcheck: 'false' },
+      // File attachment support — shared with SegmentHost.tsx via
+      // lib/attachmentPaste.ts; see that module's own doc for why.
+      handlePaste: (view, event) => handleAttachmentPaste(view, event, segment.id, getIPCAdapter(), { onChooseMode: setAttachmentChoice }),
+    },
     onUpdate: ({ editor }) => {
       updateSegmentContent(segment.id, editor.getJSON())
       onTextChange(segment.id, editor.getText())
@@ -71,6 +85,15 @@ export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment;
           to={spellMenu.to}
           editor={editor}
           onClose={() => setSpellMenu(null)}
+        />
+      )}
+      {attachmentChoice && (
+        <AttachmentChoiceMenu
+          x={attachmentChoice.x}
+          y={attachmentChoice.y}
+          fileName={attachmentChoice.fileName}
+          onChoose={attachmentChoice.onChoose}
+          onClose={() => setAttachmentChoice(null)}
         />
       )}
     </div>

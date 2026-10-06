@@ -1,6 +1,7 @@
 import { createTRPCProxyClient } from '@trpc/client'
 import { ipcLink } from 'electron-trpc/renderer'
 import type {
+  Attachment,
   Block,
   Folder,
   IPCAdapter,
@@ -32,6 +33,12 @@ interface ElectronRouter {
   saveSegment: { mutate: (seg: Segment) => Promise<void> }
   saveSegmentsBatch: { mutate: (segs: Segment[]) => Promise<void> }
   deleteSegment: { mutate: (id: string) => Promise<void> }
+  saveAttachment: {
+    mutate: (input: { id: string; segmentId: string; fileName: string; mimeType: string; dataBase64: string }) => Promise<Attachment>
+  }
+  getAttachment: { query: (id: string) => Promise<Attachment & { path: string }> }
+  deleteAttachment: { mutate: (id: string) => Promise<void> }
+  openAttachment: { mutate: (id: string) => Promise<void> }
   saveInkLayer: { mutate: (input: { pageId: string; dataUrl: string }) => Promise<void> }
   getInkLayer: { query: (pageId: string) => Promise<string | null> }
   addDictionaryWord: { mutate: (word: string) => Promise<void> }
@@ -106,6 +113,22 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async deleteSegment(id: string): Promise<void> {
     await getClient().deleteSegment.mutate(id)
+  }
+
+  async saveAttachment(id: string, segmentId: string, fileName: string, mimeType: string, dataBase64: string): Promise<Attachment> {
+    return getClient().saveAttachment.mutate({ id, segmentId, fileName, mimeType, dataBase64 })
+  }
+
+  async getAttachment(id: string): Promise<Attachment & { path: string }> {
+    return getClient().getAttachment.query(id)
+  }
+
+  async deleteAttachment(id: string): Promise<void> {
+    await getClient().deleteAttachment.mutate(id)
+  }
+
+  async openAttachment(id: string): Promise<void> {
+    await getClient().openAttachment.mutate(id)
   }
 
   async saveBlock(_block: Block): Promise<void> {

@@ -159,6 +159,18 @@ Nothing exists yet beyond `README.md`, so this has to happen before Phase 1's ta
 
 ---
 
+## Features
+
+User-requested features that fall outside the original 7-phase build plan
+land here as they come in, one row per feature, appended to this same table
+rather than each getting its own `##` section.
+
+| Task | Details |
+|---|---|
+| File attachment (attach-as-file / embed) | ✅ Done, Electron-only (Tauri's `IPCAdapter` methods stub-throw, matching `mergeSegments`/`saveBlock`'s existing precedent — no live Tauri shell to verify against). Pasting a file via Ctrl+V into a segment now saves it through a new `attachments` table (`V6__attachments.sql`, bytes on disk under `<db file's parent>/attachments/`, not inlined into segment content) and either shows an "Attach as file / Embed in note" chooser (`AttachmentChoiceMenu.tsx`) or, for a screenshot-shaped paste, embeds it directly with no prompt. The new `attachmentBlock` TipTap node (`attachmentBlockNode.tsx`, same atom-node-+-`ReactNodeViewRenderer` shape `pluginBlockNode.tsx` already established) renders a file-mode chip (click opens the file via `shell.openPath`) or a drag-resizable embed (an `<img>` for images, served through a new `flownote-attachment://<id>` custom protocol mirroring `flownote-plugin://`'s own). `delete_segment`/`delete_page`/`delete_folder` (`protocol.rs`) were extended to also clean up attachment files on disk, not just their DB rows, using the same "collect before the cascading delete" shape `blocks_fts` cleanup already used. **A real bug found live via `run-electron`, not caught by any unit test:** `AttachmentChoiceMenu`'s `useMenuKeyboardNav` auto-focusing its first button (and, separately, the user clicking a choice button) blurred the still-empty segment editor *before* the attachment node was inserted, tripping `deleteIfEmptyAndUncolored`'s auto-delete-on-blur and silently deleting the whole segment out from under the user — fixed via `autoFocus: false` (same opt-out `SlashMenu.tsx` already uses, for the same reason) plus a ref-based guard on `SegmentHost.tsx`'s own `onBlur` so it skips the auto-delete while a choice is pending. ⬜ Known limitation, not built: removing just the embed from a segment's text (without deleting the whole segment/page/folder) doesn't garbage-collect that attachment's file — only an explicit segment/page/folder delete does; diffing old vs. new content on every save to catch a removed attachment id is real additional scope, not attempted this pass. ⬜ No DESIGN.md section added for this yet (closest existing mentions stayed just §2.4's "YouTube embedding" bullet and §5.3's bare "Image placeholder" ribbon-button row). |
+
+---
+
 ## Cross-Phase Sequencing Notes
 
 - The **`ExtensionPointRegistry` stub** must exist by the end of Phase 2 (even though it's empty) — Phases 2–6's UI code all reads from it, and Phase 7 only needs to *populate* it, not introduce it.

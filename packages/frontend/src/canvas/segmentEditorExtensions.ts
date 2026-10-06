@@ -19,6 +19,7 @@ import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
 import { PluginBlock } from '../plugins/pluginBlockNode'
+import { AttachmentBlock } from './attachmentBlockNode'
 import { FontSize } from './fontSizeExtension'
 import { Spellcheck } from './spellcheckExtension'
 
@@ -28,6 +29,10 @@ export const segmentEditorExtensions = [
   // `registerBlockType`) — always present, never added/removed per plugin;
   // see pluginBlockNode.tsx's module doc for why.
   PluginBlock,
+  // File attachment support (EXECUTION_PLAN.md "Features") — same "must be
+  // in this one shared list" reasoning as everything else here: a segment
+  // holding a pasted attachment has to open in both canvas and linear mode.
+  AttachmentBlock,
   TextStyle,
   Color,
   // Ribbon font-family picker (RibbonRoot.tsx's FontFamilySelect) — piggybacks

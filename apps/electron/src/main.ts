@@ -3,7 +3,7 @@
 // supervisor, wires it into an electron-trpc router, and opens a window
 // whose preload script exposes that router to the renderer.
 import { createIPCHandler } from 'electron-trpc/main'
-import { app, BrowserWindow, net, protocol } from 'electron'
+import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -24,6 +24,12 @@ const isDev = !!process.env.VITE_DEV_SERVER_URL
 // it's here at module load, not inside `createWindow`.
 protocol.registerSchemesAsPrivileged([
   { scheme: 'flownote-plugin', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  // `flownote-attachment://<id>` — streams an attachment's bytes straight
+  // from disk (EXECUTION_PLAN.md "Features" file-attachment entry) for an
+  // embedded `<img>` or a file download, without round-tripping the bytes
+  // through trpc/JSON. Same privilege set as `flownote-plugin` above, for
+  // the same reason (a real `<img src>` load needs `supportFetchAPI`).
+  { scheme: 'flownote-attachment', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ])
 
 /**
@@ -89,7 +95,10 @@ function createWindow(sidecar: SidecarSupervisor): void {
   createIPCHandler<typeof appRouter>({
     router: appRouter,
     windows: [win],
-    createContext: async (): Promise<Context> => ({ sidecar }),
+    // `openPath` is injected rather than router.ts importing `electron`
+    // itself, the same way `sidecar` is — keeps the trpc layer's only
+    // dependency on real OS/process facilities at this one boundary.
+    createContext: async (): Promise<Context> => ({ sidecar, openPath: shell.openPath }),
   })
 
   if (isDev) {
@@ -124,6 +133,19 @@ function registerPluginProtocol(): void {
   })
 }
 
+/** `flownote-attachment://<id>` → the attachment's absolute path on disk, resolved via the sidecar's `get_attachment`. Registered once `sidecar` exists (unlike `registerPluginProtocol`, which needs nothing but the frontend dist dir), so this runs inside `app.whenReady()` after the sidecar is constructed rather than alongside it. */
+function registerAttachmentProtocol(sidecar: SidecarSupervisor): void {
+  protocol.handle('flownote-attachment', async (request) => {
+    const url = new URL(request.url)
+    // Same empty-host quirk `registerPluginProtocol` already documents for
+    // this class of custom "standard" scheme — `url.host` carries the id
+    // for `flownote-attachment://<id>`, not `url.pathname`.
+    const id = url.host
+    const attachment = (await sidecar.request('get_attachment', { id })) as { path: string }
+    return net.fetch(pathToFileURL(attachment.path).toString())
+  })
+}
+
 app.whenReady().then(() => {
   registerPluginProtocol()
 
@@ -137,6 +159,7 @@ app.whenReady().then(() => {
     },
   })
   sidecar.start()
+  registerAttachmentProtocol(sidecar)
 
   createWindow(sidecar)
 })

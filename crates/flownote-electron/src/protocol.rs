@@ -13,9 +13,11 @@
 //! unit-testable without spawning a process — see the tests below and
 //! apps/electron/src/sidecar.test.ts for the Node-side framing tests.
 
+use base64::Engine;
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct Request {
@@ -127,6 +129,28 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             Some(id) => match delete_segment(conn, id) {
                 Ok(()) => Response::ok(req.id, Value::Null),
                 Err(e) => Response::err(req.id, e.to_string()),
+            },
+        },
+
+        "save_attachment" => match save_attachment(conn, &req.params) {
+            Ok(result) => Response::ok(req.id, result),
+            Err(e) => Response::err(req.id, e),
+        },
+
+        "get_attachment" => match req.params.get("id").and_then(Value::as_str) {
+            None => Response::err(req.id, "get_attachment requires a string `id` param"),
+            Some(id) => match get_attachment(conn, id) {
+                Ok(Some(attachment)) => Response::ok(req.id, attachment),
+                Ok(None) => Response::err(req.id, format!("no such attachment: {id}")),
+                Err(e) => Response::err(req.id, e),
+            },
+        },
+
+        "delete_attachment" => match req.params.get("id").and_then(Value::as_str) {
+            None => Response::err(req.id, "delete_attachment requires a string `id` param"),
+            Some(id) => match delete_attachment(conn, id) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e),
             },
         },
 
@@ -333,14 +357,15 @@ fn list_pages(conn: &Connection, folder_id: &str) -> Result<Vec<Value>, String> 
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
-/// Deletes a page and everything under it. `segments.page_id` and
-/// `blocks.segment_id` are both `ON DELETE CASCADE` (V1__init.sql), so one
-/// `DELETE FROM pages` removes the segments and blocks rows too — but
-/// `blocks_fts` is an external-content FTS5 table (`content = blocks`),
-/// which SQLite's foreign keys don't keep in sync on their own (same
-/// limitation `delete_segment` already has for a single segment). Collect
-/// the block ids *before* the cascading delete removes their source rows,
-/// then purge the matching `blocks_fts` rows after.
+/// Deletes a page and everything under it. `segments.page_id`,
+/// `blocks.segment_id`, and `attachments.segment_id` (V6__attachments.sql)
+/// are all `ON DELETE CASCADE`, so one `DELETE FROM pages` removes the
+/// segments/blocks/attachments *rows* too — but two things aren't SQLite
+/// rows, so foreign keys alone don't clean them up: `blocks_fts` is an
+/// external-content FTS5 table (`content = blocks`), and an attachment's
+/// actual bytes are a file on disk, not a DB row. Collect the block ids and
+/// attachment paths *before* the cascading delete removes their source
+/// rows, then purge/unlink both after.
 fn delete_page(conn: &Connection, page_id: &str) -> Result<(), String> {
     let mut stmt = conn
         .prepare("SELECT b.id FROM blocks b JOIN segments s ON b.segment_id = s.id WHERE s.page_id = ?1")
@@ -352,19 +377,39 @@ fn delete_page(conn: &Connection, page_id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     drop(stmt);
 
+    // Same "collect before the cascading delete, clean up the non-cascaded
+    // side effect after" shape as the block_ids above — attachment *files*
+    // aren't SQLite rows, so `ON DELETE CASCADE` removes the `attachments`
+    // rows but never touches the files those rows point at. Collecting
+    // `relative_path` (not just `id`) here, before the delete, matters:
+    // once `DELETE FROM pages` cascades the `attachments` rows away, a
+    // by-id lookup afterward would find nothing to clean up.
+    let mut attach_stmt = conn
+        .prepare("SELECT a.relative_path FROM attachments a JOIN segments s ON a.segment_id = s.id WHERE s.page_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let attachment_paths: Vec<String> = attach_stmt
+        .query_map([page_id], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(attach_stmt);
+
     conn.execute("DELETE FROM pages WHERE id = ?1", [page_id]).map_err(|e| e.to_string())?;
     for block_id in block_ids {
         conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [&block_id]).map_err(|e| e.to_string())?;
     }
+    delete_attachment_files(conn, &attachment_paths)?;
     Ok(())
 }
 
-/// Deletes a folder, every subfolder nested under it, and every page/segment/
-/// block those folders contain. `folders.parent_id` and `pages.folder_id`
-/// are both `ON DELETE CASCADE` (V2__folders_and_segment_content.sql), so a
-/// single `DELETE FROM folders` on the top folder cascades through the whole
-/// subtree down to `blocks` — the recursive CTE below only exists to collect
-/// block ids first, for the same `blocks_fts` cleanup `delete_page` needs.
+/// Deletes a folder, every subfolder nested under it, and every page/
+/// segment/block/attachment those folders contain. `folders.parent_id`,
+/// `pages.folder_id`, and (transitively via `segments`) `attachments.
+/// segment_id` are all `ON DELETE CASCADE`, so a single `DELETE FROM
+/// folders` on the top folder cascades through the whole subtree down to
+/// `blocks`/`attachments` — the recursive CTEs below only exist to collect
+/// block ids and attachment paths first, for the same `blocks_fts`/on-disk-
+/// file cleanup `delete_page` needs (see its own doc comment).
 fn delete_folder(conn: &Connection, folder_id: &str) -> Result<(), String> {
     let mut stmt = conn
         .prepare(
@@ -386,10 +431,31 @@ fn delete_folder(conn: &Connection, folder_id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     drop(stmt);
 
+    let mut attach_stmt = conn
+        .prepare(
+            "WITH RECURSIVE sub(id) AS (
+               SELECT ?1
+               UNION ALL
+               SELECT f.id FROM folders f JOIN sub ON f.parent_id = sub.id
+             )
+             SELECT a.relative_path FROM attachments a
+             JOIN segments s ON a.segment_id = s.id
+             JOIN pages p ON s.page_id = p.id
+             WHERE p.folder_id IN (SELECT id FROM sub)",
+        )
+        .map_err(|e| e.to_string())?;
+    let attachment_paths: Vec<String> = attach_stmt
+        .query_map([folder_id], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(attach_stmt);
+
     conn.execute("DELETE FROM folders WHERE id = ?1", [folder_id]).map_err(|e| e.to_string())?;
     for block_id in block_ids {
         conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [&block_id]).map_err(|e| e.to_string())?;
     }
+    delete_attachment_files(conn, &attachment_paths)?;
     Ok(())
 }
 
@@ -498,12 +564,140 @@ fn save_segments_batch(conn: &Connection, segments: &[Value]) -> Result<(), Stri
     Ok(())
 }
 
-/// Deleting a segment cascades (`ON DELETE CASCADE`, V1 schema) to its
-/// `blocks` row automatically; `blocks_fts` (V3 migration, self-contained
-/// FTS5 — no rowid/FK coupling to `blocks`) needs its own explicit delete.
+/// Deleting a segment cascades (`ON DELETE CASCADE`, V1/V6 schema) to its
+/// `blocks` and `attachments` rows automatically; `blocks_fts` (V3
+/// migration, self-contained FTS5 — no rowid/FK coupling to `blocks`) needs
+/// its own explicit delete, and an attachment's actual bytes are a file on
+/// disk, not a DB row, so those need collecting *before* the cascade too.
 fn delete_segment(conn: &Connection, id: &str) -> Result<(), String> {
+    let attachment_paths: Vec<String> = conn
+        .prepare("SELECT relative_path FROM attachments WHERE segment_id = ?1")
+        .map_err(|e| e.to_string())?
+        .query_map([id], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
     conn.execute("DELETE FROM segments WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [id]).map_err(|e| e.to_string())?;
+    delete_attachment_files(conn, &attachment_paths)?;
+    Ok(())
+}
+
+/// Where attachment files live: a sibling of the SQLite database file
+/// itself (`<db path's parent>/attachments/`), created on first use. Using
+/// `rusqlite::Connection::path()` (the open database's own file path) means
+/// this needs no separate CLI arg/plumbing through `main.rs` alongside
+/// `FLOWNOTE_DB_PATH` — errors (e.g. an in-memory `:memory:` test
+/// connection, which has no path) only surface when there's actually an
+/// attachment to read/write, never for the vast majority of calls that have
+/// none.
+fn attachments_dir(conn: &Connection) -> Result<PathBuf, String> {
+    let db_path = conn.path().ok_or("no attachments directory: connection has no database file path")?;
+    let dir = std::path::Path::new(db_path)
+        .parent()
+        .ok_or("database path has no parent directory")?
+        .join("attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Deletes the on-disk files at the given `attachments.relative_path`
+/// values. Best-effort per file — one already missing from disk (e.g.
+/// removed out-of-band) doesn't stop cleaning up the rest, and doesn't fail
+/// the DB delete this is always called alongside. No-op (skips even
+/// resolving `attachments_dir`) when the list is empty, which is every
+/// existing call site before this feature ever created an attachment.
+fn delete_attachment_files(conn: &Connection, relative_paths: &[String]) -> Result<(), String> {
+    if relative_paths.is_empty() {
+        return Ok(());
+    }
+    let dir = attachments_dir(conn)?;
+    for rel in relative_paths {
+        let _ = std::fs::remove_file(dir.join(rel));
+    }
+    Ok(())
+}
+
+/// Sanitizes a user-supplied file name into something safe to use as (part
+/// of) a path component — strips any path separators/`..` a malicious or
+/// just plain unusual OS-provided clipboard filename might carry, since
+/// this ends up joined onto `attachments_dir()` verbatim.
+fn sanitize_file_name(name: &str) -> String {
+    let cleaned: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '\0')).collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        "attachment".to_string()
+    } else {
+        cleaned.to_string()
+    }
+}
+
+fn save_attachment(conn: &Connection, params: &Value) -> Result<Value, String> {
+    let id = params.get("id").and_then(Value::as_str).ok_or("save_attachment requires `id`")?;
+    let segment_id = params.get("segmentId").and_then(Value::as_str).ok_or("save_attachment requires `segmentId`")?;
+    let file_name = params.get("fileName").and_then(Value::as_str).ok_or("save_attachment requires `fileName`")?;
+    let mime_type = params.get("mimeType").and_then(Value::as_str).ok_or("save_attachment requires `mimeType`")?;
+    let data_base64 = params.get("dataBase64").and_then(Value::as_str).ok_or("save_attachment requires `dataBase64`")?;
+
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data_base64).map_err(|e| e.to_string())?;
+    let size = bytes.len() as i64;
+    let relative_path = format!("{id}-{}", sanitize_file_name(file_name));
+
+    let dir = attachments_dir(conn)?;
+    std::fs::write(dir.join(&relative_path), &bytes).map_err(|e| e.to_string())?;
+
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO attachments (id, segment_id, file_name, mime_type, size, relative_path, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![id, segment_id, file_name, mime_type, size, relative_path, now],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "id": id, "fileName": file_name, "mimeType": mime_type, "size": size }))
+}
+
+fn get_attachment(conn: &Connection, id: &str) -> Result<Option<Value>, String> {
+    conn.query_row(
+        "SELECT id, file_name, mime_type, size, relative_path FROM attachments WHERE id = ?1",
+        [id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())?
+    .map(|(id, file_name, mime_type, size, relative_path)| -> Result<Value, String> {
+        let dir = attachments_dir(conn)?;
+        let path = dir.join(relative_path);
+        Ok(serde_json::json!({
+            "id": id,
+            "fileName": file_name,
+            "mimeType": mime_type,
+            "size": size,
+            "path": path.to_string_lossy(),
+        }))
+    })
+    .transpose()
+}
+
+fn delete_attachment(conn: &Connection, id: &str) -> Result<(), String> {
+    let relative_path: Option<String> = conn
+        .query_row("SELECT relative_path FROM attachments WHERE id = ?1", [id], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    conn.execute("DELETE FROM attachments WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    if let Some(rel) = relative_path {
+        delete_attachment_files(conn, &[rel])?;
+    }
     Ok(())
 }
 
@@ -1338,6 +1532,192 @@ mod tests {
         assert_eq!(pages, 0);
         let segments: i64 = conn.query_row("SELECT COUNT(*) FROM segments", [], |row| row.get(0)).unwrap();
         assert_eq!(segments, 0);
+    }
+
+    /// Attachments need a *file-backed* connection, unlike every other test
+    /// here (`db::open_in_memory()`) — `attachments_dir()` derives the
+    /// attachments directory from `Connection::path()`, which is `None` for
+    /// an in-memory connection. Each call gets its own throwaway SQLite file
+    /// (and matching `attachments/` dir) under the OS temp dir, named
+    /// uniquely so parallel test threads never collide; nothing deletes it
+    /// afterward since it's a throwaway temp path, same as any other test
+    /// artifact left in `$TMPDIR`.
+    fn conn_with_page_on_disk(page_id: &str) -> Connection {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "flownote-attachment-test-{}-{}-{}.sqlite3",
+            std::process::id(),
+            n,
+            now_ms()
+        ));
+        let mut conn = Connection::open(&path).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        flownote_core::migrations::run(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO pages (id, notebook_id, title, mode, created_at, updated_at)
+             VALUES (?1, 'nb-1', 'Untitled', 'canvas', 0, 0)",
+            [page_id],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn save_attachment_then_get_attachment_round_trips() {
+        let conn = conn_with_page_on_disk("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 50,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(b"hello attachment bytes");
+        let res = dispatch(
+            &conn,
+            Request {
+                id: 51,
+                method: "save_attachment".into(),
+                params: json!({ "id": "att-1", "segmentId": "seg-1", "fileName": "notes.txt", "mimeType": "text/plain", "dataBase64": data_base64 }),
+            },
+        );
+        assert!(res.error.is_none(), "save_attachment errored: {:?}", res.error);
+        assert_eq!(res.result.as_ref().unwrap()["fileName"], json!("notes.txt"));
+        assert_eq!(res.result.as_ref().unwrap()["size"], json!(22));
+
+        let got = dispatch(&conn, Request { id: 52, method: "get_attachment".into(), params: json!({ "id": "att-1" }) });
+        assert!(got.error.is_none());
+        let path = got.result.as_ref().unwrap()["path"].as_str().unwrap().to_string();
+        assert_eq!(std::fs::read(&path).unwrap(), b"hello attachment bytes");
+    }
+
+    #[test]
+    fn delete_attachment_removes_the_row_and_the_file() {
+        let conn = conn_with_page_on_disk("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 53,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(b"bytes");
+        dispatch(
+            &conn,
+            Request {
+                id: 54,
+                method: "save_attachment".into(),
+                params: json!({ "id": "att-1", "segmentId": "seg-1", "fileName": "a.bin", "mimeType": "application/octet-stream", "dataBase64": data_base64 }),
+            },
+        );
+        let path = get_attachment(&conn, "att-1").unwrap().unwrap()["path"].as_str().unwrap().to_string();
+        assert!(std::path::Path::new(&path).exists());
+
+        let res = dispatch(&conn, Request { id: 55, method: "delete_attachment".into(), params: json!({ "id": "att-1" }) });
+        assert!(res.error.is_none());
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM attachments", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 0);
+        assert!(!std::path::Path::new(&path).exists(), "attachment file should be removed from disk");
+    }
+
+    #[test]
+    fn delete_segment_also_removes_its_attachment_file() {
+        let conn = conn_with_page_on_disk("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 56,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(b"bytes");
+        dispatch(
+            &conn,
+            Request {
+                id: 57,
+                method: "save_attachment".into(),
+                params: json!({ "id": "att-1", "segmentId": "seg-1", "fileName": "a.bin", "mimeType": "application/octet-stream", "dataBase64": data_base64 }),
+            },
+        );
+        let path = get_attachment(&conn, "att-1").unwrap().unwrap()["path"].as_str().unwrap().to_string();
+
+        dispatch(&conn, Request { id: 58, method: "delete_segment".into(), params: json!({ "id": "seg-1" }) });
+
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM attachments", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 0);
+        assert!(!std::path::Path::new(&path).exists());
+    }
+
+    #[test]
+    fn delete_page_also_removes_its_segments_attachment_files() {
+        let conn = conn_with_page_on_disk("page-1");
+        dispatch(
+            &conn,
+            Request {
+                id: 59,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(b"bytes");
+        dispatch(
+            &conn,
+            Request {
+                id: 60,
+                method: "save_attachment".into(),
+                params: json!({ "id": "att-1", "segmentId": "seg-1", "fileName": "a.bin", "mimeType": "application/octet-stream", "dataBase64": data_base64 }),
+            },
+        );
+        let path = get_attachment(&conn, "att-1").unwrap().unwrap()["path"].as_str().unwrap().to_string();
+
+        dispatch(&conn, Request { id: 61, method: "delete_page".into(), params: json!({ "id": "page-1" }) });
+
+        assert!(!std::path::Path::new(&path).exists());
+    }
+
+    #[test]
+    fn delete_folder_also_removes_nested_attachment_files() {
+        let conn = conn_with_page_on_disk("page-1");
+        // `conn_with_page_on_disk` already creates "page-1" un-foldered;
+        // give it a real folder so `delete_folder` has something to cascade
+        // through down to its segment's attachment.
+        dispatch(
+            &conn,
+            Request {
+                id: 62,
+                method: "save_folder".into(),
+                params: json!({ "id": "folder-1", "name": "Parent", "parentId": null, "icon": null, "expanded": false }),
+            },
+        );
+        conn.execute("UPDATE pages SET folder_id = 'folder-1' WHERE id = 'page-1'", []).unwrap();
+        dispatch(
+            &conn,
+            Request {
+                id: 63,
+                method: "save_segment".into(),
+                params: json!({ "id": "seg-1", "pageId": "page-1", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+            },
+        );
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(b"bytes");
+        dispatch(
+            &conn,
+            Request {
+                id: 64,
+                method: "save_attachment".into(),
+                params: json!({ "id": "att-1", "segmentId": "seg-1", "fileName": "a.bin", "mimeType": "application/octet-stream", "dataBase64": data_base64 }),
+            },
+        );
+        let path = get_attachment(&conn, "att-1").unwrap().unwrap()["path"].as_str().unwrap().to_string();
+
+        dispatch(&conn, Request { id: 65, method: "delete_folder".into(), params: json!({ "id": "folder-1" }) });
+
+        assert!(!std::path::Path::new(&path).exists());
     }
 
     /// `plugin_storage.plugin_id` has a `FOREIGN KEY ... REFERENCES

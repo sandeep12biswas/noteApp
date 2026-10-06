@@ -91,6 +91,26 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.deleteSegment('seg-1')).rejects.toThrow()
   })
 
+  it('saveAttachment rejects', async () => {
+    const adapter = create()
+    await expect(adapter.saveAttachment('att-1', 'seg-1', 'a.txt', 'text/plain', 'aGVsbG8=')).rejects.toThrow()
+  })
+
+  it('getAttachment rejects', async () => {
+    const adapter = create()
+    await expect(adapter.getAttachment('att-1')).rejects.toThrow()
+  })
+
+  it('deleteAttachment rejects', async () => {
+    const adapter = create()
+    await expect(adapter.deleteAttachment('att-1')).rejects.toThrow()
+  })
+
+  it('openAttachment rejects', async () => {
+    const adapter = create()
+    await expect(adapter.openAttachment('att-1')).rejects.toThrow()
+  })
+
   it('saveBlock rejects', async () => {
     const adapter = create()
     await expect(

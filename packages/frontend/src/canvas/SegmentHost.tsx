@@ -9,9 +9,12 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
 import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, resolvePosition } from '../lib/collision'
+import { handleAttachmentPaste } from '../lib/attachmentPaste'
 import { DEFAULT_SEGMENT_HEIGHT, useCanvasStore, type Segment } from '../store/canvasStore'
+import { getIPCAdapter } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
 import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
+import { AttachmentChoiceMenu } from './AttachmentChoiceMenu'
 import { insertPluginBlock } from './insertPluginBlock'
 import { SegmentColorMenu } from './SegmentColorMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
@@ -59,13 +62,34 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   // delete it before applying the chosen block type.
   const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; charPos: number } | null>(null)
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
+  const [attachmentChoice, setAttachmentChoice] = useState<{
+    x: number
+    y: number
+    fileName: string
+    onChoose: (mode: 'file' | 'embed') => void
+  } | null>(null)
+  // `useEditor`'s callbacks (`onBlur` below) close over whatever
+  // `attachmentChoice` was at the editor's *creation* render, not its
+  // current value — the editor instance itself isn't recreated on every
+  // render, so a plain state read there would be permanently stale. A ref
+  // mirrors the latest value for `onBlur` to read instead.
+  const attachmentChoiceRef = useRef(attachmentChoice)
+  useEffect(() => {
+    attachmentChoiceRef.current = attachmentChoice
+  }, [attachmentChoice])
 
   const editor = useEditor({
     extensions: segmentEditorExtensions,
     content: segment.content,
-    // Chromium's own native spellcheck would otherwise double-underline
-    // alongside spellcheckExtension.ts's decoration.
-    editorProps: { attributes: { spellcheck: 'false' } },
+    editorProps: {
+      // Chromium's own native spellcheck would otherwise double-underline
+      // alongside spellcheckExtension.ts's decoration.
+      attributes: { spellcheck: 'false' },
+      // File attachment support (EXECUTION_PLAN.md "Features") — shared
+      // with LinearSegmentHost.tsx via lib/attachmentPaste.ts, not
+      // reimplemented per host; see that module's own doc for why.
+      handlePaste: (view, event) => handleAttachmentPaste(view, event, segment.id, getIPCAdapter(), { onChooseMode: setAttachmentChoice }),
+    },
     onUpdate: ({ editor }) => {
       const json = editor.getJSON()
       updateSegmentContent(segment.id, json)
@@ -93,7 +117,17 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       }
     },
     onFocus: () => setActiveSegment(segment.id),
-    onBlur: () => deleteIfEmptyAndUncolored(segment.id),
+    // Skipped while an attachment choice is pending — clicking "Attach as
+    // file"/"Embed in note" (or the chooser just opening) blurs this still-
+    // empty editor *before* the chosen node is inserted; auto-deleting here
+    // would race the insert and delete the segment out from under the user.
+    // Found live via `run-electron`: the segment (and the menu with it)
+    // vanished the instant the chooser opened. See
+    // `AttachmentChoiceMenu.tsx`'s own `autoFocus: false` comment for the
+    // other half of this same race.
+    onBlur: () => {
+      if (!attachmentChoiceRef.current) deleteIfEmptyAndUncolored(segment.id)
+    },
     onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
 
@@ -419,6 +453,15 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           to={spellMenu.to}
           editor={editor}
           onClose={() => setSpellMenu(null)}
+        />
+      )}
+      {attachmentChoice && (
+        <AttachmentChoiceMenu
+          x={attachmentChoice.x}
+          y={attachmentChoice.y}
+          fileName={attachmentChoice.fileName}
+          onChoose={attachmentChoice.onChoose}
+          onClose={() => setAttachmentChoice(null)}
         />
       )}
     </div>
