@@ -65,6 +65,21 @@ The app has **four sections** in total: one horizontal panel across the full wid
 - **AI integration** — chat-style integration with major LLMs (Claude, Gemini, ChatGPT, GitHub Copilot). See §9 for the local-AI-first design actually adopted (Ollama, with a cloud fallback).
 - **Plug-ins** — spreadsheets, import/export (Markdown, PDF, Doc), print, table formatting, YouTube embedding, calendar integration (Google Calendar, Apple Calendar). These map directly onto the plugin system's `registerBlockType` extension point (§9.2).
 
+### 2.5 File attachments (v1.5)
+
+A segment accepts a pasted file (**Ctrl+C/Ctrl+V** — the OS clipboard, not a ribbon "Insert" action) two ways:
+
+- **Attach as file** — a compact chip (icon, file name, size); clicking it opens the file with the OS's default handler.
+- **Embed in note** — an inline preview sized to the segment's content column: a real `<img>` for an image, a generic file-preview box otherwise. **Drag-resizable** via a corner handle, same interaction idiom as a segment's own resize handle (§4.6) but scoped to the one embedded node, not the whole segment/page layout.
+
+Pasting a file always offers both choices, **except** a pasted screenshot (detected by the OS's generic clipboard-image naming, e.g. `image.png`), which embeds directly with no prompt — the common case shouldn't need a click.
+
+Design choice: attachment **bytes never live in the segment's own TipTap JSON** (unlike the segment's ink layer, §5.5, or a plugin block's `attrs`, §9.2) — they're written to disk under `<app data dir>/attachments/`, with only an id and display metadata (`fileName`/`mimeType`/`size`/`width`) stored in the segment's content and a matching row in a new `attachments` table (§7.2). A multi-megabyte screenshot inlined as base64 would otherwise bloat both the segment's saved JSON and the FTS5 index built from it (§7.2's `blocks_fts`). The renderer reads attachment bytes through a privileged `flownote-attachment://<id>` custom scheme (Linux; §8.1), the same mechanism `flownote-plugin://` already uses to stream plugin assets — not round-tripped through the electron-trpc/IPCAdapter JSON boundary.
+
+Deleting a segment, page, or folder cascades to its attachments' on-disk files, not just their DB rows (§7.2). Known gap: removing just the embedded node from a segment's text — without deleting the whole segment — does not currently garbage-collect that file.
+
+v1.5-only on Linux; not yet implemented on the Tauri shell (§8.2).
+
 ---
 
 ## 3. Platform Strategy — v1.3
@@ -161,9 +176,11 @@ Automerge runs only in the Rust backend, on all platforms, via the native `autom
 | Tab | Contents |
 |---|---|
 | **Home** | Undo/Redo · Font family + size · Bold/Italic/Underline/Strikethrough/Sub/Super · Highlight · Text colour · Clear · Bullets/Numbers/Checklist/Indent/Outdent · all 4 alignments · H1/H2/H3/Quote/Code/Table · Tags · Find · *plugin ribbon groups render here* |
-| **Insert** | Table · Divider · Link · Date stamp · Draw mode toggle · Image placeholder · *plugin block types appear here* |
+| **Insert** | Table · Divider · Link · Date stamp · Draw mode toggle · *plugin block types appear here* |
 | **Draw** | Pen / Marker / Eraser · 7 ink colours · Thin/Med/Thick · Clear · Done |
 | **View** | Ruler · Dot-grid overlay · Zoom in/out |
+
+File attachments (§2.5) aren't an Insert-tab button — they're paste-driven (**Ctrl+V** into a segment), the same way the brief's "Image placeholder" row was originally sketched but turned out not to need a ribbon trigger at all once built.
 
 ### 5.4 Ribbon-to-segment dispatch
 
@@ -304,6 +321,19 @@ CREATE TABLE plugin_storage (
   PRIMARY KEY (plugin_id, key),
   FOREIGN KEY (plugin_id) REFERENCES plugins(id) ON DELETE CASCADE
 );
+
+-- File attachments (added v1.5, §2.5) — metadata only; bytes live on disk
+-- under <app data dir>/attachments/<relative_path>, not in this table.
+CREATE TABLE attachments (
+  id            TEXT PRIMARY KEY,
+  segment_id    TEXT NOT NULL,
+  file_name     TEXT NOT NULL,
+  mime_type     TEXT NOT NULL,
+  size          INTEGER NOT NULL,
+  relative_path TEXT NOT NULL,
+  created_at    INTEGER,
+  FOREIGN KEY (segment_id) REFERENCES segments(id) ON DELETE CASCADE
+);
 ```
 
 ---
@@ -323,7 +353,7 @@ CREATE TABLE plugin_storage (
 | Ribbon dispatch *(shared)* | All commands → `getActiveEditor()` via `editorRefs`. Plugin ribbon buttons follow the same pattern. | *(shared)* |
 | Collision layer *(shared)* | `overlaps()`, `resolvePosition()`, `findFreePosition()`, `clampResizeWidth()`, `onHeightChange()`. Pure TypeScript. | *(shared)* |
 | Rust core *(shared binary)* | `flownote-electron` sidecar. | `flownote-tauri` embedded. |
-| Storage + sync + AI *(shared)* | SQLite WAL + FTS5 · Automerge Rust · Axum relay · ollama-rs · `plugin_storage` table. | *(shared)* |
+| Storage + sync + AI *(shared)* | SQLite WAL + FTS5 · Automerge Rust · Axum relay · ollama-rs · `plugin_storage` table · attachment files on disk (§2.5/§7.2, Linux only — `flownote-attachment://` streams them, same mechanism as `flownote-plugin://`). | *(shared, attachments excepted — Linux-only for now)* |
 
 ### 8.2 IPC command surface
 
@@ -346,6 +376,10 @@ CREATE TABLE plugin_storage (
 | `getInstalledPlugins()` | `trpc.getInstalledPlugins.query()` | `invoke('get_installed_plugins')` |
 | `pluginStorageGet(pId, key)` | `trpc.pluginStorageGet.query()` | `invoke('plugin_storage_get')` |
 | `pluginStorageSet(pId, k, v)` | `trpc.pluginStorageSet.mutate()` | `invoke('plugin_storage_set')` |
+| `saveAttachment(id, segId, name, mime, data)` *(v1.5)* | `trpc.saveAttachment.mutate()` | *not yet implemented* |
+| `getAttachment(id)` *(v1.5)* | `trpc.getAttachment.query()` | *not yet implemented* |
+| `deleteAttachment(id)` *(v1.5)* | `trpc.deleteAttachment.mutate()` | *not yet implemented* |
+| `openAttachment(id)` *(v1.5)* | `trpc.openAttachment.mutate()` → `shell.openPath` | *not yet implemented* |
 
 ---
 
