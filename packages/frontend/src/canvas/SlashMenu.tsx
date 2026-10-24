@@ -65,6 +65,12 @@ export function SlashMenu({
       aria-label="Insert block"
       className="fixed z-50 max-h-72 w-56 overflow-y-auto rounded border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}
+      // Issue #4: a mousedown on a menu item would move DOM focus off the
+      // editor, and TipTap's `focus()` only restores it a frame later, so
+      // anything typed straight after the click was lost. Cancelling the
+      // mousedown keeps focus (and the caret) in the editor throughout; the
+      // click still fires and selects the item.
+      onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}
     >
       {CORE_BLOCK_OPTIONS.map((opt) => (

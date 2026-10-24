@@ -321,8 +321,18 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     handle.addEventListener('pointerup', onUp)
   }
 
+  // Issue #4: when an item is chosen from the keyboard (Tab into the menu,
+  // then Enter), DOM focus is on the menu button, not the editor, and
+  // `chain().focus()` below only restores it on the next animation frame —
+  // keystrokes in between would be lost. Refocus synchronously first. (A
+  // mouse choice never gets here unfocused: SlashMenu cancels the mousedown.)
+  const refocusEditorNow = () => {
+    if (editor && !editor.isFocused) editor.view.focus()
+  }
+
   const applyCoreBlock = (id: string) => {
     if (!editor || !slashMenu) return
+    refocusEditorNow()
     const chain = editor.chain().focus().deleteRange({ from: slashMenu.charPos - 1, to: slashMenu.charPos })
     switch (id) {
       case 'paragraph':
@@ -360,6 +370,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
 
   const applyPluginBlock = (pluginId: string, slashCommandId: string) => {
     if (!editor || !slashMenu) return
+    refocusEditorNow()
     insertPluginBlock(editor, slashMenu.charPos, pluginId, slashCommandId)
     setSlashMenu(null)
   }

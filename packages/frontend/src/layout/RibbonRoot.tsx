@@ -107,6 +107,7 @@ function ColorDropdownButton({
         type="button"
         aria-label={label}
         title={`${label}: ${current}`}
+        onMouseDown={(e) => e.preventDefault()} // keep editor focus (issue #4, see RibbonButton)
         onClick={() => onApply(current)}
         className="flex flex-col items-center rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
       >
@@ -169,6 +170,10 @@ function RibbonButton({
       type="button"
       aria-label={label}
       title={label}
+      // Keep focus in the segment editor: otherwise the click blurs it and
+      // `chain().focus()` only restores focus a frame later, losing anything
+      // typed straight after (issue #4 — same bug as the slash menu).
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className="rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
     >
