@@ -82,6 +82,40 @@ describe('PageList', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  it('right-click on the list\'s empty space offers "New page", opening the dialog with the current folder pre-selected', async () => {
+    const store = useNotebookStore.getState()
+    store.createFolder(null, 'Archive')
+    const notes = store.createFolder(null, 'Notes')
+    useNotebookStore.setState({ selectedFolderId: notes.id! })
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('list', { name: 'Files' }) })
+    await user.click(screen.getByRole('menuitem', { name: 'New page' }))
+
+    expect(screen.getByRole('dialog', { name: 'New page' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Existing folder' })).toHaveValue(notes.id)
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'Plan')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    const files = Object.values(useNotebookStore.getState().files)
+    expect(files.map((f) => [f.name, f.folderId])).toEqual([['Plan', notes.id]])
+  })
+
+  it('right-click on a page row still opens that page\'s own menu, not the panel menu', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Page')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('button', { name: 'Page' }) })
+    expect(screen.queryByRole('menu', { name: 'Page panel actions' })).toBeNull()
+    expect(screen.getByRole('menu', { name: 'File actions' })).toBeInTheDocument()
+  })
+
   it('search by name finds a page in a different folder than the selected one', async () => {
     const store = useNotebookStore.getState()
     const a = store.createFolder(null, 'A')

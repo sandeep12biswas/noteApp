@@ -13,6 +13,7 @@ import {
   useNotebookStore,
 } from '../store/notebookStore'
 import { FileContextMenu } from './FileContextMenu'
+import { PanelContextMenu } from './PanelContextMenu'
 
 function allFoldersFlat(
   folders: Record<string, { id: string; name: string; parentId: string | null }>,
@@ -27,7 +28,7 @@ function allFoldersFlat(
  * either create a new folder or pick an existing one, and only then
  * prompts for the file name."
  */
-function NewPageFlow({ onClose }: { onClose: () => void }) {
+function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | null; onClose: () => void }) {
   const folders = useNotebookStore((s) => s.folders)
   const createFolder = useNotebookStore((s) => s.createFolder)
   const createFile = useNotebookStore((s) => s.createFile)
@@ -36,7 +37,8 @@ function NewPageFlow({ onClose }: { onClose: () => void }) {
 
   const [step, setStep] = useState<'folder' | 'name'>('folder')
   const [folderChoice, setFolderChoice] = useState<'existing' | 'new'>('existing')
-  const [existingFolderId, setExistingFolderId] = useState('')
+  // Starts on the folder currently open in the folder panel, if any.
+  const [existingFolderId, setExistingFolderId] = useState(initialFolderId ?? '')
   const [newFolderName, setNewFolderName] = useState('')
   const [folderId, setFolderId] = useState<string | null>(null)
   const [fileName, setFileName] = useState('')
@@ -168,6 +170,8 @@ export function PageList() {
 
   const [showNewPage, setShowNewPage] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; fileName: string } | null>(null)
+  // Right-click on the list's empty space (file rows stop their own event).
+  const [panelMenu, setPanelMenu] = useState<{ x: number; y: number } | null>(null)
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState<SearchMode>('name')
   // Backend FTS5 content search (DESIGN.md §2.2, Phase 5 "Full-text
@@ -270,7 +274,15 @@ export function PageList() {
         </select>
       </div>
 
-      <ul ref={listRef} className="flex-1 overflow-y-auto px-1" aria-label={isSearching ? 'Search results' : 'Files'}>
+      <ul
+        ref={listRef}
+        className="flex-1 overflow-y-auto px-1"
+        aria-label={isSearching ? 'Search results' : 'Files'}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setPanelMenu({ x: e.clientX, y: e.clientY })
+        }}
+      >
         {visibleFiles.map((file) => (
           <li key={file.id}>
             <button
@@ -280,6 +292,7 @@ export function PageList() {
               onClick={() => selectFile(file.id)}
               onContextMenu={(e) => {
                 e.preventDefault()
+                e.stopPropagation()
                 setContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id, fileName: file.name })
               }}
               className={
@@ -310,7 +323,17 @@ export function PageList() {
         />
       )}
 
-      {showNewPage && <NewPageFlow onClose={() => setShowNewPage(false)} />}
+      {panelMenu && (
+        <PanelContextMenu
+          x={panelMenu.x}
+          y={panelMenu.y}
+          label="Page panel actions"
+          items={[{ label: 'New page', onSelect: () => setShowNewPage(true) }]}
+          onClose={() => setPanelMenu(null)}
+        />
+      )}
+
+      {showNewPage && <NewPageFlow initialFolderId={selectedFolderId} onClose={() => setShowNewPage(false)} />}
     </section>
   )
 }

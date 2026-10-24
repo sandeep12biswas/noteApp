@@ -112,6 +112,30 @@ describe('SectionSidebar', () => {
     expect(screen.getByRole('textbox', { name: 'New folder name' })).toBeInTheDocument()
   })
 
+  it('right-click on the panel\'s empty space offers "New folder", which opens the new-folder input', async () => {
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('list', { name: 'Folder tree' }) })
+    const menu = screen.getByRole('menu', { name: 'Folder panel actions' })
+    await user.click(within(menu).getByRole('menuitem', { name: 'New folder' }))
+    expect(screen.queryByRole('menu', { name: 'Folder panel actions' })).toBeNull()
+
+    await user.type(screen.getByRole('textbox', { name: 'New folder name' }), 'inbox{Enter}')
+    const folders = Object.values(useNotebookStore.getState().folders)
+    expect(folders.map((f) => [f.name, f.parentId])).toEqual([['Inbox', null]]) // top-level, auto-capitalised
+  })
+
+  it('right-click on a folder row still opens that folder\'s own menu, not the panel menu', async () => {
+    useNotebookStore.getState().createFolder(null, 'Notes')
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText('Notes') })
+    expect(screen.getByRole('menu', { name: 'Folder actions' })).toBeInTheDocument()
+    expect(screen.queryByRole('menu', { name: 'Folder panel actions' })).toBeNull()
+  })
+
   it('changes a folder icon via the icon picker, and can clear back to default', async () => {
     const store = useNotebookStore.getState()
     const { id } = store.createFolder(null, 'Notes')

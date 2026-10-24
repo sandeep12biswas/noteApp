@@ -11,6 +11,7 @@ import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../s
 import { useUIStore } from '../store/uiStore'
 import { FolderContextMenu } from './FolderContextMenu'
 import { FolderIconMenu } from './FolderIconMenu'
+import { PanelContextMenu } from './PanelContextMenu'
 
 function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone: () => void }) {
   const [value, setValue] = useState('')
@@ -269,6 +270,9 @@ export function SectionSidebar() {
   useMenuKeyboardNav(treeRef, { autoFocus: false, itemSelector: 'button' })
   const moveFolder = useNotebookStore((s) => s.moveFolder)
   const [isRootDropTarget, setIsRootDropTarget] = useState(false)
+  // Right-click on the tree's empty space; folder rows stop their own
+  // contextmenu event, so this never fires on top of FolderContextMenu.
+  const [panelMenu, setPanelMenu] = useState<{ x: number; y: number } | null>(null)
 
   return (
     <aside
@@ -291,6 +295,12 @@ export function SectionSidebar() {
         ref={treeRef}
         className={'flex-1 overflow-y-auto px-1 ' + (isRootDropTarget ? 'bg-blue-50 dark:bg-blue-950/30' : '')}
         aria-label="Folder tree"
+        onContextMenu={(e) => {
+          // Leave text inputs (new-folder / rename) their native menu.
+          if ((e.target as HTMLElement).closest('input')) return
+          e.preventDefault()
+          setPanelMenu({ x: e.clientX, y: e.clientY })
+        }}
         // Dropping a folder on empty tree space (not onto another folder
         // row — those stop propagation in their own onDrop) moves it to
         // the top level. Files have no "no folder" home, so a file drag
@@ -320,6 +330,15 @@ export function SectionSidebar() {
           <li className="p-2 text-sm text-gray-400">No folders yet</li>
         )}
       </ul>
+      {panelMenu && (
+        <PanelContextMenu
+          x={panelMenu.x}
+          y={panelMenu.y}
+          label="Folder panel actions"
+          items={[{ label: 'New folder', onSelect: () => setAddingRoot(true) }]}
+          onClose={() => setPanelMenu(null)}
+        />
+      )}
       <div className="border-t border-gray-200 p-2 dark:border-gray-800" data-testid="plugins-tab">
         {/* Plugins tab — DESIGN.md §9.5 Plugin Manager UI entry point */}
         <button
