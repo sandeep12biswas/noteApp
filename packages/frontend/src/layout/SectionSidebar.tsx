@@ -273,10 +273,12 @@ export function SectionSidebar() {
   // Right-click on the tree's empty space; folder rows stop their own
   // contextmenu event, so this never fires on top of FolderContextMenu.
   const [panelMenu, setPanelMenu] = useState<{ x: number; y: number } | null>(null)
+  const width = useUIStore((s) => s.panelWidths.folders) // resizable — PanelResizeHandle
 
   return (
     <aside
-      className="flex w-40 shrink-0 flex-col border-r border-gray-200 dark:border-gray-800"
+      className="flex shrink-0 flex-col border-r border-gray-200 dark:border-gray-800"
+      style={{ width }}
       data-testid="section-sidebar"
       aria-label="Folders"
     >

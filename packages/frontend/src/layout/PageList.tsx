@@ -12,6 +12,7 @@ import {
   searchFilesByName,
   useNotebookStore,
 } from '../store/notebookStore'
+import { useUIStore } from '../store/uiStore'
 import { FileContextMenu } from './FileContextMenu'
 import { PanelContextMenu } from './PanelContextMenu'
 
@@ -172,6 +173,7 @@ export function PageList() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string; fileName: string } | null>(null)
   // Right-click on the list's empty space (file rows stop their own event).
   const [panelMenu, setPanelMenu] = useState<{ x: number; y: number } | null>(null)
+  const width = useUIStore((s) => s.panelWidths.pages) // resizable — PanelResizeHandle
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState<SearchMode>('name')
   // Backend FTS5 content search (DESIGN.md §2.2, Phase 5 "Full-text
@@ -239,7 +241,8 @@ export function PageList() {
 
   return (
     <section
-      className="relative flex w-[170px] shrink-0 flex-col border-r border-gray-200 dark:border-gray-800"
+      className="relative flex shrink-0 flex-col border-r border-gray-200 dark:border-gray-800"
+      style={{ width }}
       data-testid="page-list"
       aria-label="Pages"
     >

@@ -4,6 +4,14 @@
 // document state.
 import { create } from 'zustand'
 import type { CapturedFormat } from '../lib/formatPainter'
+import {
+  clampPanelWidth,
+  DEFAULT_PANEL_WIDTHS,
+  loadPanelWidths,
+  type PanelWidths,
+  type ResizablePanel,
+  savePanelWidths,
+} from '../lib/panelWidths'
 
 export const RIBBON_TABS = ['Home', 'Insert', 'Draw', 'View'] as const
 export type RibbonTab = (typeof RIBBON_TABS)[number]
@@ -45,9 +53,28 @@ interface UIState {
   formatPainter: { armed: boolean; sticky: boolean; format: CapturedFormat | null }
   armFormatPainter: (format: CapturedFormat, sticky: boolean) => void
   disarmFormatPainter: () => void
+  // Side-panel widths (lib/panelWidths.ts; PanelResizeHandle.tsx drags them).
+  panelWidths: PanelWidths
+  /** Sets a panel's width, clamped so the editor keeps its minimum. Doesn't save — call `persistPanelWidths()` when a drag ends. */
+  setPanelWidth: (panel: ResizablePanel, width: number) => void
+  persistPanelWidths: () => void
+  /** Back to the default width (clamped), and saved. */
+  resetPanelWidth: (panel: ResizablePanel) => void
+  /** Re-clamps both widths, e.g. after the window got narrower. */
+  reclampPanelWidths: () => void
 }
 
-export const useUIStore = create<UIState>((set) => ({
+/** The other side panel's on-screen width — the pages panel isn't shown while the Plugin Manager is open. */
+function otherPanelWidth(s: Pick<UIState, 'panelWidths' | 'activeView'>, panel: ResizablePanel): number {
+  if (panel === 'pages') return s.panelWidths.folders
+  return s.activeView === 'notebook' ? s.panelWidths.pages : 0
+}
+
+function windowWidth(): number {
+  return typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth
+}
+
+export const useUIStore = create<UIState>((set, get) => ({
   activeRibbonTab: 'Home',
   setActiveRibbonTab: (tab) => set({ activeRibbonTab: tab }),
   zoom: 1,
@@ -59,4 +86,19 @@ export const useUIStore = create<UIState>((set) => ({
   formatPainter: { armed: false, sticky: false, format: null },
   armFormatPainter: (format, sticky) => set({ formatPainter: { armed: true, sticky, format } }),
   disarmFormatPainter: () => set({ formatPainter: { armed: false, sticky: false, format: null } }),
+  panelWidths: loadPanelWidths(),
+  setPanelWidth: (panel, width) =>
+    set((s) => ({
+      panelWidths: { ...s.panelWidths, [panel]: clampPanelWidth(width, otherPanelWidth(s, panel), windowWidth()) },
+    })),
+  persistPanelWidths: () => savePanelWidths(get().panelWidths),
+  resetPanelWidth: (panel) => {
+    get().setPanelWidth(panel, DEFAULT_PANEL_WIDTHS[panel])
+    get().persistPanelWidths()
+  },
+  reclampPanelWidths: () => {
+    const { panelWidths, setPanelWidth } = get()
+    setPanelWidth('folders', panelWidths.folders)
+    setPanelWidth('pages', get().panelWidths.pages)
+  },
 }))
