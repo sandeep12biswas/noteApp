@@ -79,3 +79,64 @@ jobs:
       - name: cargo clippy (Windows/macOS)
         if: matrix.os != 'ubuntu-24.04'
         run: cargo clippy --workspace -- -D warnings
+
+  # Playwright end-to-end suites, Linux only:
+  #   - e2e/          — the built frontend in headless Chromium (no backend)
+  #   - e2e-electron/ — the real Electron app + Rust sidecar + SQLite, under
+  #                     a virtual display (xvfb-run)
+  # They cover what unit tests can't — e.g. issues #3 and #4 and the lost
+  # keystrokes after click-to-create were all caught only by these.
+  # Uses the plugin/SDK copies committed under packages/frontend/public/
+  # (what the installers ship), so no plugin build step is needed here.
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # Chromium for e2e/, plus the system libraries it and Electron need.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build frontend, Electron main process and release sidecar
+        run: |
+          pnpm --filter @flownote/frontend run build
+          pnpm --filter @flownote/electron run build
+          cargo build --release -p flownote-electron
+
+      - name: E2E (browser)
+        run: pnpm run test:e2e
+
+      - name: E2E (Electron)
+        run: xvfb-run -a pnpm run test:e2e:electron
+
+      - name: Upload Playwright results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+
