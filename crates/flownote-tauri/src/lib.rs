@@ -6,9 +6,12 @@
 pub mod commands;
 
 pub use commands::{
-    add_dictionary_word, delete_segment, get_ink_layer, get_page, list_dictionary_words, list_folders, list_pages,
-    list_segments, ping, save_folder, save_ink_layer, save_page, save_segment, save_segments_batch, AppState,
-    FolderDto, FolderInput, PageDto, PageInput, SegmentDto, SegmentInput,
+    add_dictionary_word, delete_attachment, delete_folder, delete_page, delete_segment, get_attachment,
+    get_ink_layer, get_installed_plugins, get_page, install_plugin, list_dictionary_words, list_folders, list_pages,
+    list_segments, open_attachment, ping, plugin_storage_delete, plugin_storage_get, plugin_storage_list,
+    plugin_storage_set, save_attachment, save_folder, save_ink_layer, save_page, save_segment, save_segments_batch,
+    search, set_page_mode, set_plugin_enabled, uninstall_plugin, AppState, AttachmentDto, AttachmentWithPathDto,
+    FolderDto, FolderInput, PageDto, PageInput, SearchResultDto, SegmentDto, SegmentInput,
 };
 
 /// Builds the `tauri-specta` builder wiring every command above. Consumed by
@@ -24,14 +27,30 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         list_folders,
         save_page,
         list_pages,
+        delete_page,
+        delete_folder,
         list_segments,
         save_segment,
         save_segments_batch,
         delete_segment,
+        save_attachment,
+        get_attachment,
+        delete_attachment,
+        open_attachment,
+        set_page_mode,
         save_ink_layer,
         get_ink_layer,
         add_dictionary_word,
         list_dictionary_words,
+        search,
+        install_plugin,
+        uninstall_plugin,
+        set_plugin_enabled,
+        get_installed_plugins,
+        plugin_storage_get,
+        plugin_storage_set,
+        plugin_storage_delete,
+        plugin_storage_list,
     ])
 }
 

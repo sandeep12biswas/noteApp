@@ -48,6 +48,22 @@ async listPages(folderId: string) : Promise<Result<PageDto[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async deletePage(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_page", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteFolder(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_folder", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listSegments(pageId: string) : Promise<Result<SegmentDto[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_segments", { pageId }) };
@@ -75,6 +91,51 @@ async saveSegmentsBatch(segments: SegmentInput[]) : Promise<Result<null, string>
 async deleteSegment(id: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("delete_segment", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveAttachment(id: string, segmentId: string, fileName: string, mimeType: string, dataBase64: string) : Promise<Result<AttachmentDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_attachment", { id, segmentId, fileName, mimeType, dataBase64 }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getAttachment(id: string) : Promise<Result<AttachmentWithPathDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_attachment", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteAttachment(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_attachment", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Opens the attachment's file with the OS default handler — the Tauri
+ * counterpart of Electron's `shell.openPath` (apps/electron's trpc router).
+ * Not unit-tested: the only logic beyond `get_attachment_impl` is the OS call.
+ */
+async openAttachment(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_attachment", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setPageMode(pageId: string, mode: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_page_mode", { pageId, mode }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -111,6 +172,83 @@ async listDictionaryWords() : Promise<Result<string[], string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async search(query: string, notebookId: string) : Promise<Result<SearchResultDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("search", { query, notebookId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Returns the stored manifest as free-form JSON (`PluginManifest` in
+ * packages/ipc-adapter/src/types.ts) — a plugin manifest can carry fields
+ * this crate doesn't model, so it isn't forced through a fixed struct.
+ */
+async installPlugin(source: string) : Promise<Result<JsonValue, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_plugin", { source }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async uninstallPlugin(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("uninstall_plugin", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setPluginEnabled(id: string, enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_plugin_enabled", { id, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getInstalledPlugins() : Promise<Result<JsonValue[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_installed_plugins") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async pluginStorageGet(pluginId: string, key: string) : Promise<Result<string | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin_storage_get", { pluginId, key }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async pluginStorageSet(pluginId: string, key: string, value: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin_storage_set", { pluginId, key, value }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async pluginStorageDelete(pluginId: string, key: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin_storage_delete", { pluginId, key }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async pluginStorageList(pluginId: string) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin_storage_list", { pluginId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -124,11 +262,17 @@ async listDictionaryWords() : Promise<Result<string[], string>> {
 
 /** user-defined types **/
 
+export type AttachmentDto = { id: string; fileName: string; mimeType: string; size: number }
+/**
+ * `AttachmentDto` plus the file's absolute on-disk path (`getAttachment`).
+ */
+export type AttachmentWithPathDto = { id: string; fileName: string; mimeType: string; size: number; path: string }
 export type FolderDto = { id: string; name: string; parentId: string | null; icon: string | null; expanded: boolean }
 export type FolderInput = { id: string; name: string; parentId: string | null; icon: string | null; expanded: boolean }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 export type PageDto = { id: string; notebookId: string; title: string; mode: string; createdAt: number; updatedAt: number }
 export type PageInput = { id: string; folderId: string; title: string }
+export type SearchResultDto = { pageId: string; segmentId: string; snippet: string }
 export type SegmentDto = { id: string; pageId: string; x: number; y: number; w: number; h: number; zIndex: number; borderColor: string | null; fillColor: string | null; content: JsonValue }
 export type SegmentInput = { id: string; pageId: string; x: number; y: number; w: number; h: number; zIndex?: number; borderColor: string | null; fillColor: string | null; 
 /**

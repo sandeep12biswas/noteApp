@@ -1206,6 +1206,7 @@ version = "0.1.0"
 dependencies = [
  "automerge",
  "axum",
+ "base64 0.22.1",
  "ollama-rs",
  "r2d2",
  "r2d2_sqlite",
@@ -1236,6 +1237,7 @@ name = "flownote-tauri"
 version = "0.1.0"
 dependencies = [
  "flownote-core",
+ "open",
  "rusqlite",
  "serde",
  "serde_json",

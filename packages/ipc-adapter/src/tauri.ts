@@ -19,10 +19,13 @@ function unwrap<T>(result: { status: 'ok'; data: T } | { status: 'error'; error:
 
 // Backed by tauri-specta's generated invoke() bindings (./generated/tauri-
 // bindings.ts) against the #[tauri::command] handlers in crates/flownote-
-// tauri. Methods the bindings don't cover yet are still throw-stubs; as
-// flownote-tauri gains a command, add it to specta_builder() there and swap
-// the matching method here from a stub throw to a `commands.xxx()` call —
-// mirroring how apps/electron's trpc router grows (see its module doc).
+// tauri, which wrap the same flownote_core::store functions the Electron
+// sidecar calls. Every method ElectronIPCAdapter implements is implemented
+// here too; the remaining throw-stubs (saveBlock, mergeSegments,
+// onSyncEvent, aiComplete) are unimplemented on both platforms. To add a
+// method: add the storage function to flownote_core::store, expose it from
+// both shells, regenerate the bindings (`cargo run -p flownote-tauri
+// --example export_bindings`), then call `commands.xxx()` here.
 export class TauriIPCAdapter implements IPCAdapter {
   async getPage(pageId: string): Promise<Page> {
     const result = await commands.getPage(pageId)
@@ -60,12 +63,12 @@ export class TauriIPCAdapter implements IPCAdapter {
     })
   }
 
-  async deletePage(_id: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.deletePage not implemented')
+  async deletePage(id: string): Promise<void> {
+    unwrap(await commands.deletePage(id))
   }
 
-  async deleteFolder(_id: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.deleteFolder not implemented')
+  async deleteFolder(id: string): Promise<void> {
+    unwrap(await commands.deleteFolder(id))
   }
 
   async listSegments(pageId: string): Promise<Segment[]> {
@@ -88,20 +91,20 @@ export class TauriIPCAdapter implements IPCAdapter {
     unwrap(await commands.deleteSegment(id))
   }
 
-  async saveAttachment(_id: string, _segmentId: string, _fileName: string, _mimeType: string, _dataBase64: string): Promise<Attachment> {
-    throw new Error('TauriIPCAdapter.saveAttachment not implemented')
+  async saveAttachment(id: string, segmentId: string, fileName: string, mimeType: string, dataBase64: string): Promise<Attachment> {
+    return unwrap(await commands.saveAttachment(id, segmentId, fileName, mimeType, dataBase64))
   }
 
-  async getAttachment(_id: string): Promise<Attachment & { path: string }> {
-    throw new Error('TauriIPCAdapter.getAttachment not implemented')
+  async getAttachment(id: string): Promise<Attachment & { path: string }> {
+    return unwrap(await commands.getAttachment(id))
   }
 
-  async deleteAttachment(_id: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.deleteAttachment not implemented')
+  async deleteAttachment(id: string): Promise<void> {
+    unwrap(await commands.deleteAttachment(id))
   }
 
-  async openAttachment(_id: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.openAttachment not implemented')
+  async openAttachment(id: string): Promise<void> {
+    unwrap(await commands.openAttachment(id))
   }
 
   async saveBlock(_block: Block): Promise<void> {
@@ -128,13 +131,15 @@ export class TauriIPCAdapter implements IPCAdapter {
     throw new Error('TauriIPCAdapter.mergeSegments not implemented')
   }
 
-  async search(_query: string, _notebookId: string): Promise<SearchResult[]> {
-    throw new Error('TauriIPCAdapter.search not implemented')
+  async search(query: string, notebookId: string): Promise<SearchResult[]> {
+    return unwrap(await commands.search(query, notebookId))
   }
 
-  async setPageMode(_pageId: string, _mode: 'canvas' | 'linear'): Promise<void> {
-    throw new Error('TauriIPCAdapter.setPageMode not implemented')
+
+  async setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void> {
+    unwrap(await commands.setPageMode(pageId, mode))
   }
+
 
   onSyncEvent(_handler: (event: SyncEvent) => void): () => void {
     throw new Error('TauriIPCAdapter.onSyncEvent not implemented')
@@ -145,35 +150,47 @@ export class TauriIPCAdapter implements IPCAdapter {
     throw new Error('TauriIPCAdapter.aiComplete not implemented')
   }
 
-  async installPlugin(_source: string): Promise<PluginManifest> {
-    throw new Error('TauriIPCAdapter.installPlugin not implemented')
+  // A manifest is free-form JSON on the Rust side (it can carry fields the
+  // backend doesn't model), so specta types it as `JsonValue`; the backend
+  // has already validated it and filled in `PluginManifest`'s fields
+  // (flownote_core::store::install_plugin / manifest_response).
+  async installPlugin(source: string): Promise<PluginManifest> {
+    return unwrap(await commands.installPlugin(source)) as unknown as PluginManifest
   }
 
-  async uninstallPlugin(_id: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.uninstallPlugin not implemented')
+
+  async uninstallPlugin(id: string): Promise<void> {
+    unwrap(await commands.uninstallPlugin(id))
   }
 
-  async setPluginEnabled(_id: string, _enabled: boolean): Promise<void> {
-    throw new Error('TauriIPCAdapter.setPluginEnabled not implemented')
+
+  async setPluginEnabled(id: string, enabled: boolean): Promise<void> {
+    unwrap(await commands.setPluginEnabled(id, enabled))
   }
+
 
   async getInstalledPlugins(): Promise<PluginManifest[]> {
-    throw new Error('TauriIPCAdapter.getInstalledPlugins not implemented')
+    return unwrap(await commands.getInstalledPlugins()) as unknown as PluginManifest[]
   }
 
-  async pluginStorageGet(_pluginId: string, _key: string): Promise<string | null> {
-    throw new Error('TauriIPCAdapter.pluginStorageGet not implemented')
+
+  async pluginStorageGet(pluginId: string, key: string): Promise<string | null> {
+    return unwrap(await commands.pluginStorageGet(pluginId, key))
   }
 
-  async pluginStorageSet(_pluginId: string, _key: string, _value: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.pluginStorageSet not implemented')
+
+  async pluginStorageSet(pluginId: string, key: string, value: string): Promise<void> {
+    unwrap(await commands.pluginStorageSet(pluginId, key, value))
   }
 
-  async pluginStorageDelete(_pluginId: string, _key: string): Promise<void> {
-    throw new Error('TauriIPCAdapter.pluginStorageDelete not implemented')
+
+  async pluginStorageDelete(pluginId: string, key: string): Promise<void> {
+    unwrap(await commands.pluginStorageDelete(pluginId, key))
   }
 
-  async pluginStorageList(_pluginId: string): Promise<string[]> {
-    throw new Error('TauriIPCAdapter.pluginStorageList not implemented')
+
+  async pluginStorageList(pluginId: string): Promise<string[]> {
+    return unwrap(await commands.pluginStorageList(pluginId))
   }
+
 }

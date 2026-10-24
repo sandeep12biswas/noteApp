@@ -1,16 +1,21 @@
 //! `#[tauri::command]` handlers — DESIGN.md §3.2/§8.1/§8.2 (Windows/macOS
-//! shell). Mirrors crates/flownote-electron/src/protocol.rs one-for-one:
-//! both platforms run the same flownote-core storage layer, so `getPage`
-//! here and `get_page` there must behave identically (DESIGN.md §10
-//! "IPCAdapter type drift"). Extend both together.
+//! shell). Every command is a typed wrapper around `flownote_core::store`,
+//! the same storage layer flownote-electron's sidecar `dispatch` calls
+//! (DESIGN.md §6.3), so `getPage` here and `get_page` there can't behave
+//! differently (DESIGN.md §10 "IPCAdapter type drift"). New storage
+//! behaviour goes in `store`; this file only adds the typed, specta-exported
+//! signature for it.
 //!
 //! Each command is a thin wrapper around a pure `_impl` function that takes
-//! a `&Connection` directly — that's what's unit-tested below, the same way
-//! protocol.rs's `dispatch` is, without needing a running Tauri app.
+//! a `&Connection` directly — that's what's unit-tested below, without
+//! needing a running Tauri app.
 
 use flownote_core::db::Pool;
-use rusqlite::{Connection, OptionalExtension};
+use flownote_core::store;
+use rusqlite::Connection;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use specta::Type;
 use tauri::State;
 
@@ -20,7 +25,17 @@ pub struct AppState {
     pub pool: Pool,
 }
 
-#[derive(Debug, Serialize, Type, PartialEq)]
+/// `store` speaks camelCase JSON (the IPCAdapter wire shape); these two
+/// bridge it to and from this file's typed, specta-exported structs.
+fn to_json<T: Serialize>(value: &T) -> Result<Value, String> {
+    serde_json::to_value(value).map_err(|e| e.to_string())
+}
+
+fn from_json<T: DeserializeOwned>(value: Value) -> Result<T, String> {
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PageDto {
     pub id: String,
@@ -31,40 +46,7 @@ pub struct PageDto {
     pub updated_at: i64,
 }
 
-fn get_page_impl(conn: &Connection, page_id: &str) -> Result<PageDto, String> {
-    conn.query_row(
-        "SELECT id, notebook_id, title, mode, created_at, updated_at FROM pages WHERE id = ?1",
-        [page_id],
-        |row| {
-            Ok(PageDto {
-                id: row.get(0)?,
-                notebook_id: row.get(1)?,
-                title: row.get(2)?,
-                mode: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-            })
-        },
-    )
-    .optional()
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| format!("no such page: {page_id}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn ping() -> &'static str {
-    "pong"
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn get_page(state: State<AppState>, page_id: String) -> Result<PageDto, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    get_page_impl(&conn, &page_id)
-}
-
-#[derive(Debug, Serialize, Type, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderDto {
     pub id: String,
@@ -74,7 +56,7 @@ pub struct FolderDto {
     pub expanded: bool,
 }
 
-#[derive(Debug, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderInput {
     pub id: String,
@@ -84,7 +66,7 @@ pub struct FolderInput {
     pub expanded: bool,
 }
 
-#[derive(Debug, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInput {
     pub id: String,
@@ -92,7 +74,7 @@ pub struct PageInput {
     pub title: String,
 }
 
-#[derive(Debug, Deserialize, Type, Clone)]
+#[derive(Debug, Serialize, Deserialize, Type, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SegmentInput {
     pub id: String,
@@ -107,101 +89,10 @@ pub struct SegmentInput {
     pub fill_color: Option<String>,
     /// TipTap JSON document, passed through as an opaque JSON value (DESIGN.md §7.1).
     #[serde(default)]
-    pub content: serde_json::Value,
+    pub content: Value,
 }
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
-
-fn save_folder_impl(conn: &Connection, folder: &FolderInput) -> Result<(), String> {
-    let now = now_ms();
-    conn.execute(
-        "INSERT INTO folders (id, name, parent_id, icon, expanded, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-         ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name, parent_id = excluded.parent_id,
-           icon = excluded.icon, expanded = excluded.expanded, updated_at = excluded.updated_at",
-        rusqlite::params![folder.id, folder.name, folder.parent_id, folder.icon, folder.expanded, now],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn list_folders_impl(conn: &Connection) -> Result<Vec<FolderDto>, String> {
-    let mut stmt = conn
-        .prepare("SELECT id, name, parent_id, icon, expanded FROM folders")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(FolderDto {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                parent_id: row.get(2)?,
-                icon: row.get(3)?,
-                expanded: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
-}
-
-fn save_page_impl(conn: &Connection, page: &PageInput) -> Result<(), String> {
-    let now = now_ms();
-    conn.execute(
-        "INSERT INTO pages (id, notebook_id, folder_id, title, mode, created_at, updated_at)
-         VALUES (?1, 'nb-1', ?2, ?3, 'canvas', ?4, ?4)
-         ON CONFLICT(id) DO UPDATE SET
-           folder_id = excluded.folder_id, title = excluded.title, updated_at = excluded.updated_at",
-        rusqlite::params![page.id, page.folder_id, page.title, now],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn list_pages_impl(conn: &Connection, folder_id: &str) -> Result<Vec<PageDto>, String> {
-    let mut stmt = conn
-        .prepare("SELECT id, notebook_id, folder_id, title, mode, created_at, updated_at FROM pages WHERE folder_id = ?1")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([folder_id], |row| {
-            Ok(PageDto {
-                id: row.get(0)?,
-                notebook_id: row.get(1)?,
-                title: row.get(3)?,
-                mode: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
-}
-
-fn save_segment_impl(conn: &Connection, seg: &SegmentInput) -> Result<(), String> {
-    let now = now_ms();
-    let content = seg.content.to_string();
-    conn.execute(
-        "INSERT INTO segments (id, page_id, x, y, w, h, z_index, border_color, fill_color, content, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
-         ON CONFLICT(id) DO UPDATE SET
-           x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h,
-           z_index = excluded.z_index, border_color = excluded.border_color,
-           fill_color = excluded.fill_color, content = excluded.content,
-           updated_at = excluded.updated_at",
-        rusqlite::params![
-            seg.id, seg.page_id, seg.x, seg.y, seg.w, seg.h, seg.z_index,
-            seg.border_color, seg.fill_color, content, now
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[derive(Debug, Serialize, Type, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SegmentDto {
     pub id: String,
@@ -213,173 +104,366 @@ pub struct SegmentDto {
     pub z_index: i64,
     pub border_color: Option<String>,
     pub fill_color: Option<String>,
-    pub content: serde_json::Value,
+    pub content: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentDto {
+    pub id: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub size: i64,
+}
+
+/// `AttachmentDto` plus the file's absolute on-disk path (`getAttachment`).
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentWithPathDto {
+    pub id: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResultDto {
+    pub page_id: String,
+    pub segment_id: String,
+    pub snippet: String,
+}
+
+// ---- pure `_impl` functions (unit-tested below) ----
+
+fn get_page_impl(conn: &Connection, page_id: &str) -> Result<PageDto, String> {
+    let page = store::get_page(conn, page_id).map_err(|e| e.to_string())?;
+    from_json(page.ok_or_else(|| format!("no such page: {page_id}"))?)
+}
+
+fn save_folder_impl(conn: &Connection, folder: &FolderInput) -> Result<(), String> {
+    store::save_folder(conn, &to_json(folder)?)
+}
+
+fn list_folders_impl(conn: &Connection) -> Result<Vec<FolderDto>, String> {
+    from_json(Value::Array(store::list_folders(conn)?))
+}
+
+fn save_page_impl(conn: &Connection, page: &PageInput) -> Result<(), String> {
+    store::save_page(conn, &to_json(page)?)
+}
+
+fn list_pages_impl(conn: &Connection, folder_id: &str) -> Result<Vec<PageDto>, String> {
+    from_json(Value::Array(store::list_pages(conn, folder_id)?))
+}
+
+fn delete_page_impl(conn: &Connection, id: &str) -> Result<(), String> {
+    store::delete_page(conn, id)
+}
+
+fn delete_folder_impl(conn: &Connection, id: &str) -> Result<(), String> {
+    store::delete_folder(conn, id)
+}
+
+fn save_segment_impl(conn: &Connection, seg: &SegmentInput) -> Result<(), String> {
+    store::save_segment(conn, &to_json(seg)?)
 }
 
 fn list_segments_impl(conn: &Connection, page_id: &str) -> Result<Vec<SegmentDto>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, page_id, x, y, w, h, z_index, border_color, fill_color, content
-             FROM segments WHERE page_id = ?1",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([page_id], |row| {
-            let content: String = row.get(9)?;
-            Ok((
-                SegmentDto {
-                    id: row.get(0)?,
-                    page_id: row.get(1)?,
-                    x: row.get(2)?,
-                    y: row.get(3)?,
-                    w: row.get(4)?,
-                    h: row.get(5)?,
-                    z_index: row.get(6)?,
-                    border_color: row.get(7)?,
-                    fill_color: row.get(8)?,
-                    content: serde_json::Value::Null,
-                },
-                content,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut out = Vec::new();
-    for row in rows {
-        let (mut dto, content) = row.map_err(|e| e.to_string())?;
-        dto.content = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-        out.push(dto);
-    }
-    Ok(out)
+    from_json(Value::Array(store::list_segments(conn, page_id)?))
 }
 
 fn delete_segment_impl(conn: &Connection, id: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM segments WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
-    Ok(())
+    store::delete_segment(conn, id)
 }
 
-/// Mirrors `flownote-electron/src/protocol.rs`'s `save_ink_layer` — see its
-/// doc comment for why this is on `pages`, not `segments` (a stray, unused
-/// `ink_layer` column already exists on the latter from V1).
+fn save_attachment_impl(
+    conn: &Connection,
+    id: &str,
+    segment_id: &str,
+    file_name: &str,
+    mime_type: &str,
+    data_base64: &str,
+) -> Result<AttachmentDto, String> {
+    let params = json!({
+        "id": id, "segmentId": segment_id, "fileName": file_name,
+        "mimeType": mime_type, "dataBase64": data_base64,
+    });
+    from_json(store::save_attachment(conn, &params)?)
+}
+
+fn get_attachment_impl(conn: &Connection, id: &str) -> Result<AttachmentWithPathDto, String> {
+    let attachment = store::get_attachment(conn, id)?.ok_or_else(|| format!("no such attachment: {id}"))?;
+    from_json(attachment)
+}
+
+fn delete_attachment_impl(conn: &Connection, id: &str) -> Result<(), String> {
+    store::delete_attachment(conn, id)
+}
+
+fn set_page_mode_impl(conn: &Connection, page_id: &str, mode: &str) -> Result<(), String> {
+    store::set_page_mode(conn, &json!({ "pageId": page_id, "mode": mode }))
+}
+
 fn save_ink_layer_impl(conn: &Connection, page_id: &str, data_url: &str) -> Result<(), String> {
-    let changed = conn
-        .execute("UPDATE pages SET ink_layer = ?1, updated_at = ?2 WHERE id = ?3", rusqlite::params![data_url, now_ms(), page_id])
-        .map_err(|e| e.to_string())?;
-    if changed == 0 {
-        return Err(format!("no such page: {page_id}"));
-    }
-    Ok(())
+    store::save_ink_layer(conn, &json!({ "pageId": page_id, "dataUrl": data_url }))
 }
 
-/// Mirrors `flownote-electron/src/protocol.rs`'s `get_ink_layer` — `None`
-/// covers both "page has no ink layer saved yet" and is distinguished from
-/// "no such page" by the `Result`, same split as that function.
+/// `None` = page has no ink layer saved yet; a missing page is an `Err`.
 fn get_ink_layer_impl(conn: &Connection, page_id: &str) -> Result<Option<String>, String> {
-    conn.query_row("SELECT ink_layer FROM pages WHERE id = ?1", [page_id], |row| row.get::<_, Option<String>>(0))
-        .optional()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("no such page: {page_id}"))
+    from_json(store::get_ink_layer(conn, page_id)?)
 }
 
-/// Mirrors `flownote-electron/src/protocol.rs`'s `add_dictionary_word`.
 fn add_dictionary_word_impl(conn: &Connection, word: &str) -> Result<(), String> {
-    let lower = word.to_lowercase();
-    conn.execute("INSERT OR IGNORE INTO dictionary_words (word) VALUES (?1)", [&lower]).map_err(|e| e.to_string())?;
-    Ok(())
+    store::add_dictionary_word(conn, word)
 }
 
-/// Mirrors `flownote-electron/src/protocol.rs`'s `list_dictionary_words`.
 fn list_dictionary_words_impl(conn: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = conn.prepare("SELECT word FROM dictionary_words ORDER BY added_at").map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    store::list_dictionary_words(conn)
+}
+
+fn search_impl(conn: &Connection, query: &str, notebook_id: &str) -> Result<Vec<SearchResultDto>, String> {
+    from_json(Value::Array(store::search(conn, &json!({ "query": query, "notebookId": notebook_id }))?))
+}
+
+fn install_plugin_impl(conn: &Connection, source: &str) -> Result<Value, String> {
+    store::install_plugin(conn, source)
+}
+
+fn uninstall_plugin_impl(conn: &Connection, id: &str) -> Result<(), String> {
+    store::uninstall_plugin(conn, id)
+}
+
+fn set_plugin_enabled_impl(conn: &Connection, id: &str, enabled: bool) -> Result<(), String> {
+    store::set_plugin_enabled(conn, &json!({ "id": id, "enabled": enabled }))
+}
+
+fn get_installed_plugins_impl(conn: &Connection) -> Result<Vec<Value>, String> {
+    store::list_installed_plugins(conn)
+}
+
+fn plugin_storage_get_impl(conn: &Connection, plugin_id: &str, key: &str) -> Result<Option<String>, String> {
+    from_json(store::plugin_storage_get(conn, &json!({ "pluginId": plugin_id, "key": key }))?)
+}
+
+fn plugin_storage_set_impl(conn: &Connection, plugin_id: &str, key: &str, value: &str) -> Result<(), String> {
+    store::plugin_storage_set(conn, &json!({ "pluginId": plugin_id, "key": key, "value": value }))
+}
+
+fn plugin_storage_delete_impl(conn: &Connection, plugin_id: &str, key: &str) -> Result<(), String> {
+    store::plugin_storage_delete(conn, &json!({ "pluginId": plugin_id, "key": key }))
+}
+
+fn plugin_storage_list_impl(conn: &Connection, plugin_id: &str) -> Result<Vec<String>, String> {
+    from_json(Value::Array(store::plugin_storage_list(conn, &json!({ "pluginId": plugin_id }))?))
+}
+
+// ---- #[tauri::command] wrappers ----
+
+/// Every command below runs its `_impl` against one pooled connection.
+fn with_conn<T>(state: &State<AppState>, f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
+    let conn = state.pool.get().map_err(|e| e.to_string())?;
+    f(&conn)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn ping() -> &'static str {
+    "pong"
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_page(state: State<AppState>, page_id: String) -> Result<PageDto, String> {
+    with_conn(&state, |c| get_page_impl(c, &page_id))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn save_folder(state: State<AppState>, folder: FolderInput) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    save_folder_impl(&conn, &folder)
+    with_conn(&state, |c| save_folder_impl(c, &folder))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn list_folders(state: State<AppState>) -> Result<Vec<FolderDto>, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    list_folders_impl(&conn)
+    with_conn(&state, list_folders_impl)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn save_page(state: State<AppState>, page: PageInput) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    save_page_impl(&conn, &page)
+    with_conn(&state, |c| save_page_impl(c, &page))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn list_pages(state: State<AppState>, folder_id: String) -> Result<Vec<PageDto>, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    list_pages_impl(&conn, &folder_id)
+    with_conn(&state, |c| list_pages_impl(c, &folder_id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_page(state: State<AppState>, id: String) -> Result<(), String> {
+    with_conn(&state, |c| delete_page_impl(c, &id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_folder(state: State<AppState>, id: String) -> Result<(), String> {
+    with_conn(&state, |c| delete_folder_impl(c, &id))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn list_segments(state: State<AppState>, page_id: String) -> Result<Vec<SegmentDto>, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    list_segments_impl(&conn, &page_id)
+    with_conn(&state, |c| list_segments_impl(c, &page_id))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn save_segment(state: State<AppState>, segment: SegmentInput) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    save_segment_impl(&conn, &segment)
+    with_conn(&state, |c| save_segment_impl(c, &segment))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn save_segments_batch(state: State<AppState>, segments: Vec<SegmentInput>) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    for seg in &segments {
-        save_segment_impl(&conn, seg)?;
-    }
-    Ok(())
+    with_conn(&state, |c| segments.iter().try_for_each(|seg| save_segment_impl(c, seg)))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn delete_segment(state: State<AppState>, id: String) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    delete_segment_impl(&conn, &id)
+    with_conn(&state, |c| delete_segment_impl(c, &id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_attachment(
+    state: State<AppState>,
+    id: String,
+    segment_id: String,
+    file_name: String,
+    mime_type: String,
+    data_base64: String,
+) -> Result<AttachmentDto, String> {
+    with_conn(&state, |c| save_attachment_impl(c, &id, &segment_id, &file_name, &mime_type, &data_base64))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_attachment(state: State<AppState>, id: String) -> Result<AttachmentWithPathDto, String> {
+    with_conn(&state, |c| get_attachment_impl(c, &id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_attachment(state: State<AppState>, id: String) -> Result<(), String> {
+    with_conn(&state, |c| delete_attachment_impl(c, &id))
+}
+
+/// Opens the attachment's file with the OS default handler — the Tauri
+/// counterpart of Electron's `shell.openPath` (apps/electron's trpc router).
+/// Not unit-tested: the only logic beyond `get_attachment_impl` is the OS call.
+#[tauri::command]
+#[specta::specta]
+pub fn open_attachment(state: State<AppState>, id: String) -> Result<(), String> {
+    let attachment = with_conn(&state, |c| get_attachment_impl(c, &id))?;
+    open::that_detached(&attachment.path).map_err(|e| format!("could not open {}: {e}", attachment.path))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_page_mode(state: State<AppState>, page_id: String, mode: String) -> Result<(), String> {
+    with_conn(&state, |c| set_page_mode_impl(c, &page_id, &mode))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn save_ink_layer(state: State<AppState>, page_id: String, data_url: String) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    save_ink_layer_impl(&conn, &page_id, &data_url)
+    with_conn(&state, |c| save_ink_layer_impl(c, &page_id, &data_url))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn get_ink_layer(state: State<AppState>, page_id: String) -> Result<Option<String>, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    get_ink_layer_impl(&conn, &page_id)
+    with_conn(&state, |c| get_ink_layer_impl(c, &page_id))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn add_dictionary_word(state: State<AppState>, word: String) -> Result<(), String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    add_dictionary_word_impl(&conn, &word)
+    with_conn(&state, |c| add_dictionary_word_impl(c, &word))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn list_dictionary_words(state: State<AppState>) -> Result<Vec<String>, String> {
-    let conn = state.pool.get().map_err(|e| e.to_string())?;
-    list_dictionary_words_impl(&conn)
+    with_conn(&state, list_dictionary_words_impl)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn search(state: State<AppState>, query: String, notebook_id: String) -> Result<Vec<SearchResultDto>, String> {
+    with_conn(&state, |c| search_impl(c, &query, &notebook_id))
+}
+
+/// Returns the stored manifest as free-form JSON (`PluginManifest` in
+/// packages/ipc-adapter/src/types.ts) — a plugin manifest can carry fields
+/// this crate doesn't model, so it isn't forced through a fixed struct.
+#[tauri::command]
+#[specta::specta]
+pub fn install_plugin(state: State<AppState>, source: String) -> Result<Value, String> {
+    with_conn(&state, |c| install_plugin_impl(c, &source))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn uninstall_plugin(state: State<AppState>, id: String) -> Result<(), String> {
+    with_conn(&state, |c| uninstall_plugin_impl(c, &id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_plugin_enabled(state: State<AppState>, id: String, enabled: bool) -> Result<(), String> {
+    with_conn(&state, |c| set_plugin_enabled_impl(c, &id, enabled))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_installed_plugins(state: State<AppState>) -> Result<Vec<Value>, String> {
+    with_conn(&state, get_installed_plugins_impl)
+}
+
+// `plugin_id` arrives from the frontend, already resolved from the sending
+// iframe's identity by PluginIPCBridge.ts — never from plugin-supplied
+// message contents. See the matching comment in flownote-electron's
+// protocol.rs `dispatch` for the full argument.
+
+#[tauri::command]
+#[specta::specta]
+pub fn plugin_storage_get(state: State<AppState>, plugin_id: String, key: String) -> Result<Option<String>, String> {
+    with_conn(&state, |c| plugin_storage_get_impl(c, &plugin_id, &key))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn plugin_storage_set(state: State<AppState>, plugin_id: String, key: String, value: String) -> Result<(), String> {
+    with_conn(&state, |c| plugin_storage_set_impl(c, &plugin_id, &key, &value))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn plugin_storage_delete(state: State<AppState>, plugin_id: String, key: String) -> Result<(), String> {
+    with_conn(&state, |c| plugin_storage_delete_impl(c, &plugin_id, &key))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn plugin_storage_list(state: State<AppState>, plugin_id: String) -> Result<Vec<String>, String> {
+    with_conn(&state, |c| plugin_storage_list_impl(c, &plugin_id))
 }
 
 #[cfg(test)]
@@ -649,5 +733,212 @@ mod tests {
         add_dictionary_word_impl(&conn, "flownotex").unwrap();
         add_dictionary_word_impl(&conn, "flownotex").unwrap();
         assert_eq!(list_dictionary_words_impl(&conn).unwrap(), vec!["flownotex".to_string()]);
+    }
+
+    // ---- Commands added when this file moved onto `flownote_core::store`
+    // (Windows/macOS parity with the Electron sidecar) ----
+
+    fn seg(id: &str, page_id: &str, text: &str) -> SegmentInput {
+        SegmentInput {
+            id: id.into(),
+            page_id: page_id.into(),
+            x: 0.0,
+            y: 0.0,
+            w: 1.0,
+            h: 1.0,
+            z_index: 0,
+            border_color: None,
+            fill_color: None,
+            content: serde_json::json!({
+                "type": "doc",
+                "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": text }] }],
+            }),
+        }
+    }
+
+    /// Same shape as flownote-electron's `conn_with_page_on_disk`: attachments
+    /// live next to the database file, so an in-memory connection can't hold
+    /// one, and each test gets its own directory so parallel tests (and the
+    /// Electron suite) never share an `attachments/` folder.
+    fn conn_with_page_on_disk(page_id: &str) -> Connection {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "flownote-tauri-attachment-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = Connection::open(dir.join("db.sqlite3")).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        flownote_core::migrations::run(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO pages (id, notebook_id, title, mode, created_at, updated_at)
+             VALUES (?1, 'nb-1', 'Untitled', 'canvas', 0, 0)",
+            [page_id],
+        )
+        .unwrap();
+        conn
+    }
+
+    /// Regression for the pre-`store` drift: the old Tauri `save_segment`
+    /// never wrote `blocks`/`blocks_fts`, so search found nothing saved here.
+    #[test]
+    fn saved_segments_are_searchable() {
+        let conn = conn_with_page("page-1");
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "quarterly planning notes")).unwrap();
+        let hits = search_impl(&conn, "quarterly", "nb-1").unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].page_id, "page-1");
+        assert_eq!(hits[0].segment_id, "seg-1");
+        assert!(hits[0].snippet.contains("quarterly"));
+    }
+
+    #[test]
+    fn search_is_scoped_to_the_notebook_and_ignores_a_blank_query() {
+        let conn = conn_with_page("page-1");
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "findable")).unwrap();
+        assert!(search_impl(&conn, "findable", "other-notebook").unwrap().is_empty());
+        assert!(search_impl(&conn, "   ", "nb-1").unwrap().is_empty());
+    }
+
+    /// Regression for the pre-`store` drift: the old Tauri `delete_segment`
+    /// left the segment's text in `blocks_fts`, so it kept showing up in search.
+    #[test]
+    fn deleting_a_segment_removes_it_from_search() {
+        let conn = conn_with_page("page-1");
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "ephemeral")).unwrap();
+        delete_segment_impl(&conn, "seg-1").unwrap();
+        assert!(search_impl(&conn, "ephemeral", "nb-1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_page_removes_the_page_its_segments_and_their_search_entries() {
+        let conn = db::open_in_memory().unwrap();
+        save_folder_impl(&conn, &FolderInput { id: "f1".into(), name: "Work".into(), parent_id: None, icon: None, expanded: false })
+            .unwrap();
+        save_page_impl(&conn, &PageInput { id: "page-1".into(), folder_id: "f1".into(), title: "Notes".into() }).unwrap();
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "doomed")).unwrap();
+
+        delete_page_impl(&conn, "page-1").unwrap();
+
+        assert!(list_pages_impl(&conn, "f1").unwrap().is_empty());
+        assert!(list_segments_impl(&conn, "page-1").unwrap().is_empty());
+        assert!(search_impl(&conn, "doomed", "nb-1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_folder_removes_nested_subfolders_and_their_pages() {
+        let conn = db::open_in_memory().unwrap();
+        save_folder_impl(&conn, &FolderInput { id: "f1".into(), name: "Top".into(), parent_id: None, icon: None, expanded: false })
+            .unwrap();
+        save_folder_impl(
+            &conn,
+            &FolderInput { id: "f2".into(), name: "Child".into(), parent_id: Some("f1".into()), icon: None, expanded: false },
+        )
+        .unwrap();
+        save_page_impl(&conn, &PageInput { id: "page-1".into(), folder_id: "f2".into(), title: "Deep".into() }).unwrap();
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "nested")).unwrap();
+
+        delete_folder_impl(&conn, "f1").unwrap();
+
+        assert!(list_folders_impl(&conn).unwrap().is_empty());
+        assert!(search_impl(&conn, "nested", "nb-1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_page_mode_round_trips_and_rejects_bad_input() {
+        let conn = conn_with_page("page-1");
+        set_page_mode_impl(&conn, "page-1", "linear").unwrap();
+        assert_eq!(get_page_impl(&conn, "page-1").unwrap().mode, "linear");
+        assert!(set_page_mode_impl(&conn, "page-1", "sideways").unwrap_err().contains("invalid mode"));
+        assert!(set_page_mode_impl(&conn, "missing", "canvas").unwrap_err().contains("no such page"));
+    }
+
+    #[test]
+    fn save_get_and_delete_attachment_round_trip_including_the_file() {
+        let conn = conn_with_page_on_disk("page-1");
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "")).unwrap();
+
+        // "hello" in base64
+        let saved = save_attachment_impl(&conn, "att-1", "seg-1", "note.txt", "text/plain", "aGVsbG8=").unwrap();
+        assert_eq!(
+            saved,
+            AttachmentDto { id: "att-1".into(), file_name: "note.txt".into(), mime_type: "text/plain".into(), size: 5 }
+        );
+
+        let got = get_attachment_impl(&conn, "att-1").unwrap();
+        assert_eq!(got.file_name, "note.txt");
+        assert_eq!(std::fs::read_to_string(&got.path).unwrap(), "hello");
+
+        delete_attachment_impl(&conn, "att-1").unwrap();
+        assert!(get_attachment_impl(&conn, "att-1").unwrap_err().contains("no such attachment"));
+        assert!(!std::path::Path::new(&got.path).exists());
+    }
+
+    /// Regression for the pre-`store` drift: the old Tauri `delete_segment`
+    /// left an attachment's file on disk.
+    #[test]
+    fn deleting_a_segment_deletes_its_attachment_files() {
+        let conn = conn_with_page_on_disk("page-1");
+        save_segment_impl(&conn, &seg("seg-1", "page-1", "")).unwrap();
+        save_attachment_impl(&conn, "att-1", "seg-1", "note.txt", "text/plain", "aGVsbG8=").unwrap();
+        let path = get_attachment_impl(&conn, "att-1").unwrap().path;
+
+        delete_segment_impl(&conn, "seg-1").unwrap();
+
+        assert!(!std::path::Path::new(&path).exists());
+    }
+
+    fn spreadsheet_manifest() -> String {
+        serde_json::json!({
+            "id": "com.sandeep.spreadsheet",
+            "name": "Spreadsheet",
+            "version": "1.0.0",
+            "entry": "dist/index.js",
+            "sdkVersion": "1.0.0",
+            "permissions": ["storage:read", "storage:write"],
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn plugin_install_enable_list_and_uninstall() {
+        let conn = db::open_in_memory().unwrap();
+        let manifest = install_plugin_impl(&conn, &spreadsheet_manifest()).unwrap();
+        assert_eq!(manifest["id"], "com.sandeep.spreadsheet");
+        assert_eq!(manifest["enabled"], true);
+
+        set_plugin_enabled_impl(&conn, "com.sandeep.spreadsheet", false).unwrap();
+        let installed = get_installed_plugins_impl(&conn).unwrap();
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0]["enabled"], false);
+
+        uninstall_plugin_impl(&conn, "com.sandeep.spreadsheet").unwrap();
+        assert!(get_installed_plugins_impl(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn install_plugin_rejects_an_unknown_permission() {
+        let conn = db::open_in_memory().unwrap();
+        let bad = spreadsheet_manifest().replace("storage:write", "filesystem:everything");
+        assert!(install_plugin_impl(&conn, &bad).unwrap_err().contains("unknown permission"));
+    }
+
+    #[test]
+    fn plugin_storage_round_trips_and_is_isolated_by_plugin_id() {
+        let conn = db::open_in_memory().unwrap();
+        install_plugin_impl(&conn, &spreadsheet_manifest()).unwrap();
+        install_plugin_impl(&conn, &spreadsheet_manifest().replace("com.sandeep.spreadsheet", "com.other.plugin")).unwrap();
+
+        plugin_storage_set_impl(&conn, "com.sandeep.spreadsheet", "k", "v").unwrap();
+        assert_eq!(plugin_storage_get_impl(&conn, "com.sandeep.spreadsheet", "k").unwrap(), Some("v".into()));
+        assert_eq!(plugin_storage_get_impl(&conn, "com.other.plugin", "k").unwrap(), None);
+        assert_eq!(plugin_storage_list_impl(&conn, "com.sandeep.spreadsheet").unwrap(), vec!["k".to_string()]);
+        assert!(plugin_storage_list_impl(&conn, "com.other.plugin").unwrap().is_empty());
+
+        plugin_storage_delete_impl(&conn, "com.sandeep.spreadsheet", "k").unwrap();
+        assert_eq!(plugin_storage_get_impl(&conn, "com.sandeep.spreadsheet", "k").unwrap(), None);
     }
 }
