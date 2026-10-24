@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RibbonRoot } from './RibbonRoot'
+import { useAIStore } from '../store/aiStore'
 import { useCanvasStore } from '../store/canvasStore'
 import { useInkStore } from '../store/inkStore'
 import { setIPCAdapter } from '../store/notebookStore'
@@ -178,29 +179,133 @@ describe('RibbonRoot View tab zoom (Phase 6)', () => {
   })
 })
 
-describe('RibbonRoot Insert tab AI panel (Phase 6 "Ollama integration" — graceful unavailable state)', () => {
-  it('shows a friendly status instead of crashing when aiComplete() rejects', async () => {
-    const user = userEvent.setup()
-    render(<RibbonRoot />)
-    await user.click(screen.getByRole('tab', { name: 'Insert' }))
+describe('RibbonRoot Insert tab AI box (generic AI interface)', () => {
+  const claude = { id: 'c', kind: 'anthropic', name: 'Claude', baseUrl: 'https://api.anthropic.com', model: 'claude-opus-5-5', hasApiKey: true, isDefault: true }
+  const ollama = { id: 'o', kind: 'openai_compatible', name: 'Ollama', baseUrl: 'http://localhost:11434/v1', model: 'llama3.2', hasApiKey: false, isDefault: false }
 
-    useCanvasStore.setState({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      getActiveEditor: () => ({ getText: () => '' }) as any,
-    })
+  /** A fake editor recording inserted text. */
+  function fakeEditor() {
+    const inserted: string[] = []
+    const chain = { focus: () => chain, insertContent: (t: string) => (inserted.push(t), chain), run: () => true }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useCanvasStore.setState({ getActiveEditor: () => ({ getText: () => 'segment text', chain: () => chain }) as any })
+    return inserted
+  }
+
+  afterEach(() => {
+    setIPCAdapter(null)
+    useAIStore.setState({ providers: [], loaded: false, error: null })
+  })
+
+  it('streams the default provider\'s text into the active segment', async () => {
+    const inserted = fakeEditor()
+    const calls: unknown[][] = []
     setIPCAdapter({
-      // eslint-disable-next-line require-yield -- matches the real stub adapters' behavior: reject before ever yielding
-      aiComplete: async function* () {
-        throw new Error('not implemented')
+      listAiProviders: async () => [claude],
+      aiComplete: async function* (...args: unknown[]) {
+        calls.push(args)
+        yield 'Hello'
+        yield ', world'
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
-
-    await user.type(screen.getByRole('textbox', { name: 'AI prompt' }), 'summarise this')
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'Insert' }))
+    await user.type(await screen.findByRole('textbox', { name: 'AI prompt' }), 'greet')
     await user.click(screen.getByRole('button', { name: 'Generate with AI' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent("AI unavailable — Ollama isn't running.")
-    setIPCAdapter(null)
+    await vi.waitFor(() => expect(inserted).toEqual(['Hello', ', world']))
+    expect(calls[0]).toEqual(['greet', 'segment text', 'c'])
+    expect(screen.queryByRole('button', { name: 'Stop AI' })).toBeNull()
+  })
+
+  it('shows the backend\'s error message instead of crashing', async () => {
+    fakeEditor()
+    setIPCAdapter({
+      listAiProviders: async () => [claude],
+      // eslint-disable-next-line require-yield -- fails before yielding, like a rejected API key
+      aiComplete: async function* () {
+        throw new Error('The provider rejected the API key (401): invalid x-api-key')
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'Insert' }))
+    await user.type(await screen.findByRole('textbox', { name: 'AI prompt' }), 'summarise this')
+    await user.click(screen.getByRole('button', { name: 'Generate with AI' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('The provider rejected the API key (401): invalid x-api-key')
+  })
+
+  it('with no provider set up, points to AI settings', async () => {
+    fakeEditor()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setIPCAdapter({ listAiProviders: async () => [], aiComplete: vi.fn() } as any)
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'Insert' }))
+    await user.type(screen.getByRole('textbox', { name: 'AI prompt' }), 'hi')
+    await user.click(screen.getByRole('button', { name: 'Generate with AI' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('No AI provider set up yet')
+  })
+
+  it('offers a provider picker when there are several, and uses the chosen one', async () => {
+    fakeEditor()
+    const calls: unknown[][] = []
+    setIPCAdapter({
+      listAiProviders: async () => [claude, ollama],
+      aiComplete: async function* (...args: unknown[]) {
+        calls.push(args)
+        yield 'ok'
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'Insert' }))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'AI provider' }), 'o')
+    await user.type(screen.getByRole('textbox', { name: 'AI prompt' }), 'hi')
+    await user.click(screen.getByRole('button', { name: 'Generate with AI' }))
+    await vi.waitFor(() => expect(calls[0]?.[2]).toBe('o'))
+  })
+
+  it('Stop ends the stream early', async () => {
+    const inserted = fakeEditor()
+    let release!: () => void
+    let returned = false
+    setIPCAdapter({
+      listAiProviders: async () => [claude],
+      aiComplete: () => {
+        let sent = false
+        return {
+          next: () =>
+            sent
+              ? new Promise<IteratorResult<string>>((resolve) => (release = () => resolve({ value: undefined, done: true })))
+              : ((sent = true), Promise.resolve({ value: 'first', done: false })),
+          return: () => {
+            returned = true
+            release?.()
+            return Promise.resolve({ value: undefined, done: true })
+          },
+          [Symbol.asyncIterator]() {
+            return this
+          },
+        }
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'Insert' }))
+    await user.type(await screen.findByRole('textbox', { name: 'AI prompt' }), 'long')
+    await user.click(screen.getByRole('button', { name: 'Generate with AI' }))
+    await user.click(await screen.findByRole('button', { name: 'Stop AI' }))
+
+    expect(returned).toBe(true)
+    expect(inserted).toEqual(['first'])
+    expect(await screen.findByRole('status')).toHaveTextContent('Stopped.')
   })
 
   it('prompts to select a segment first when none is active', async () => {

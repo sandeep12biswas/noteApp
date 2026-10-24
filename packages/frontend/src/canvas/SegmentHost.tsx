@@ -84,6 +84,28 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   // before a colour could be picked.
   const colorMenuOpenRef = useRef(false)
 
+  // See onBlur: re-runs the empty-segment check at the next click/focus
+  // outside both the ribbon and this segment. Cleaned up on unmount.
+  const pendingAutoDeleteRef = useRef<(() => void) | null>(null)
+  const deferAutoDelete = () => {
+    if (pendingAutoDeleteRef.current) return
+    const onElsewhere = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-ribbon]') || (target && containerRef.current?.contains(target))) return
+      cancel()
+      deleteIfEmptyAndUncolored(segment.id)
+    }
+    const cancel = () => {
+      document.removeEventListener('pointerdown', onElsewhere, true)
+      document.removeEventListener('focusin', onElsewhere, true)
+      pendingAutoDeleteRef.current = null
+    }
+    document.addEventListener('pointerdown', onElsewhere, true)
+    document.addEventListener('focusin', onElsewhere, true)
+    pendingAutoDeleteRef.current = cancel
+  }
+  useEffect(() => () => pendingAutoDeleteRef.current?.(), [])
+
   const editor = useEditor({
     extensions: segmentEditorExtensions,
     content: segment.content,
@@ -131,8 +153,18 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     // vanished the instant the chooser opened. See
     // `AttachmentChoiceMenu.tsx`'s own `autoFocus: false` comment for the
     // other half of this same race.
-    onBlur: () => {
-      if (!attachmentChoiceRef.current && !colorMenuOpenRef.current) deleteIfEmptyAndUncolored(segment.id)
+    onBlur: ({ event }) => {
+      if (attachmentChoiceRef.current || colorMenuOpenRef.current) return
+      // Focus went to the ribbon (the AI prompt, a font picker, …) — the user
+      // is still working on this segment, e.g. asking AI to fill it, so
+      // don't delete it yet. Check again once they click or focus anywhere
+      // that's neither the ribbon nor this segment.
+      const next = (event as FocusEvent).relatedTarget as HTMLElement | null
+      if (next?.closest('[data-ribbon]')) {
+        deferAutoDelete()
+        return
+      }
+      deleteIfEmptyAndUncolored(segment.id)
     },
     onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })

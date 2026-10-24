@@ -6,7 +6,8 @@
 // slot, matching DESIGN.md §9.2 registerRibbonGroup's insertion point. The
 // Draw tab is the one exception: it's the ink layer's tool switcher
 // (DESIGN.md §5.5), since Draw mode itself is just "this tab is active".
-import { type ReactNode, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useAIStore } from '../store/aiStore'
 import { useCanvasStore } from '../store/canvasStore'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
@@ -17,6 +18,7 @@ import { FONT_FAMILIES, type FontFamilyOption } from '../lib/fontFamilies'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
 import { useFontStore } from '../store/fontStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
+import { AiSettingsDialog } from './AiSettingsDialog'
 import { ColorPickerMenu } from './ColorPickerMenu'
 
 // Format Painter — DESIGN-parity with Word/OneNote's paintbrush: click to
@@ -513,20 +515,29 @@ function ViewToolsPanel() {
   )
 }
 
-// DESIGN.md §10 "Ollama availability" + Phase 6 "Ollama integration":
-// streaming tokens into the active segment via `ipc.aiComplete()` needs a
-// running Ollama this environment doesn't have — what's built here is the
-// graceful-unavailable path DESIGN.md calls for (no adapter/backend
-// implementation yet, no crash either): the prompt UI, dispatch through
-// `getActiveEditor()` exactly like every other ribbon command, and a
-// friendly status message instead of an unhandled rejection when
-// `aiComplete()` rejects (which — no Ollama, no sidecar implementation yet
-// — it always does right now). The actual token-streaming integration is
-// real follow-up work, not stubbed out here.
+// The Insert tab's AI box (EXECUTION_PLAN.md Features — generic AI
+// interface). Streams text from the chosen provider (Claude, Gemini or any
+// OpenAI-compatible service, Ollama included — configured in AI settings)
+// into the active segment through `getActiveEditor()`, like every other
+// ribbon command. The request itself runs in the backend, so API keys never
+// reach the page. Stop ends the iteration, which cancels the request.
 function AIInsertPanel() {
   const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
+  const providers = useAIStore((s) => s.providers)
+  const loadProviders = useAIStore((s) => s.load)
   const [prompt, setPrompt] = useState('')
+  const [providerId, setProviderId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [streaming, setStreaming] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const streamRef = useRef<AsyncIterableIterator<string> | null>(null)
+  const stoppedRef = useRef(false)
+
+  useEffect(() => {
+    void loadProviders()
+  }, [loadProviders])
+
+  const chosen = providers.find((p) => p.id === providerId) ?? providers.find((p) => p.isDefault)
 
   const generate = async () => {
     const editor = getActiveEditor()
@@ -540,41 +551,93 @@ function AIInsertPanel() {
       return
     }
     if (!prompt.trim()) return
-
-    setStatus('Generating…')
-    try {
-      const context = editor.getText()
-      for await (const token of ipc.aiComplete(prompt, context)) {
-        editor.chain().focus().insertContent(token).run()
-      }
-      setStatus(null)
-      setPrompt('')
-    } catch {
-      // DESIGN.md §10 "Ollama availability": graceful unavailable state,
-      // not a crash or an unhandled rejection.
-      setStatus("AI unavailable — Ollama isn't running.")
+    if (providers.length === 0) {
+      setStatus('No AI provider set up yet — open AI settings (⚙).')
+      return
     }
+
+    setStatus(`Generating with ${chosen?.name ?? 'AI'}…`)
+    setStreaming(true)
+    const stream = ipc.aiComplete(prompt, editor.getText(), chosen?.id)
+    streamRef.current = stream
+    stoppedRef.current = false
+    try {
+      for await (const text of stream) {
+        editor.chain().focus().insertContent(text).run()
+      }
+      // Stopped: keep the prompt (to retry or tweak) and say so; finished: clear it.
+      if (stoppedRef.current) {
+        setStatus('Stopped.')
+      } else {
+        setStatus(null)
+        setPrompt('')
+      }
+    } catch (err) {
+      // A readable message from the backend — wrong key, unreachable
+      // server, provider error — never a crash or an unhandled rejection.
+      setStatus(err instanceof Error ? err.message : 'AI request failed.')
+    } finally {
+      streamRef.current = null
+      setStreaming(false)
+    }
+  }
+
+  const stop = () => {
+    stoppedRef.current = true
+    void streamRef.current?.return?.()
   }
 
   return (
     <div className="flex items-center gap-1" role="group" aria-label="AI">
+      {providers.length > 1 && (
+        <select
+          aria-label="AI provider"
+          title="AI provider"
+          value={chosen?.id ?? ''}
+          onChange={(e) => setProviderId(e.target.value)}
+          className={SELECT_CLASSNAME + ' max-w-[120px] text-xs'}
+        >
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      )}
       <input
         aria-label="AI prompt"
-        placeholder="Ask AI…"
+        placeholder={chosen ? `Ask ${chosen.name}…` : 'Ask AI…'}
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') generate()
+          if (e.key === 'Enter' && !streaming) void generate()
         }}
         className="w-40 rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
       />
-      <RibbonButton label="Generate with AI" onClick={generate}>
-        Generate
+      {streaming ? (
+        <RibbonButton label="Stop AI" onClick={stop}>
+          Stop
+        </RibbonButton>
+      ) : (
+        <RibbonButton label="Generate with AI" onClick={() => void generate()}>
+          Generate
+        </RibbonButton>
+      )}
+      <RibbonButton label="AI settings" onClick={() => setSettingsOpen(true)}>
+        ⚙
       </RibbonButton>
       {status && (
-        <span role="status" className="text-xs text-gray-400">
+        <span role="status" className="max-w-[260px] truncate text-xs text-gray-400" title={status}>
           {status}
         </span>
+      )}
+      {settingsOpen && (
+        <AiSettingsDialog
+          onClose={() => {
+            setSettingsOpen(false)
+            void loadProviders()
+          }}
+        />
       )}
     </div>
   )
@@ -585,7 +648,9 @@ export function RibbonRoot() {
   const setActiveTab = useUIStore((s) => s.setActiveRibbonTab)
 
   return (
-    <header className="flex h-22 flex-col border-b border-gray-200 dark:border-gray-800" data-testid="ribbon-root">
+    // `data-ribbon`: SegmentHost keeps an empty segment alive while focus is
+    // in here (e.g. typing an AI prompt for it) — see its onBlur.
+    <header className="flex h-22 flex-col border-b border-gray-200 dark:border-gray-800" data-testid="ribbon-root" data-ribbon="">
       <nav className="flex gap-1 px-2 pt-1" role="tablist" aria-label="Ribbon tabs">
         {RIBBON_TABS.map((tab) => (
           <button

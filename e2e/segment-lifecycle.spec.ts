@@ -74,3 +74,21 @@ test('clicking two different spots creates two independent, non-overlapping segm
   const overlaps = a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top
   expect(overlaps).toBe(false)
 })
+
+// Working on a new, empty segment from the ribbon (e.g. typing an AI prompt
+// to fill it) mustn't auto-delete it; the empty-segment rule applies again
+// once the user clicks somewhere that's neither the ribbon nor the segment.
+test('an empty segment survives focus moving to the ribbon, and is removed once the user clicks elsewhere', async ({ page }) => {
+  await clickCanvasAt(page, 100, 100)
+  const segments = page.getByRole('textbox', { name: 'Segment' })
+  await expect(segments).toHaveCount(1)
+
+  await page.getByRole('tab', { name: 'Insert' }).click()
+  await page.getByRole('textbox', { name: 'AI prompt' }).fill('write an intro')
+  await expect(segments).toHaveCount(1) // still there to receive the AI text
+
+  await page.getByTestId('canvas-root').click({ position: { x: 700, y: 450 } }) // clicked elsewhere, still empty
+  await expect(page.getByRole('textbox', { name: 'Segment' }).filter({ hasText: /./ })).toHaveCount(0)
+  // The original empty one is gone; the click just made a fresh one.
+  await expect(segments).toHaveCount(1)
+})
