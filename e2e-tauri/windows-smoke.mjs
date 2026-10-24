@@ -51,9 +51,19 @@ async function connect() {
 }
 
 const browser = await connect()
-const appPage = () => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes('tauri.localhost'))
-let page = appPage()
-if (!page) throw new Error(`no tauri.localhost page; pages: ${browser.contexts().flatMap((c) => c.pages()).map((p) => p.url())}`)
+const allPages = () => browser.contexts().flatMap((c) => c.pages())
+/** The app's page. The DevTools port opens before WebView2 has navigated
+ * to the app (the first page is `about:blank`), so poll for it. */
+async function appPage(timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const page = allPages().find((p) => p.url().includes('tauri.localhost'))
+    if (page) return page
+    if (Date.now() > deadline) throw new Error(`no tauri.localhost page after ${timeoutMs} ms; pages: ${allPages().map((p) => p.url())}`)
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+let page = await appPage()
 await page.waitForSelector('[aria-label="New page"]', { timeout: 30_000 })
 const invoke = (cmd, args) => page.evaluate(([c, a]) => window.__TAURI_INTERNALS__.invoke(c, a), [cmd, args])
 
@@ -108,7 +118,7 @@ await check('flownote-attachment serves an image that renders', async () => {
 await check('spreadsheet plugin: loads after restart-equivalent reload, registers /sheet, grid renders', async () => {
   await invoke('install_plugin', { source: MANIFEST })
   await page.reload()
-  page = appPage()
+  page = await appPage()
   await page.waitForSelector('[aria-label="New page"]', { timeout: 30_000 })
   // Loaded on startup, without opening the Plugins panel.
   await page.locator('iframe[sandbox="allow-scripts"]').first().waitFor({ state: 'attached', timeout: 15_000 })
