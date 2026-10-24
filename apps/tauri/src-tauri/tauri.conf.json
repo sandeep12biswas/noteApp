@@ -13,9 +13,11 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "FlowNote",
         "width": 1200,
-        "height": 800
+        "height": 800,
+        "create": false
       }
     ],
     "security": {

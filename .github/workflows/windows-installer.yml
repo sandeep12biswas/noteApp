@@ -139,7 +139,8 @@ jobs:
           $exe = Join-Path (Split-Path $entry.UninstallString.Trim('"') -Parent) 'FlowNote.exe'
           if (-not (Test-Path $exe)) { throw "expected the app binary at $exe (mainBinaryName)" }
 
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+          # Test hook in apps/tauri/src-tauri/src/lib.rs (create_main_window).
+          $env:FLOWNOTE_WEBVIEW_DEBUG_PORT = '9222'
           $app = Start-Process $exe -PassThru
           try {
             node e2e-tauri/windows-smoke.mjs http://127.0.0.1:9222

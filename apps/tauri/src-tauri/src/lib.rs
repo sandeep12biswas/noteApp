@@ -17,6 +17,29 @@ fn db_path(app: &tauri::App) -> String {
     dir.join("flownote.sqlite3").to_string_lossy().into_owned()
 }
 
+/// wry's default WebView2 arguments — passing any `additional_browser_args`
+/// replaces them, so they're repeated when adding our own.
+const WEBVIEW2_DEFAULT_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+
+/// Creates the main window from tauri.conf.json (which marks it
+/// `"create": false` so it's built here instead).
+///
+/// Test hook: when `FLOWNOTE_WEBVIEW_DEBUG_PORT` holds a port number, WebView2
+/// (Windows) opens its DevTools protocol on that port so
+/// e2e-tauri/windows-smoke.mjs can attach. WebView2's own
+/// `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` variable can't be used for this:
+/// wry always sets the browser arguments explicitly, which take precedence.
+/// Unset (the normal case), the window is exactly what the config describes.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let config = app.config().app.windows.first().cloned().expect("tauri.conf.json defines the main window");
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    if let Some(port) = std::env::var("FLOWNOTE_WEBVIEW_DEBUG_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+        builder = builder.additional_browser_args(&format!("{WEBVIEW2_DEFAULT_ARGS} --remote-debugging-port={port}"));
+    }
+    builder.build()?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let specta_builder = flownote_tauri::specta_builder();
@@ -57,6 +80,7 @@ pub fn run() {
         .setup(move |app| {
             let pool = flownote_core::db::open(&db_path(app)).expect("failed to open flownote db");
             app.manage(AppState { pool });
+            create_main_window(app)?;
             Ok(())
         })
         .run(tauri::generate_context!())

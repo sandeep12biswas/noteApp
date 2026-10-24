@@ -1,8 +1,9 @@
 // Smoke test for the *installed* Windows (Tauri/WebView2) app, run by
 // .github/workflows/windows-installer.yml after installing setup.exe.
 //
-// FlowNote must already be running with WebView2's DevTools port open:
-//   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+// FlowNote must already be running with WebView2's DevTools port open,
+// via the app's own test hook (apps/tauri/src-tauri/src/lib.rs):
+//   $env:FLOWNOTE_WEBVIEW_DEBUG_PORT = '9222'
 // This attaches Playwright over CDP and checks the Windows-specific paths
 // that can't be exercised on Linux: custom schemes served as
 // http://<scheme>.localhost/…, plugin iframes loading through them, and
