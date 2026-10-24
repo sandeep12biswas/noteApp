@@ -5,6 +5,19 @@
 // each stroke, and loaded back via `ipc.getInkLayer()` whenever `pageId`
 // changes. Stacks above `CanvasRoot` in the editor pane.
 //
+// Ink is anchored to fixed positions on the page, exactly like segments
+// (which sit at fixed x/y in the same scroll container): it's never scaled.
+// The canvas covers the visible editor area *or* the area the drawing
+// actually reaches, whichever is larger — so when the editor gets narrower
+// (a side panel widened, or the window resized) the drawing doesn't move or
+// squash; the container just scrolls to the rest of it, as it does for a
+// segment past the edge. (Until 2026-10-24 the drawing was rescaled to the
+// new size on every resize and stretched to fit on load, and the distorted
+// bitmap was then saved with the next stroke — permanently pulling ink out
+// of line with the text it annotated.) A saved layer is assumed to have been
+// drawn at the current devicePixelRatio; moving between a high-DPI and a
+// standard screen changes its displayed size.
+//
 // This component isn't remounted between pages (EditorPane.tsx doesn't key
 // it by pageId — only the `pageId` prop changes), so the load-on-page-open
 // effect below must explicitly clear the previous page's drawing itself;
@@ -26,40 +39,58 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
   const tool = useInkStore((s) => s.tool)
   const color = useInkStore((s) => s.color)
 
-  // Resize the backing bitmap to match the container's on-screen size *
-  // devicePixelRatio, preserving whatever was already drawn (a plain
-  // width/height assignment clears the canvas, so the previous frame is
-  // captured and redrawn scaled into the new size).
+  // On-screen size of the scroll container, and the area the drawing
+  // reaches (logical CSS px, from the canvas's top-left).
+  const containerSizeRef = useRef({ w: 0, h: 0 })
+  const extentRef = useRef({ w: 0, h: 0 })
+
+  /**
+   * (Re)sizes the canvas to max(container, drawing extent) * devicePixelRatio,
+   * keeping the existing drawing at 1:1 — copied through an offscreen canvas
+   * synchronously (a plain width/height assignment clears the canvas, and an
+   * async PNG round-trip could race a stroke in progress).
+   */
+  const fitCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.max(containerSizeRef.current.w, extentRef.current.w)
+    const h = Math.max(containerSizeRef.current.h, extentRef.current.h)
+    const oldW = parseFloat(canvas.style.width) || 0
+    const oldH = parseFloat(canvas.style.height) || 0
+    if (Math.round(w) === Math.round(oldW) && Math.round(h) === Math.round(oldH)) return
+
+    let copy: HTMLCanvasElement | null = null
+    if (canvas.width > 1 && canvas.height > 1) {
+      copy = document.createElement('canvas')
+      copy.width = canvas.width
+      copy.height = canvas.height
+      copy.getContext('2d')?.drawImage(canvas, 0, 0)
+    }
+    canvas.width = Math.max(1, Math.round(w * dpr))
+    canvas.height = Math.max(1, Math.round(h * dpr))
+    canvas.style.width = `${w}px`
+    canvas.style.height = `${h}px`
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.scale(dpr, dpr)
+    if (copy) ctx.drawImage(copy, 0, 0, oldW, oldH)
+  }
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || typeof ResizeObserver === 'undefined') return
     const container = canvas.parentElement
     if (!container) return
-
-    const resize = (width: number, height: number) => {
-      const dpr = window.devicePixelRatio || 1
-      const prev = canvas.width > 0 && canvas.height > 0 ? canvas.toDataURL('image/png') : null
-      canvas.width = Math.max(1, Math.round(width * dpr))
-      canvas.height = Math.max(1, Math.round(height * dpr))
-      canvas.style.width = `${width}px`
-      canvas.style.height = `${height}px`
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.scale(dpr, dpr)
-      if (prev) {
-        const img = new Image()
-        img.onload = () => ctx.drawImage(img, 0, 0, width, height)
-        img.src = prev
-      }
-    }
-
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (!entry) return
-      resize(entry.contentRect.width, entry.contentRect.height)
+      containerSizeRef.current = { w: entry.contentRect.width, h: entry.contentRect.height }
+      fitCanvas()
     })
     observer.observe(container)
     return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fitCanvas only reads refs
   }, [])
 
   // Load (or clear) this page's persisted ink layer whenever `pageId`
@@ -72,6 +103,8 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+    extentRef.current = { w: 0, h: 0 }
+    fitCanvas()
 
     ipc
       .getInkLayer(pageId)
@@ -81,7 +114,18 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
         const context = c?.getContext('2d')
         if (!c || !context) return
         const img = new Image()
-        img.onload = () => context.drawImage(img, 0, 0, c.clientWidth, c.clientHeight)
+        img.onload = () => {
+          if (cancelled) return
+          // Draw at its own size (never stretched), after growing the
+          // canvas to cover wherever its ink actually is.
+          const dpr = window.devicePixelRatio || 1
+          const logicalW = img.naturalWidth / dpr
+          const logicalH = img.naturalHeight / dpr
+          const reach = inkExtentOf(img)
+          extentRef.current = { w: reach.w / dpr, h: reach.h / dpr }
+          fitCanvas()
+          canvasRef.current?.getContext('2d')?.drawImage(img, 0, 0, logicalW, logicalH)
+        }
         img.src = dataUrl
       })
       .catch((err: unknown) => {
@@ -101,6 +145,15 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
       // eslint-disable-next-line no-console -- best-effort persistence, same pattern as the Zustand stores' `persist()`
       console.error('InkLayer: saveInkLayer failed', err)
     })
+  }
+
+  /** Records that ink reaches (x, y) — the canvas then never shrinks below it. */
+  const growExtent = (x: number, y: number) => {
+    const pad = TOOL_WIDTH[tool]
+    extentRef.current = {
+      w: Math.max(extentRef.current.w, x + pad),
+      h: Math.max(extentRef.current.h, y + pad),
+    }
   }
 
   const strokeStyle = (ctx: CanvasRenderingContext2D) => {
@@ -128,6 +181,7 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
     strokeStyle(ctx)
     ctx.beginPath()
     ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+    growExtent(e.clientX - rect.left, e.clientY - rect.top)
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -138,6 +192,7 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
     const rect = canvas.getBoundingClientRect()
     ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
     ctx.stroke()
+    growExtent(e.clientX - rect.left, e.clientY - rect.top)
   }
 
   const endStroke = () => {
@@ -161,4 +216,32 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
       onPointerLeave={endStroke}
     />
   )
+}
+
+/**
+ * The bottom-right corner (in image pixels) of the non-transparent content
+ * of a saved ink layer — its own canvas may have been much larger than the
+ * drawing. Scans inwards from the bottom and right edges, so it stops early
+ * for typical drawings.
+ */
+function inkExtentOf(img: HTMLImageElement): { w: number; h: number } {
+  const { naturalWidth: w, naturalHeight: h } = img
+  const scratch = document.createElement('canvas')
+  scratch.width = w
+  scratch.height = h
+  const ctx = scratch.getContext('2d')
+  if (!ctx || w === 0 || h === 0) return { w: 0, h: 0 }
+  ctx.drawImage(img, 0, 0)
+  const data = ctx.getImageData(0, 0, w, h).data
+  const alphaAt = (x: number, y: number) => data[(y * w + x) * 4 + 3]!
+  let maxY = -1
+  for (let y = h - 1; y >= 0 && maxY < 0; y--) {
+    for (let x = 0; x < w; x++) if (alphaAt(x, y) > 0) { maxY = y; break }
+  }
+  if (maxY < 0) return { w: 0, h: 0 }
+  let maxX = -1
+  for (let x = w - 1; x >= 0 && maxX < 0; x--) {
+    for (let y = 0; y <= maxY; y++) if (alphaAt(x, y) > 0) { maxX = x; break }
+  }
+  return { w: maxX + 1, h: maxY + 1 }
 }
