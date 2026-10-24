@@ -18,6 +18,14 @@ interface WireResponse {
   id: number
   result?: unknown
   error?: string
+  /** Set on intermediate lines of a streaming request (`ai_complete`); the final line has `result`/`error` as usual. */
+  chunk?: string
+}
+
+/** A streaming request in flight: its id (for `ai_cancel`) and the final result. */
+export interface SidecarStream {
+  id: number
+  done: Promise<unknown>
 }
 
 /** Thrown for every request still pending when the sidecar goes away. */
@@ -31,7 +39,7 @@ export class SidecarClosedError extends Error {
 export class SidecarClient {
   #io: SidecarIO
   #nextId = 1
-  #pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  #pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; onChunk?: (chunk: string) => void }>()
   #closed = false
 
   constructor(io: SidecarIO) {
@@ -42,11 +50,19 @@ export class SidecarClient {
 
   /** Sends one request and resolves/rejects when the matching response arrives. */
   request(method: string, params: unknown = null): Promise<unknown> {
-    if (this.#closed) return Promise.reject(new SidecarClosedError())
+    return this.requestStream(method, params, () => {}).done
+  }
 
+  /**
+   * Like `request`, for methods that stream (`ai_complete`): each
+   * intermediate `{id, chunk}` line goes to `onChunk`, and `done` settles on
+   * the final response. Other requests keep flowing meanwhile.
+   */
+  requestStream(method: string, params: unknown, onChunk: (chunk: string) => void): SidecarStream {
     const id = this.#nextId++
-    return new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject })
+    if (this.#closed) return { id, done: Promise.reject(new SidecarClosedError()) }
+    const done = new Promise<unknown>((resolve, reject) => {
+      this.#pending.set(id, { resolve, reject, onChunk })
       this.#io.stdin.write(JSON.stringify({ id, method, params }) + '\n', (err) => {
         if (err) {
           this.#pending.delete(id)
@@ -54,6 +70,7 @@ export class SidecarClient {
         }
       })
     })
+    return { id, done }
   }
 
   /** Rejects every in-flight request. Call once the underlying process has exited. */
@@ -77,6 +94,10 @@ export class SidecarClient {
 
     const pending = this.#pending.get(response.id)
     if (!pending) return
+    if (response.chunk !== undefined) {
+      pending.onChunk?.(response.chunk)
+      return
+    }
     this.#pending.delete(response.id)
 
     if (response.error !== undefined) {

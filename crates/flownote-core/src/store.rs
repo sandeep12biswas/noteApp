@@ -879,3 +879,185 @@ mod csp_tests {
         assert_eq!(plugin_csp_for(&conn, "nope", ORIGIN).unwrap(), plugin_content_security_policy(&[], ORIGIN));
     }
 }
+
+// ---- AI providers (V7 migration; flownote_core::ai makes the requests) ----
+
+/// Every configured AI provider, oldest first. The API key itself is never
+/// returned — only `hasApiKey` — so neither the renderer nor a plugin can
+/// read a key back; it's used only inside `ai_provider_config`.
+pub fn list_ai_providers(conn: &Connection) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, kind, name, base_url, model, api_key IS NOT NULL AND api_key != '', is_default
+             FROM ai_providers ORDER BY created_at, rowid",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "kind": row.get::<_, String>(1)?,
+                "name": row.get::<_, String>(2)?,
+                "baseUrl": row.get::<_, String>(3)?,
+                "model": row.get::<_, String>(4)?,
+                "hasApiKey": row.get::<_, bool>(5)?,
+                "isDefault": row.get::<_, bool>(6)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// Adds or updates a provider. `baseUrl`/`model` fall back to the kind's
+/// defaults when blank. `apiKey`: a string sets it, `null` clears it, and
+/// leaving it out keeps whatever is stored (so editing a provider in the UI
+/// never needs to send the key back). The first provider becomes the default.
+pub fn save_ai_provider(conn: &Connection, params: &Value) -> Result<Value, String> {
+    let id = params.get("id").and_then(Value::as_str).filter(|s| !s.is_empty()).ok_or("save_ai_provider requires `id`")?;
+    let kind = crate::ai::ProviderKind::parse(params.get("kind").and_then(Value::as_str).unwrap_or(""))?;
+    let text = |key: &str| params.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let name = text("name").ok_or("save_ai_provider requires a `name`")?;
+    let base_url = text("baseUrl").unwrap_or(kind.default_base_url());
+    let model = text("model").unwrap_or(kind.default_model());
+    let now = now_ms();
+
+    conn.execute(
+        "INSERT INTO ai_providers (id, kind, name, base_url, model, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+         ON CONFLICT(id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
+           base_url = excluded.base_url, model = excluded.model, updated_at = excluded.updated_at",
+        rusqlite::params![id, kind.as_str(), name, base_url, model, now],
+    )
+    .map_err(|e| e.to_string())?;
+    match params.get("apiKey") {
+        Some(Value::String(key)) => {
+            let key = key.trim();
+            let key = if key.is_empty() { None } else { Some(key) };
+            conn.execute("UPDATE ai_providers SET api_key = ?1 WHERE id = ?2", rusqlite::params![key, id]).map_err(|e| e.to_string())?;
+        }
+        Some(Value::Null) => {
+            conn.execute("UPDATE ai_providers SET api_key = NULL WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+        }
+        _ => {}
+    }
+    let has_default: bool =
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM ai_providers WHERE is_default = 1)", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if !has_default {
+        set_default_ai_provider(conn, id)?;
+    }
+    list_ai_providers(conn)?
+        .into_iter()
+        .find(|p| p["id"] == id)
+        .ok_or_else(|| format!("no such AI provider: {id}"))
+}
+
+/// Removes a provider; if it was the default, the oldest remaining one takes over.
+pub fn delete_ai_provider(conn: &Connection, id: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM ai_providers WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    let has_default: bool =
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM ai_providers WHERE is_default = 1)", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if !has_default {
+        conn.execute(
+            "UPDATE ai_providers SET is_default = 1
+             WHERE id = (SELECT id FROM ai_providers ORDER BY created_at, rowid LIMIT 1)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Makes `id` the provider the AI box uses.
+pub fn set_default_ai_provider(conn: &Connection, id: &str) -> Result<(), String> {
+    let exists: bool = conn
+        .query_row("SELECT EXISTS(SELECT 1 FROM ai_providers WHERE id = ?1)", [id], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if !exists {
+        return Err(format!("no such AI provider: {id}"));
+    }
+    conn.execute("UPDATE ai_providers SET is_default = (id = ?1)", [id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The full config — **including the API key** — for `id`, or for the
+/// default provider when `id` is None. Backend-only: used to make the
+/// request, never sent to the renderer.
+pub fn ai_provider_config(conn: &Connection, id: Option<&str>) -> Result<crate::ai::ProviderConfig, String> {
+    let row = conn
+        .query_row(
+            "SELECT kind, base_url, model, api_key FROM ai_providers
+             WHERE CASE WHEN ?1 IS NULL THEN is_default = 1 ELSE id = ?1 END",
+            [id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, Option<String>>(3)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let (kind, base_url, model, api_key) = row.ok_or_else(|| match id {
+        Some(id) => format!("no such AI provider: {id}"),
+        None => "No AI provider is set up yet — add one in AI settings.".to_string(),
+    })?;
+    Ok(crate::ai::ProviderConfig { kind: crate::ai::ProviderKind::parse(&kind)?, base_url, model, api_key })
+}
+
+#[cfg(test)]
+mod ai_provider_tests {
+    use super::*;
+    use crate::db;
+    use serde_json::json;
+
+    fn save(conn: &Connection, v: Value) -> Value {
+        save_ai_provider(conn, &v).unwrap()
+    }
+
+    #[test]
+    fn first_provider_becomes_default_and_blank_fields_get_kind_defaults() {
+        let conn = db::open_in_memory().unwrap();
+        let p = save(&conn, json!({ "id": "a", "kind": "anthropic", "name": "Claude", "apiKey": "sk-1" }));
+        assert_eq!(p["isDefault"], true);
+        assert_eq!(p["baseUrl"], "https://api.anthropic.com");
+        assert_eq!(p["model"], crate::ai::ProviderKind::Anthropic.default_model());
+        assert_eq!(p["hasApiKey"], true);
+        let second = save(&conn, json!({ "id": "g", "kind": "gemini", "name": "Gemini" }));
+        assert_eq!(second["isDefault"], false);
+    }
+
+    #[test]
+    fn the_api_key_is_never_listed_but_is_used_for_requests() {
+        let conn = db::open_in_memory().unwrap();
+        save(&conn, json!({ "id": "a", "kind": "anthropic", "name": "Claude", "apiKey": "sk-secret" }));
+        let listed = serde_json::to_string(&list_ai_providers(&conn).unwrap()).unwrap();
+        assert!(!listed.contains("sk-secret"), "{listed}");
+        assert_eq!(ai_provider_config(&conn, None).unwrap().api_key.as_deref(), Some("sk-secret"));
+    }
+
+    #[test]
+    fn editing_without_apikey_keeps_it_null_clears_it() {
+        let conn = db::open_in_memory().unwrap();
+        save(&conn, json!({ "id": "o", "kind": "openai_compatible", "name": "OpenAI", "apiKey": "k1" }));
+        save(&conn, json!({ "id": "o", "kind": "openai_compatible", "name": "Renamed", "model": "gpt-x" }));
+        let cfg = ai_provider_config(&conn, Some("o")).unwrap();
+        assert_eq!(cfg.api_key.as_deref(), Some("k1"));
+        assert_eq!(cfg.model, "gpt-x");
+        save(&conn, json!({ "id": "o", "kind": "openai_compatible", "name": "Renamed", "apiKey": null }));
+        assert_eq!(ai_provider_config(&conn, Some("o")).unwrap().api_key, None);
+    }
+
+    #[test]
+    fn switching_and_deleting_the_default() {
+        let conn = db::open_in_memory().unwrap();
+        save(&conn, json!({ "id": "a", "kind": "anthropic", "name": "Claude" }));
+        save(&conn, json!({ "id": "o", "kind": "openai_compatible", "name": "Ollama", "baseUrl": "http://localhost:11434/v1" }));
+        set_default_ai_provider(&conn, "o").unwrap();
+        assert_eq!(ai_provider_config(&conn, None).unwrap().base_url, "http://localhost:11434/v1");
+        delete_ai_provider(&conn, "o").unwrap();
+        assert_eq!(ai_provider_config(&conn, None).unwrap().kind, crate::ai::ProviderKind::Anthropic);
+        assert!(set_default_ai_provider(&conn, "nope").unwrap_err().contains("no such"));
+    }
+
+    #[test]
+    fn rejects_unknown_kinds_and_explains_when_nothing_is_set_up() {
+        let conn = db::open_in_memory().unwrap();
+        assert!(save_ai_provider(&conn, &json!({ "id": "x", "kind": "skynet", "name": "X" })).unwrap_err().contains("unknown AI provider kind"));
+        assert!(ai_provider_config(&conn, None).unwrap_err().contains("No AI provider is set up yet"));
+    }
+}

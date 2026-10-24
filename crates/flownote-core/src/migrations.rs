@@ -48,6 +48,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "attachments",
         sql: include_str!("../migrations/V6__attachments.sql"),
     },
+    Migration {
+        version: 7,
+        name: "ai_providers",
+        sql: include_str!("../migrations/V7__ai_providers.sql"),
+    },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -100,6 +105,7 @@ mod tests {
             "folders",
             "dictionary_words",
             "attachments",
+            "ai_providers",
         ];
         for table in expected_tables {
             let count: i64 = conn
@@ -115,7 +121,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 6);
+        assert_eq!(applied, 7);
     }
 
     #[test]

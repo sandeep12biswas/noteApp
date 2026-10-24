@@ -262,6 +262,61 @@ async pluginContentSecurityPolicy(pluginId: string, origin: string) : Promise<Re
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async listAiProviders() : Promise<Result<AiProviderDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_ai_providers") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * `provider` is passed through as JSON so `apiKey` keeps its three meanings
+ * (string sets, `null` clears, absent keeps) — see store::save_ai_provider.
+ */
+async saveAiProvider(provider: JsonValue) : Promise<Result<AiProviderDto, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_ai_provider", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteAiProvider(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_ai_provider", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setDefaultAiProvider(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_default_ai_provider", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Starts streaming a completion from `provider_id` (or the default
+ * provider) into `on_event`, and returns a stream id for `ai_cancel`. The
+ * request runs on its own thread; the API key never leaves the backend.
+ */
+async aiComplete(prompt: string, context: string, providerId: string | null, onEvent: TAURI_CHANNEL<AiStreamEvent>) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ai_complete", { prompt, context, providerId, onEvent }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stops an in-flight `ai_complete`; its stream then ends with `Done`.
+ */
+async aiCancel(streamId: number) : Promise<void> {
+    await TAURI_INVOKE("ai_cancel", { streamId });
 }
 }
 
@@ -275,6 +330,14 @@ async pluginContentSecurityPolicy(pluginId: string, origin: string) : Promise<Re
 
 /** user-defined types **/
 
+/**
+ * A configured provider as listed — never includes the API key itself.
+ */
+export type AiProviderDto = { id: string; kind: string; name: string; baseUrl: string; model: string; hasApiKey: boolean; isDefault: boolean }
+/**
+ * One event of an `ai_complete` stream.
+ */
+export type AiStreamEvent = { type: "text"; text: string } | { type: "done" } | { type: "error"; message: string }
 export type AttachmentDto = { id: string; fileName: string; mimeType: string; size: number }
 /**
  * `AttachmentDto` plus the file's absolute on-disk path (`getAttachment`).

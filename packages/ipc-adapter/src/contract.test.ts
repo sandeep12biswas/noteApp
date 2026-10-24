@@ -164,6 +164,14 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(iterator.next()).rejects.toThrow()
   })
 
+  it('the AI provider methods reject', async () => {
+    const adapter = create()
+    await expect(adapter.listAiProviders()).rejects.toThrow()
+    await expect(adapter.saveAiProvider({ id: 'p', kind: 'anthropic', name: 'Claude' })).rejects.toThrow()
+    await expect(adapter.deleteAiProvider('p')).rejects.toThrow()
+    await expect(adapter.setDefaultAiProvider('p')).rejects.toThrow()
+  })
+
   it('installPlugin rejects', async () => {
     const adapter = create()
     await expect(adapter.installPlugin('/path/to/plugin')).rejects.toThrow()

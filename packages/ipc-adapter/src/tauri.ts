@@ -1,5 +1,9 @@
-import { commands, type SegmentInput } from './generated/tauri-bindings'
+import { Channel } from '@tauri-apps/api/core'
+import { commands, type AiStreamEvent, type JsonValue, type SegmentInput } from './generated/tauri-bindings'
+import { pushIterator } from './pushIterator'
 import type {
+  AiProvider,
+  AiProviderInput,
   Attachment,
   Block,
   Folder,
@@ -22,7 +26,7 @@ function unwrap<T>(result: { status: 'ok'; data: T } | { status: 'error'; error:
 // tauri, which wrap the same flownote_core::store functions the Electron
 // sidecar calls. Every method ElectronIPCAdapter implements is implemented
 // here too; the remaining throw-stubs (saveBlock, mergeSegments,
-// onSyncEvent, aiComplete) are unimplemented on both platforms. To add a
+// onSyncEvent) are unimplemented on both platforms. To add a
 // method: add the storage function to flownote_core::store, expose it from
 // both shells, regenerate the bindings (`cargo run -p flownote-tauri
 // --example export_bindings`), then call `commands.xxx()` here.
@@ -145,9 +149,47 @@ export class TauriIPCAdapter implements IPCAdapter {
     throw new Error('TauriIPCAdapter.onSyncEvent not implemented')
   }
 
-  // eslint-disable-next-line require-yield -- stub throws before ever yielding
-  async *aiComplete(_prompt: string, _context: string): AsyncIterableIterator<string> {
-    throw new Error('TauriIPCAdapter.aiComplete not implemented')
+  aiComplete(prompt: string, context: string, providerId?: string): AsyncIterableIterator<string> {
+    return pushIterator<string>((sink) => {
+      let streamId: number | null = null
+      let stopped = false
+      const channel = new Channel<AiStreamEvent>()
+      channel.onmessage = (event) => {
+        if (event.type === 'text') sink.push(event.text)
+        else if (event.type === 'done') sink.end()
+        else sink.fail(new Error(event.message))
+      }
+      commands.aiComplete(prompt, context, providerId ?? null, channel).then(
+        (result) => {
+          if (result.status === 'error') return sink.fail(new Error(result.error))
+          streamId = result.data
+          if (stopped) void commands.aiCancel(streamId)
+        },
+        (err: unknown) => sink.fail(err instanceof Error ? err : new Error(String(err))),
+      )
+      // Stopped early: cancel the request in the backend (once its id is known).
+      return () => {
+        stopped = true
+        if (streamId !== null) void commands.aiCancel(streamId)
+      }
+    })
+  }
+
+  async listAiProviders(): Promise<AiProvider[]> {
+    return unwrap(await commands.listAiProviders()) as AiProvider[]
+  }
+
+  // Sent as plain JSON so `apiKey`'s three meanings survive (see AiProviderInput).
+  async saveAiProvider(provider: AiProviderInput): Promise<AiProvider> {
+    return unwrap(await commands.saveAiProvider(provider as unknown as JsonValue)) as AiProvider
+  }
+
+  async deleteAiProvider(id: string): Promise<void> {
+    unwrap(await commands.deleteAiProvider(id))
+  }
+
+  async setDefaultAiProvider(id: string): Promise<void> {
+    unwrap(await commands.setDefaultAiProvider(id))
   }
 
   // A manifest is free-form JSON on the Rust side (it can carry fields the

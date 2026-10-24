@@ -1,6 +1,9 @@
 import { createTRPCProxyClient } from '@trpc/client'
 import { ipcLink } from 'electron-trpc/renderer'
+import { pushIterator } from './pushIterator'
 import type {
+  AiProvider,
+  AiProviderInput,
   Attachment,
   Block,
   Folder,
@@ -54,6 +57,20 @@ interface ElectronRouter {
   pluginStorageDelete: { mutate: (input: { pluginId: string; key: string }) => Promise<void> }
   pluginStorageList: { query: (pluginId: string) => Promise<string[]> }
   pluginContentSecurityPolicy: { query: (input: { pluginId: string; origin: string }) => Promise<string> }
+  listAiProviders: { query: () => Promise<AiProvider[]> }
+  saveAiProvider: { mutate: (input: AiProviderInput) => Promise<AiProvider> }
+  deleteAiProvider: { mutate: (id: string) => Promise<void> }
+  setDefaultAiProvider: { mutate: (id: string) => Promise<void> }
+  aiComplete: {
+    subscribe: (
+      input: { prompt: string; context: string; providerId?: string },
+      handlers: {
+        onData: (event: { type: 'text'; text: string } | { type: 'done' }) => void
+        onError: (err: unknown) => void
+        onComplete?: () => void
+      },
+    ) => { unsubscribe: () => void }
+  }
 }
 
 let client: ElectronRouter | null = null
@@ -168,9 +185,35 @@ export class ElectronIPCAdapter implements IPCAdapter {
     throw new Error('ElectronIPCAdapter.onSyncEvent not implemented')
   }
 
-  // eslint-disable-next-line require-yield -- stub throws before ever yielding
-  async *aiComplete(_prompt: string, _context: string): AsyncIterableIterator<string> {
-    throw new Error('ElectronIPCAdapter.aiComplete not implemented')
+  aiComplete(prompt: string, context: string, providerId?: string): AsyncIterableIterator<string> {
+    return pushIterator<string>((sink) => {
+      const sub = getClient().aiComplete.subscribe(
+        { prompt, context, ...(providerId ? { providerId } : {}) },
+        {
+          onData: (event) => (event.type === 'text' ? sink.push(event.text) : sink.end()),
+          onError: (err) => sink.fail(err instanceof Error ? err : new Error(String(err))),
+          onComplete: () => sink.end(),
+        },
+      )
+      // Stopped early: unsubscribing makes the main process cancel the request.
+      return () => sub.unsubscribe()
+    })
+  }
+
+  async listAiProviders(): Promise<AiProvider[]> {
+    return getClient().listAiProviders.query()
+  }
+
+  async saveAiProvider(provider: AiProviderInput): Promise<AiProvider> {
+    return getClient().saveAiProvider.mutate(provider)
+  }
+
+  async deleteAiProvider(id: string): Promise<void> {
+    await getClient().deleteAiProvider.mutate(id)
+  }
+
+  async setDefaultAiProvider(id: string): Promise<void> {
+    await getClient().setDefaultAiProvider.mutate(id)
   }
 
   async installPlugin(source: string): Promise<PluginManifest> {

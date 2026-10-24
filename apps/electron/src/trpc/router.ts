@@ -9,6 +9,7 @@
 // in protocol.rs, then flip its ElectronIPCAdapter method from a stub throw
 // to a real trpc call.
 import { initTRPC } from '@trpc/server'
+import { observable } from '@trpc/server/observable'
 import type { Folder, Segment } from '@flownote/ipc-adapter'
 import type { SidecarSupervisor } from '../sidecarSupervisor'
 
@@ -197,6 +198,66 @@ export const appRouter = t.router({
       return { pluginId: i.pluginId, origin: i.origin }
     })
     .query(({ ctx, input }) => ctx.sidecar.request('plugin_csp', input)),
+
+  // ---- AI (flownote_core::ai / store) ----
+  listAiProviders: t.procedure.query(({ ctx }) => ctx.sidecar.request('list_ai_providers')),
+
+  saveAiProvider: t.procedure
+    .input((input: unknown): Record<string, unknown> => {
+      if (typeof input !== 'object' || input === null) throw new Error('saveAiProvider expects an object')
+      return input as Record<string, unknown>
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('save_ai_provider', input)),
+
+  deleteAiProvider: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('deleteAiProvider expects a string id')
+      return id
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('delete_ai_provider', { id: input })),
+
+  setDefaultAiProvider: t.procedure
+    .input((id: unknown): string => {
+      if (typeof id !== 'string') throw new Error('setDefaultAiProvider expects a string id')
+      return id
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('set_default_ai_provider', { id: input })),
+
+  /**
+   * Streams generated text: `{ type: 'text', text }` per piece, then
+   * `{ type: 'done' }`; a provider/transport failure ends it with an error.
+   * Unsubscribing (the user pressed Stop) cancels the request in the sidecar.
+   */
+  aiComplete: t.procedure
+    .input((input: unknown): { prompt: string; context: string; providerId?: string } => {
+      const i = input as { prompt?: unknown; context?: unknown; providerId?: unknown }
+      if (typeof i?.prompt !== 'string') throw new Error('aiComplete expects { prompt: string, context?: string }')
+      return {
+        prompt: i.prompt,
+        context: typeof i.context === 'string' ? i.context : '',
+        ...(typeof i.providerId === 'string' ? { providerId: i.providerId } : {}),
+      }
+    })
+    .subscription(({ ctx, input }) =>
+      observable<{ type: 'text'; text: string } | { type: 'done' }>((emit) => {
+        let finished = false
+        const stream = ctx.sidecar.requestStream('ai_complete', input, (text) => emit.next({ type: 'text', text }))
+        stream.done.then(
+          () => {
+            finished = true
+            emit.next({ type: 'done' })
+            emit.complete()
+          },
+          (err: unknown) => {
+            finished = true
+            emit.error(err instanceof Error ? err : new Error(String(err)))
+          },
+        )
+        return () => {
+          if (!finished) void ctx.sidecar.request('ai_cancel', { streamId: stream.id }).catch(() => {})
+        }
+      }),
+    ),
 })
 
 export type AppRouter = typeof appRouter

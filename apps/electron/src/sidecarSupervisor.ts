@@ -7,7 +7,7 @@
 // can be unit-tested with a fake `spawn` that exits on command, without
 // touching a real child process or the filesystem.
 import { appendFileSync } from 'node:fs'
-import { SidecarClient, type SidecarIO } from './sidecar'
+import { SidecarClient, type SidecarIO, type SidecarStream } from './sidecar'
 
 export interface SupervisedProcess extends SidecarIO {
   stderr: NodeJS.ReadableStream
@@ -55,6 +55,14 @@ export class SidecarSupervisor {
       return Promise.reject(new Error('flownote sidecar is unavailable'))
     }
     return this.#client.request(method, params)
+  }
+
+  /** Streaming request (`ai_complete`) — see SidecarClient.requestStream. */
+  requestStream(method: string, params: unknown, onChunk: (chunk: string) => void): SidecarStream {
+    if (this.#dead || !this.#client) {
+      return { id: 0, done: Promise.reject(new Error('flownote sidecar is unavailable')) }
+    }
+    return this.#client.requestStream(method, params, onChunk)
   }
 
   stop(): void {

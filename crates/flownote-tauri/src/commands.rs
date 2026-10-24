@@ -17,6 +17,10 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::ipc::Channel;
 use tauri::State;
 
 /// Shared app state — the SQLite connection pool, managed by Tauri and
@@ -444,6 +448,105 @@ pub fn get_installed_plugins(state: State<AppState>) -> Result<Vec<Value>, Strin
 #[specta::specta]
 pub fn plugin_content_security_policy(state: State<AppState>, plugin_id: String, origin: String) -> Result<String, String> {
     with_conn(&state, |c| store::plugin_csp_for(c, &plugin_id, &origin))
+}
+
+// ---- AI (flownote_core::ai / store) ----
+
+/// A configured provider as listed — never includes the API key itself.
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderDto {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub base_url: String,
+    pub model: String,
+    pub has_api_key: bool,
+    pub is_default: bool,
+}
+
+fn list_ai_providers_impl(conn: &Connection) -> Result<Vec<AiProviderDto>, String> {
+    from_json(Value::Array(store::list_ai_providers(conn)?))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_ai_providers(state: State<AppState>) -> Result<Vec<AiProviderDto>, String> {
+    with_conn(&state, list_ai_providers_impl)
+}
+
+/// `provider` is passed through as JSON so `apiKey` keeps its three meanings
+/// (string sets, `null` clears, absent keeps) — see store::save_ai_provider.
+#[tauri::command]
+#[specta::specta]
+pub fn save_ai_provider(state: State<AppState>, provider: Value) -> Result<AiProviderDto, String> {
+    with_conn(&state, |c| from_json(store::save_ai_provider(c, &provider)?))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_ai_provider(state: State<AppState>, id: String) -> Result<(), String> {
+    with_conn(&state, |c| store::delete_ai_provider(c, &id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_default_ai_provider(state: State<AppState>, id: String) -> Result<(), String> {
+    with_conn(&state, |c| store::set_default_ai_provider(c, &id))
+}
+
+/// One event of an `ai_complete` stream.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AiStreamEvent {
+    Text { text: String },
+    Done,
+    Error { message: String },
+}
+
+/// Cancel flags of in-flight streams, by stream id.
+fn ai_streams() -> &'static Mutex<HashMap<u64, Arc<AtomicBool>>> {
+    static STREAMS: OnceLock<Mutex<HashMap<u64, Arc<AtomicBool>>>> = OnceLock::new();
+    STREAMS.get_or_init(Mutex::default)
+}
+
+/// Starts streaming a completion from `provider_id` (or the default
+/// provider) into `on_event`, and returns a stream id for `ai_cancel`. The
+/// request runs on its own thread; the API key never leaves the backend.
+#[tauri::command]
+#[specta::specta]
+pub fn ai_complete(
+    state: State<AppState>,
+    prompt: String,
+    context: String,
+    provider_id: Option<String>,
+    on_event: Channel<AiStreamEvent>,
+) -> Result<u32, String> {
+    let cfg = with_conn(&state, |c| store::ai_provider_config(c, provider_id.as_deref()))?;
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let cancel = Arc::new(AtomicBool::new(false));
+    ai_streams().lock().unwrap().insert(id, cancel.clone());
+    std::thread::spawn(move || {
+        let result = flownote_core::ai::stream_completion(&cfg, &prompt, &context, &cancel, |text| {
+            let _ = on_event.send(AiStreamEvent::Text { text: text.to_string() });
+        });
+        ai_streams().lock().unwrap().remove(&id);
+        let _ = on_event.send(match result {
+            Ok(()) => AiStreamEvent::Done,
+            Err(message) => AiStreamEvent::Error { message },
+        });
+    });
+    Ok(id as u32)
+}
+
+/// Stops an in-flight `ai_complete`; its stream then ends with `Done`.
+#[tauri::command]
+#[specta::specta]
+pub fn ai_cancel(stream_id: u32) {
+    if let Some(flag) = ai_streams().lock().unwrap().get(&(stream_id as u64)) {
+        flag.store(true, Ordering::Relaxed);
+    }
 }
 
 // `plugin_id` arrives from the frontend, already resolved from the sending

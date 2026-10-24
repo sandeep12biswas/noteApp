@@ -11,11 +11,7 @@
 //! `#[tauri::command]` in commands.rs, same as a real debug-build app
 //! launch would do automatically.
 fn main() {
-    flownote_tauri::specta_builder()
-        .export(
-            flownote_tauri::typescript_exporter(),
-            "packages/ipc-adapter/src/generated/tauri-bindings.ts",
-        )
+    flownote_tauri::export_bindings("packages/ipc-adapter/src/generated/tauri-bindings.ts")
         .expect("failed to export tauri-specta TypeScript bindings");
     println!("wrote packages/ipc-adapter/src/generated/tauri-bindings.ts");
 }

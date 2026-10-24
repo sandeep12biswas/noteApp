@@ -86,6 +86,34 @@ export interface SyncEvent {
 // `install_plugin` and `get_installed_plugins` return this full shape so
 // `PluginManager` never needs a second round-trip to read a plugin's
 // declared permissions/extensionPoints/entry before creating its iframe.
+/** The wire protocol a provider speaks (flownote_core::ai). `openai_compatible` also covers Ollama, LM Studio, OpenRouter, Mistral, Groq, …. */
+export type AiProviderKind = 'anthropic' | 'gemini' | 'openai_compatible'
+
+/** A configured AI provider, as listed. The API key itself is never returned — only whether one is stored. */
+export interface AiProvider {
+  id: string
+  kind: AiProviderKind
+  name: string
+  baseUrl: string
+  model: string
+  hasApiKey: boolean
+  isDefault: boolean
+}
+
+/**
+ * Adds or edits a provider. Blank `baseUrl`/`model` fall back to the kind's
+ * defaults. `apiKey`: a string sets it, `null` clears it, omitted keeps the
+ * stored one (so an edit form never needs to send the key back).
+ */
+export interface AiProviderInput {
+  id: string
+  kind: AiProviderKind
+  name: string
+  baseUrl?: string
+  model?: string
+  apiKey?: string | null
+}
+
 export interface PluginManifest {
   id: string
   name: string
@@ -127,7 +155,17 @@ export interface IPCAdapter {
   search(query: string, notebookId: string): Promise<SearchResult[]>
   setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void>
   onSyncEvent(handler: (event: SyncEvent) => void): () => void
-  aiComplete(prompt: string, context: string): AsyncIterableIterator<string>
+  /**
+   * Streams generated text for `prompt` (with the current segment's text as
+   * `context`) from `providerId`, or the default provider. Requests are made
+   * by the Rust backend; API keys never reach the frontend. Stopping the
+   * iteration early (`break`) cancels the request.
+   */
+  aiComplete(prompt: string, context: string, providerId?: string): AsyncIterableIterator<string>
+  listAiProviders(): Promise<AiProvider[]>
+  saveAiProvider(provider: AiProviderInput): Promise<AiProvider>
+  deleteAiProvider(id: string): Promise<void>
+  setDefaultAiProvider(id: string): Promise<void>
   // Plugin-related IPC (added in v1.4)
   installPlugin(source: string): Promise<PluginManifest>
   uninstallPlugin(id: string): Promise<void>

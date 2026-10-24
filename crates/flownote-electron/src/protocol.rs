@@ -267,6 +267,31 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             _ => Response::err(req.id, "plugin_csp requires string `pluginId` and `origin` params"),
         },
 
+        // AI provider settings (flownote_core::store; requests themselves are
+        // `ai_complete`, handled in main.rs because it streams).
+        "list_ai_providers" => match list_ai_providers(conn) {
+            Ok(list) => Response::ok(req.id, Value::Array(list)),
+            Err(e) => Response::err(req.id, e),
+        },
+        "save_ai_provider" => match save_ai_provider(conn, &req.params) {
+            Ok(saved) => Response::ok(req.id, saved),
+            Err(e) => Response::err(req.id, e),
+        },
+        "delete_ai_provider" => match req.params.get("id").and_then(Value::as_str) {
+            None => Response::err(req.id, "delete_ai_provider requires a string `id` param"),
+            Some(id) => match delete_ai_provider(conn, id) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e),
+            },
+        },
+        "set_default_ai_provider" => match req.params.get("id").and_then(Value::as_str) {
+            None => Response::err(req.id, "set_default_ai_provider requires a string `id` param"),
+            Some(id) => match set_default_ai_provider(conn, id) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e),
+            },
+        },
+
         other => Response::err(req.id, format!("method not implemented: {other}")),
     }
 }
@@ -1253,5 +1278,20 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let res = dispatch(&conn, Request { id: 92, method: "plugin_csp".into(), params: json!({ "pluginId": "x" }) });
         assert!(res.error.unwrap().contains("requires"));
+    }
+
+    #[test]
+    fn ai_provider_settings_round_trip_without_exposing_the_key() {
+        let conn = db::open_in_memory().unwrap();
+        let saved = dispatch(
+            &conn,
+            Request { id: 100, method: "save_ai_provider".into(), params: json!({ "id": "c", "kind": "anthropic", "name": "Claude", "apiKey": "sk-hidden" }) },
+        );
+        assert_eq!(saved.result.as_ref().unwrap()["hasApiKey"], true);
+        let listed = dispatch(&conn, Request { id: 101, method: "list_ai_providers".into(), params: Value::Null });
+        let text = serde_json::to_string(&listed.result).unwrap();
+        assert!(text.contains("\"isDefault\":true") && !text.contains("sk-hidden"), "{text}");
+        let res = dispatch(&conn, Request { id: 102, method: "delete_ai_provider".into(), params: json!({ "id": "c" }) });
+        assert!(res.error.is_none());
     }
 }

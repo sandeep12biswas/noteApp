@@ -97,3 +97,35 @@ describe('SidecarClient', () => {
     await expect(client.request('ping')).rejects.toBeInstanceOf(SidecarClosedError)
   })
 })
+
+describe('SidecarClient.requestStream', () => {
+  it('passes {id, chunk} lines to onChunk and settles on the final response, while other requests still complete', async () => {
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const client = new SidecarClient({ stdin, stdout })
+    const chunks: string[] = []
+    const stream = client.requestStream('ai_complete', { prompt: 'p' }, (c) => chunks.push(c))
+    const ping = client.request('ping')
+
+    stdout.write(JSON.stringify({ id: stream.id, chunk: 'Hel' }) + '\n')
+    stdout.write(JSON.stringify({ id: stream.id + 1, result: 'pong' }) + '\n') // the ping, answered mid-stream
+    stdout.write(JSON.stringify({ id: stream.id, chunk: 'lo' }) + '\n')
+    stdout.write(JSON.stringify({ id: stream.id, result: null }) + '\n')
+
+    await expect(ping).resolves.toBe('pong')
+    await expect(stream.done).resolves.toBeNull()
+    expect(chunks).toEqual(['Hel', 'lo'])
+  })
+
+  it('rejects done with the final error after any chunks', async () => {
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const client = new SidecarClient({ stdin, stdout })
+    const chunks: string[] = []
+    const stream = client.requestStream('ai_complete', {}, (c) => chunks.push(c))
+    stdout.write(JSON.stringify({ id: stream.id, chunk: 'par' }) + '\n')
+    stdout.write(JSON.stringify({ id: stream.id, error: 'Overloaded' }) + '\n')
+    await expect(stream.done).rejects.toThrow('Overloaded')
+    expect(chunks).toEqual(['par'])
+  })
+})

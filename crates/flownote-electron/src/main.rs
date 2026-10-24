@@ -8,7 +8,10 @@
 mod protocol;
 
 use protocol::{Request, Response};
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 fn main() {
     let db_path = std::env::var("FLOWNOTE_DB_PATH").unwrap_or_else(|_| default_db_path());
@@ -26,7 +29,8 @@ fn main() {
     eprintln!("flownote-electron: ready (db: {db_path})");
 
     let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    // Cancel flags for in-flight `ai_complete` streams, by request id.
+    let ai_streams: Arc<Mutex<HashMap<u64, Arc<AtomicBool>>>> = Arc::default();
 
     for line in stdin.lock().lines() {
         let line = match line {
@@ -40,43 +44,87 @@ fn main() {
             continue;
         }
 
-        let response = match serde_json::from_str::<Request>(&line) {
-            Ok(req) => {
-                let conn = match pool.get() {
-                    Ok(conn) => conn,
-                    Err(e) => {
-                        // Pool exhaustion/poisoning shouldn't take the whole
-                        // process down — report it as a per-request error.
-                        let id = req.id;
-                        write_response(
-                            &mut stdout,
-                            &Response { id, result: None, error: Some(format!("db pool error: {e}")) },
-                        );
-                        continue;
-                    }
-                };
-                protocol::dispatch(&conn, req)
-            }
+        let req = match serde_json::from_str::<Request>(&line) {
+            Ok(req) => req,
             Err(e) => {
                 // We can't recover the request `id` from unparseable input;
                 // id 0 is reserved (real requests start at 1 on the Node
                 // side) so the caller can tell this apart from a real reply.
-                Response { id: 0, result: None, error: Some(format!("invalid request JSON: {e}")) }
+                write_response(&Response { id: 0, result: None, error: Some(format!("invalid request JSON: {e}")) });
+                continue;
+            }
+        };
+        let conn = match pool.get() {
+            Ok(conn) => conn,
+            Err(e) => {
+                // Pool exhaustion/poisoning shouldn't take the whole
+                // process down — report it as a per-request error.
+                write_response(&Response { id: req.id, result: None, error: Some(format!("db pool error: {e}")) });
+                continue;
             }
         };
 
-        write_response(&mut stdout, &response);
+        match req.method.as_str() {
+            // Streams: `{"id", "chunk"}` lines as text arrives, then the usual
+            // final response. Runs on its own thread so other requests (saves,
+            // loads) keep being answered meanwhile.
+            "ai_complete" => {
+                let prompt = req.params.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let context = req.params.get("context").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let provider_id = req.params.get("providerId").and_then(|v| v.as_str()).map(str::to_string);
+                let cfg = match flownote_core::store::ai_provider_config(&conn, provider_id.as_deref()) {
+                    Ok(cfg) => cfg,
+                    Err(e) => {
+                        write_response(&Response { id: req.id, result: None, error: Some(e) });
+                        continue;
+                    }
+                };
+                drop(conn); // the stream doesn't need the database
+                let cancel = Arc::new(AtomicBool::new(false));
+                ai_streams.lock().unwrap().insert(req.id, cancel.clone());
+                let streams = ai_streams.clone();
+                let id = req.id;
+                std::thread::spawn(move || {
+                    let result = flownote_core::ai::stream_completion(&cfg, &prompt, &context, &cancel, |text| {
+                        write_line(&serde_json::json!({ "id": id, "chunk": text }));
+                    });
+                    streams.lock().unwrap().remove(&id);
+                    let response = match result {
+                        Ok(()) => Response { id, result: Some(serde_json::Value::Null), error: None },
+                        Err(e) => Response { id, result: None, error: Some(e) },
+                    };
+                    write_response(&response);
+                });
+            }
+            // Stops an in-flight `ai_complete` (the "Stop" button); its own
+            // final response follows shortly after.
+            "ai_cancel" => {
+                let target = req.params.get("streamId").and_then(|v| v.as_u64());
+                if let Some(flag) = target.and_then(|t| ai_streams.lock().unwrap().get(&t).cloned()) {
+                    flag.store(true, Ordering::Relaxed);
+                }
+                write_response(&Response { id: req.id, result: Some(serde_json::Value::Null), error: None });
+            }
+            _ => write_response(&protocol::dispatch(&conn, req)),
+        }
     }
 }
 
-fn write_response(stdout: &mut impl Write, response: &Response) {
-    let Ok(json) = serde_json::to_string(response) else {
-        eprintln!("flownote-electron: failed to serialize response for id {}", response.id);
+/// Writes one JSON line to stdout, holding the lock for the whole line so
+/// streaming threads and the request loop never interleave mid-line.
+fn write_line(value: &impl serde::Serialize) {
+    let Ok(json) = serde_json::to_string(value) else {
+        eprintln!("flownote-electron: failed to serialize an output line");
         return;
     };
-    if writeln!(stdout, "{json}").is_err() || stdout.flush().is_err() {
-        eprintln!("flownote-electron: failed to write response to stdout");
+    let mut out = io::stdout().lock();
+    if writeln!(out, "{json}").is_err() || out.flush().is_err() {
+        eprintln!("flownote-electron: failed to write to stdout");
     }
+}
+
+fn write_response(response: &Response) {
+    write_line(response);
 }
 
 /// Falls back to a `flownote.sqlite3` file under the OS-appropriate user

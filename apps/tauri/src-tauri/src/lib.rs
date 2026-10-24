@@ -45,11 +45,7 @@ pub fn run() {
     let specta_builder = flownote_tauri::specta_builder();
 
     #[cfg(debug_assertions)]
-    specta_builder
-        .export(
-            flownote_tauri::typescript_exporter(),
-            "../../../packages/ipc-adapter/src/generated/tauri-bindings.ts",
-        )
+    flownote_tauri::export_bindings("../../../packages/ipc-adapter/src/generated/tauri-bindings.ts")
         .expect("failed to export tauri-specta TypeScript bindings");
 
     tauri::Builder::default()

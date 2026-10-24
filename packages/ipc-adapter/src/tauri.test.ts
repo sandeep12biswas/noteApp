@@ -6,6 +6,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 // Every command TauriIPCAdapter calls, each a bare vi.fn() the tests below
 // program per case.
+vi.mock('@tauri-apps/api/core', () => ({
+  Channel: class {
+    onmessage: (event: unknown) => void = () => {}
+  },
+}))
+
 vi.mock('./generated/tauri-bindings', () => ({
   commands: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
     get: (target, name: string) => (target[name] ??= vi.fn()),
@@ -116,5 +122,63 @@ describe('TauriIPCAdapter: store-backed methods forward args and unwrap results'
     const { TauriIPCAdapter } = await import('./tauri')
     vi.mocked(commands.setPageMode).mockResolvedValue({ status: 'error', error: 'no such page: missing' })
     await expect(new TauriIPCAdapter().setPageMode('missing', 'canvas')).rejects.toThrow('no such page: missing')
+  })
+})
+
+// aiComplete streams over a Tauri Channel; `@tauri-apps/api/core`'s Channel
+// is replaced (below, via vi.mock) by a stub the test drives directly.
+describe('TauriIPCAdapter.aiComplete', () => {
+  it('yields text events in order and ends on done', async () => {
+    const { commands } = await import('./generated/tauri-bindings')
+    const { TauriIPCAdapter } = await import('./tauri')
+    vi.mocked(commands.aiComplete).mockImplementation(async (_p, _c, _id, channel) => {
+      const ch = channel as unknown as { onmessage: (e: unknown) => void }
+      queueMicrotask(() => {
+        ch.onmessage({ type: 'text', text: 'Hel' })
+        ch.onmessage({ type: 'text', text: 'lo' })
+        ch.onmessage({ type: 'done' })
+      })
+      return { status: 'ok', data: 7 }
+    })
+    let out = ''
+    for await (const t of new TauriIPCAdapter().aiComplete('p', 'ctx', 'claude')) out += t
+    expect(out).toBe('Hello')
+    expect(vi.mocked(commands.aiComplete).mock.calls.at(-1)!.slice(0, 3)).toEqual(['p', 'ctx', 'claude'])
+  })
+
+  it('throws the provider error after any text', async () => {
+    const { commands } = await import('./generated/tauri-bindings')
+    const { TauriIPCAdapter } = await import('./tauri')
+    vi.mocked(commands.aiComplete).mockImplementation(async (_p, _c, _id, channel) => {
+      const ch = channel as unknown as { onmessage: (e: unknown) => void }
+      queueMicrotask(() => {
+        ch.onmessage({ type: 'text', text: 'par' })
+        ch.onmessage({ type: 'error', message: 'The provider rejected the API key (401)' })
+      })
+      return { status: 'ok', data: 8 }
+    })
+    let out = ''
+    await expect(
+      (async () => {
+        for await (const t of new TauriIPCAdapter().aiComplete('p', '')) out += t
+      })(),
+    ).rejects.toThrow('rejected the API key')
+    expect(out).toBe('par')
+  })
+
+  it('stopping early cancels the stream in the backend', async () => {
+    const { commands } = await import('./generated/tauri-bindings')
+    const { TauriIPCAdapter } = await import('./tauri')
+    vi.mocked(commands.aiComplete).mockImplementation(async (_p, _c, _id, channel) => {
+      const ch = channel as unknown as { onmessage: (e: unknown) => void }
+      queueMicrotask(() => ch.onmessage({ type: 'text', text: 'first' }))
+      return { status: 'ok', data: 9 }
+    })
+    vi.mocked(commands.aiCancel).mockResolvedValue(undefined as never)
+    for await (const text of new TauriIPCAdapter().aiComplete('p', '')) {
+      expect(text).toBe('first')
+      break
+    }
+    expect(commands.aiCancel).toHaveBeenCalledWith(9)
   })
 })
