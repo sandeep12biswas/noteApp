@@ -111,7 +111,6 @@ function ResizableEmbed({
   return (
     <div ref={containerRef} className="relative inline-block" style={{ width: displayWidth }} contentEditable={false}>
       {isImage ? (
-        // eslint-disable-next-line @next/next/no-img-element -- not a Next.js app; a plain <img> is correct here
         <img
           src={`flownote-attachment://${attachmentId}`}
           alt={fileName}

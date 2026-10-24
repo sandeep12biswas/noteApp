@@ -17,7 +17,16 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
-    project: ['./tsconfig.json', './packages/*/tsconfig.json', './apps/electron/tsconfig.json'],
+    // `packages/*/tsconfig.eslint.json` exists only where a package's own
+    // tsconfig excludes its tests from the build (cli, sdk) — lint still
+    // needs a project that covers them.
+    project: [
+      './tsconfig.json',
+      './packages/*/tsconfig.json',
+      './packages/*/tsconfig.eslint.json',
+      './apps/electron/tsconfig.json',
+      './plugins/*/tsconfig.json',
+    ],
   },
   plugins: ['@typescript-eslint', 'react-hooks'],
   extends: [
@@ -34,6 +43,10 @@ module.exports = {
     // exported from apps/tauri/src-tauri/src/lib.rs) — never hand-edited,
     // so it doesn't need to satisfy our lint rules.
     'packages/ipc-adapter/src/generated/**',
+    // Build output copied in from packages/sdk and plugins/* (see the
+    // spreadsheet plugin's README) so the app can serve it — the TypeScript
+    // sources are linted where they live.
+    'packages/frontend/public/**',
   ],
   rules: {
     'react-hooks/rules-of-hooks': 'error',
