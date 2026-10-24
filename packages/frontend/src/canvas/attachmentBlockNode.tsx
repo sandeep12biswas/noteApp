@@ -12,12 +12,13 @@
 // Attachment bytes never live in this node or the segment's own JSON
 // content — only `attachmentId` (a foreign key into the backend
 // `attachments` table) and display metadata are stored here; the bytes are
-// served through the `flownote-attachment://<id>` scheme
-// (apps/electron/src/main.ts) so a large screenshot never bloats the
+// served through the `flownote-attachment` scheme (apps/electron/src/main.ts,
+// crates/flownote-tauri/src/protocols.rs; URL via lib/customProtocolUrl.ts) so a large screenshot never bloats the
 // segment content this node lives inside, or the FTS index built from it.
 import { mergeAttributes, Node, type NodeViewProps } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
 import { useRef, useState } from 'react'
+import { customProtocolUrl } from '../lib/customProtocolUrl'
 import { getIPCAdapter } from '../store/notebookStore'
 
 export const MIN_ATTACHMENT_EMBED_WIDTH = 80
@@ -112,7 +113,7 @@ function ResizableEmbed({
     <div ref={containerRef} className="relative inline-block" style={{ width: displayWidth }} contentEditable={false}>
       {isImage ? (
         <img
-          src={`flownote-attachment://${attachmentId}`}
+          src={customProtocolUrl('flownote-attachment', attachmentId)}
           alt={fileName}
           className="block w-full rounded border border-gray-200 dark:border-gray-700"
         />

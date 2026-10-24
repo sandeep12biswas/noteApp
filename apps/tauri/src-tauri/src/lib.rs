@@ -3,7 +3,9 @@
 // it into a running Tauri app: opens the SQLite pool, manages it as state,
 // attaches the generated invoke handler, and (debug builds only) exports
 // TypeScript bindings for packages/ipc-adapter's TauriIPCAdapter.
+use flownote_tauri::protocols::{self, ATTACHMENT_SCHEME, PLUGIN_SCHEME};
 use flownote_tauri::AppState;
+use tauri::http::{Response, StatusCode};
 use tauri::Manager;
 
 fn db_path(app: &tauri::App) -> String {
@@ -30,6 +32,28 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(specta_builder.invoke_handler())
+        // Plugin files/SDK and attachment bytes — see flownote_tauri::protocols.
+        .register_uri_scheme_protocol(PLUGIN_SCHEME, |ctx, request| {
+            let resolver = ctx.app_handle().asset_resolver();
+            protocols::plugin_asset_response(request.uri().path(), |path| {
+                resolver.get(path.to_string()).map(|asset| (asset.bytes, asset.mime_type))
+            })
+        })
+        .register_uri_scheme_protocol(ATTACHMENT_SCHEME, |ctx, request| {
+            let Some(state) = ctx.app_handle().try_state::<AppState>() else {
+                return Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .body(b"database not open yet".to_vec())
+                    .unwrap();
+            };
+            match state.pool.get() {
+                Ok(conn) => protocols::attachment_response(&conn, request.uri().path()),
+                Err(e) => Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(e.to_string().into_bytes())
+                    .unwrap(),
+            }
+        })
         .setup(move |app| {
             let pool = flownote_core::db::open(&db_path(app)).expect("failed to open flownote db");
             app.manage(AppState { pool });

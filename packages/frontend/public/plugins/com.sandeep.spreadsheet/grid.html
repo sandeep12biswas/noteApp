@@ -7,9 +7,13 @@
          why a plain bare-specifier import needs one inside a sandboxed
          iframe, and why `flownote-plugin://` rather than a `file://`-relative
          path (a sandboxed iframe's opaque origin can't load `file://`
-         subresources at all, regardless of path). -->
+         subresources at all, regardless of path). The SDK path is
+         root-relative, so it resolves against whichever scheme/host this
+         page was served from — `flownote-plugin://localhost/` (Electron,
+         Tauri on macOS/Linux) or `http://flownote-plugin.localhost/` (Tauri
+         on Windows); see packages/frontend/src/lib/customProtocolUrl.ts. -->
     <script type="importmap">
-      { "imports": { "@flownote/sdk": "flownote-plugin:///sdk/index.js" } }
+      { "imports": { "@flownote/sdk": "/sdk/index.js" } }
     </script>
     <style>
       body {

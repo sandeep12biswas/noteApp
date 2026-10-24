@@ -9,6 +9,7 @@
 // block of that type is inserted).
 import { useEffect } from 'react'
 import type { PluginManifest } from '@flownote/ipc-adapter'
+import { customProtocolUrl } from '../lib/customProtocolUrl'
 import { installPluginIPCBridge, registerPluginIframe, unregisterPluginIframe } from './PluginIPCBridge'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { usePluginStore } from '../store/pluginStore'
@@ -23,7 +24,8 @@ import { usePluginStore } from '../store/pluginStore'
  * spreadsheet plugin's files live) — `install_plugin` only validates and
  * records the manifest, it doesn't move any files.
  *
- * The `flownote-plugin://` scheme (registered in `apps/electron/src/main.ts`,
+ * The `flownote-plugin` scheme (served by `apps/electron/src/main.ts` and
+ * `crates/flownote-tauri/src/protocols.rs`; URL shape per `lib/customProtocolUrl.ts`,
  * mapped there to the same directory `public/` is copied into) is what
  * actually makes this loadable: found live via `run-electron` that a
  * sandboxed iframe (`sandbox="allow-scripts"`, no `allow-same-origin`) gets
@@ -33,12 +35,12 @@ import { usePluginStore } from '../store/pluginStore'
  * directory. A privileged custom scheme doesn't have that restriction.
  */
 export function pluginAssetUrl(pluginId: string, relativePath: string): string {
-  return `flownote-plugin:///plugins/${pluginId}/${relativePath}`
+  return customProtocolUrl('flownote-plugin', `plugins/${pluginId}/${relativePath}`)
 }
 
 /** `@flownote/sdk`'s own `tsc` output, copied into `public/sdk/` (see `plugins/spreadsheet/README.md`) — same scheme as `pluginAssetUrl` for the same reason. */
 function sdkAssetUrl(relativePath: string): string {
-  return `flownote-plugin:///sdk/${relativePath}`
+  return customProtocolUrl('flownote-plugin', `sdk/${relativePath}`)
 }
 
 /** Wraps a plugin's `entry` JS in a minimal HTML document a sandboxed iframe can load — DESIGN.md's manifest `entry` is a JS file, not a page. */

@@ -4,6 +4,7 @@
 //! sidecar protocol one-for-one (see commands.rs's module doc).
 
 pub mod commands;
+pub mod protocols;
 
 pub use commands::{
     add_dictionary_word, delete_attachment, delete_folder, delete_page, delete_segment, get_attachment,

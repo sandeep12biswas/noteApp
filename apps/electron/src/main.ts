@@ -108,7 +108,7 @@ function createWindow(sidecar: SidecarSupervisor): void {
   }
 }
 
-/** `flownote-plugin:///plugins/<id>/<path>` / `flownote-plugin:///sdk/<path>` → a file under `frontendDistDir()`. Registered once `app` is ready, per Electron's `protocol.handle` API. */
+/** `flownote-plugin://localhost/plugins/<id>/<path>` / `…/sdk/<path>` (or the old empty-host `flownote-plugin:///…` form) → a file under `frontendDistDir()`. Registered once `app` is ready, per Electron's `protocol.handle` API. */
 function registerPluginProtocol(): void {
   protocol.handle('flownote-plugin', (request) => {
     const url = new URL(request.url)
@@ -128,7 +128,11 @@ function registerPluginProtocol(): void {
     // `url.host` back onto the front of `url.pathname` recovers the
     // originally-intended path regardless of which way a given Chromium
     // version normalizes it.
-    const pathname = url.host ? `/${url.host}${url.pathname}` : url.pathname
+    // URLs now carry an explicit `localhost` host
+    // (packages/frontend/src/lib/customProtocolUrl.ts), so the path is
+    // simply `url.pathname`; the fold above still handles the old
+    // empty-host form.
+    const pathname = url.host && url.host !== 'localhost' ? `/${url.host}${url.pathname}` : url.pathname
     return net.fetch(pathToFileURL(join(frontendDistDir(), pathname)).toString())
   })
 }
@@ -140,7 +144,9 @@ function registerAttachmentProtocol(sidecar: SidecarSupervisor): void {
     // Same empty-host quirk `registerPluginProtocol` already documents for
     // this class of custom "standard" scheme — `url.host` carries the id
     // for `flownote-attachment://<id>`, not `url.pathname`.
-    const id = url.host
+    // `flownote-attachment://localhost/<id>` (customProtocolUrl.ts) carries
+    // the id in the path; the old `flownote-attachment://<id>` form, in the host.
+    const id = url.host === 'localhost' ? decodeURIComponent(url.pathname.slice(1)) : url.host
     const attachment = (await sidecar.request('get_attachment', { id })) as { path: string }
     return net.fetch(pathToFileURL(attachment.path).toString())
   })

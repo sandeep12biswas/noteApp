@@ -77,7 +77,7 @@ describe('attachmentBlockNode', () => {
     render(<CanvasRoot pageId="page-1" />)
 
     const img = screen.getByRole('img') as HTMLImageElement
-    expect(img.src).toBe('flownote-attachment://att-1')
+    expect(img.src).toBe('flownote-attachment://localhost/att-1')
   })
 
   it('renders a generic file-preview box for a non-image embed', () => {
