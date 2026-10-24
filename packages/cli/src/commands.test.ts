@@ -114,19 +114,26 @@ describe('packPlugin', () => {
 })
 
 describe('buildPlugin', () => {
+  /** A stand-in local `tsc` that just exits with `code` — a `.cmd` shim on Windows (what `resolveTscCommand` looks for there), a shell script elsewhere. */
+  function writeFakeTsc(code: number): void {
+    const binDir = path.join(tmpDir, 'node_modules', '.bin')
+    fs.mkdirSync(binDir, { recursive: true })
+    if (process.platform === 'win32') {
+      fs.writeFileSync(path.join(binDir, 'tsc.cmd'), `@exit /b ${code}\r\n`)
+    } else {
+      const fakeTsc = path.join(binDir, 'tsc')
+      fs.writeFileSync(fakeTsc, `#!/bin/sh\nexit ${code}\n`)
+      fs.chmodSync(fakeTsc, 0o755)
+    }
+  }
+
   it('runs the local node_modules/.bin/tsc when present', () => {
-    fs.mkdirSync(path.join(tmpDir, 'node_modules', '.bin'), { recursive: true })
-    const fakeTsc = path.join(tmpDir, 'node_modules', '.bin', 'tsc')
-    fs.writeFileSync(fakeTsc, '#!/bin/sh\nexit 0\n')
-    fs.chmodSync(fakeTsc, 0o755)
+    writeFakeTsc(0)
     expect(buildPlugin({ cwd: tmpDir })).toBe(0)
   })
 
   it('propagates a non-zero tsc exit code', () => {
-    fs.mkdirSync(path.join(tmpDir, 'node_modules', '.bin'), { recursive: true })
-    const fakeTsc = path.join(tmpDir, 'node_modules', '.bin', 'tsc')
-    fs.writeFileSync(fakeTsc, '#!/bin/sh\nexit 2\n')
-    fs.chmodSync(fakeTsc, 0o755)
+    writeFakeTsc(2)
     expect(buildPlugin({ cwd: tmpDir })).toBe(2)
   })
 })

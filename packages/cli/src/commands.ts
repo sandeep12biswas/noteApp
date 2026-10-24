@@ -56,11 +56,17 @@ export function createPlugin({ name, cwd = process.cwd() }: CreateOptions): stri
   return dir
 }
 
-/** Resolves `tsc` the way `npx` would from `cwd` — the plugin project's own `node_modules/.bin/tsc` if present, else falls back to `npx tsc` (works even before `npm install` has run, or for a monorepo-nested plugin like `plugins/spreadsheet` that resolves it from a workspace root instead). */
-function resolveTscCommand(cwd: string): { command: string; args: string[] } {
-  const localTsc = path.join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc')
-  if (fs.existsSync(localTsc)) return { command: localTsc, args: [] }
-  return { command: 'npx', args: ['tsc'] }
+const IS_WINDOWS = process.platform === 'win32'
+
+/**
+ * Resolves `tsc` the way `npx` would from `cwd` — the plugin project's own `node_modules/.bin/tsc` if present, else falls back to `npx tsc` (works even before `npm install` has run, or for a monorepo-nested plugin like `plugins/spreadsheet` that resolves it from a workspace root instead).
+ *
+ * On Windows both candidates are `.cmd` shims (`tsc.cmd`, `npx.cmd`), which Node refuses to spawn without a shell (CVE-2024-27980 hardening — `spawnSync` returns no exit status at all), so `shell` is set there and the local path is quoted in case it contains spaces.
+ */
+function resolveTscCommand(cwd: string): { command: string; args: string[]; shell: boolean } {
+  const localTsc = path.join(cwd, 'node_modules', '.bin', IS_WINDOWS ? 'tsc.cmd' : 'tsc')
+  if (fs.existsSync(localTsc)) return { command: IS_WINDOWS ? `"${localTsc}"` : localTsc, args: [], shell: IS_WINDOWS }
+  return { command: 'npx', args: ['tsc'], shell: IS_WINDOWS }
 }
 
 export interface BuildOptions {
@@ -69,8 +75,8 @@ export interface BuildOptions {
 
 /** Runs `tsc` in `cwd`. Returns the compiler's exit code (0 on success). */
 export function buildPlugin({ cwd = process.cwd() }: BuildOptions = {}): number {
-  const { command, args } = resolveTscCommand(cwd)
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit' })
+  const { command, args, shell } = resolveTscCommand(cwd)
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell })
   return result.status ?? 1
 }
 
@@ -170,8 +176,8 @@ export interface DevOptions {
  * function doesn't block.
  */
 export function devPlugin({ cwd = process.cwd(), installInto, spawnFn = spawn }: DevOptions = {}): ReturnType<typeof spawn> {
-  const { command, args } = resolveTscCommand(cwd)
-  const child = spawnFn(command, [...args, '--watch', '--preserveWatchOutput'], { cwd, stdio: ['ignore', 'pipe', 'inherit'] })
+  const { command, args, shell } = resolveTscCommand(cwd)
+  const child = spawnFn(command, [...args, '--watch', '--preserveWatchOutput'], { cwd, stdio: ['ignore', 'pipe', 'inherit'], shell })
 
   const install = () => {
     if (!installInto) return
