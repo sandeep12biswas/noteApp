@@ -53,6 +53,7 @@ interface ElectronRouter {
   pluginStorageSet: { mutate: (input: { pluginId: string; key: string; value: string }) => Promise<void> }
   pluginStorageDelete: { mutate: (input: { pluginId: string; key: string }) => Promise<void> }
   pluginStorageList: { query: (pluginId: string) => Promise<string[]> }
+  pluginContentSecurityPolicy: { query: (input: { pluginId: string; origin: string }) => Promise<string> }
 }
 
 let client: ElectronRouter | null = null
@@ -202,5 +203,9 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async pluginStorageList(pluginId: string): Promise<string[]> {
     return getClient().pluginStorageList.query(pluginId)
+  }
+
+  async pluginContentSecurityPolicy(pluginId: string, origin: string): Promise<string> {
+    return getClient().pluginContentSecurityPolicy.query({ pluginId, origin })
   }
 }

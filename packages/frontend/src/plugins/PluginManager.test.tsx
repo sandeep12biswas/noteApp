@@ -6,7 +6,7 @@
 // handshake itself is covered by PluginIPCBridge.test.ts's message-handling
 // tests and by manual QA — jsdom doesn't drive that.
 import { cleanup, render, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PluginManager } from './PluginManager'
 import { usePluginStore } from '../store/pluginStore'
 import { setIPCAdapter } from '../store/notebookStore'
@@ -26,6 +26,8 @@ beforeEach(() => {
   usePluginStore.setState({ plugins: [], loading: false, error: null })
 })
 
+const TEST_CSP = "default-src 'none'; connect-src flownote-plugin://localhost"
+
 const manifest = (overrides: Partial<{ id: string; enabled: boolean }> = {}) => ({
   id: overrides.id ?? 'com.sandeep.spreadsheet',
   name: 'Spreadsheet',
@@ -44,6 +46,7 @@ const manifest = (overrides: Partial<{ id: string; enabled: boolean }> = {}) => 
 describe('PluginManager', () => {
   it('creates a sandboxed iframe (no allow-same-origin) for each enabled plugin', async () => {
     setIPCAdapter({
+      pluginContentSecurityPolicy: async () => TEST_CSP,
       getInstalledPlugins: async () => [manifest()],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -57,6 +60,7 @@ describe('PluginManager', () => {
 
   it('does not create an iframe for a disabled plugin', async () => {
     setIPCAdapter({
+      pluginContentSecurityPolicy: async () => TEST_CSP,
       getInstalledPlugins: async () => [manifest({ enabled: false })],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -68,6 +72,7 @@ describe('PluginManager', () => {
 
   it('creates one iframe per enabled plugin when there are several', async () => {
     setIPCAdapter({
+      pluginContentSecurityPolicy: async () => TEST_CSP,
       getInstalledPlugins: async () => [manifest({ id: 'plugin-a' }), manifest({ id: 'plugin-b' }), manifest({ id: 'plugin-c', enabled: false })],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -78,6 +83,7 @@ describe('PluginManager', () => {
 
   it('removes the iframe when the plugin is disabled via the store', async () => {
     setIPCAdapter({
+      pluginContentSecurityPolicy: async () => TEST_CSP,
       getInstalledPlugins: async () => [manifest()],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -91,6 +97,7 @@ describe('PluginManager', () => {
 
   it('removes all iframes on unmount', async () => {
     setIPCAdapter({
+      pluginContentSecurityPolicy: async () => TEST_CSP,
       getInstalledPlugins: async () => [manifest()],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -130,6 +137,7 @@ describe('PluginManager registration race (regression)', () => {
     installPluginIPCBridge()
 
     setIPCAdapter({
+      pluginContentSecurityPolicy: async () => TEST_CSP,
       getInstalledPlugins: async () => [manifest()],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
@@ -156,5 +164,45 @@ describe('PluginManager registration race (regression)', () => {
     )
 
     expect(useExtensionRegistry.getState().blockTypes['com.sandeep.spreadsheet/spreadsheet']).toBeDefined()
+  })
+
+  // DESIGN.md §9.3 `network:fetch`: the registration page carries the
+  // plugin's Content-Security-Policy, ahead of any plugin script.
+  it('puts the plugin\'s Content-Security-Policy in a <meta> before any plugin script', async () => {
+    const requested: [string, string][] = []
+    setIPCAdapter({
+      pluginContentSecurityPolicy: async (id: string, origin: string) => {
+        requested.push([id, origin])
+        return TEST_CSP
+      },
+      getInstalledPlugins: async () => [manifest()],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+
+    render(<PluginManager />)
+    await waitFor(() => expect(iframes()[0]?.srcdoc).toContain('Content-Security-Policy'))
+
+    expect(requested).toEqual([['com.sandeep.spreadsheet', 'flownote-plugin://localhost']])
+    const doc = new DOMParser().parseFromString(iframes()[0]!.srcdoc, 'text/html')
+    const first = doc.head.firstElementChild!
+    expect(first.getAttribute('http-equiv')).toBe('Content-Security-Policy')
+    expect(first.getAttribute('content')).toBe(TEST_CSP)
+    expect(doc.querySelectorAll('script')).toHaveLength(2) // import map + entry, both after the policy
+  })
+
+  it('does not load a plugin whose policy can\'t be fetched', async () => {
+    setIPCAdapter({
+      pluginContentSecurityPolicy: async () => {
+        throw new Error('backend down')
+      },
+      getInstalledPlugins: async () => [manifest()],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(<PluginManager />)
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled())
+    expect(iframes()[0]?.srcdoc ?? '').toBe('')
+    errorSpy.mockRestore()
   })
 })

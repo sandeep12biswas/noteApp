@@ -137,4 +137,6 @@ export interface IPCAdapter {
   pluginStorageSet(pluginId: string, key: string, value: string): Promise<void>
   pluginStorageDelete(pluginId: string, key: string): Promise<void>
   pluginStorageList(pluginId: string): Promise<string[]>
+  /** The Content-Security-Policy for a plugin's documents (DESIGN.md §9.3 — enforces `network:fetch`); `origin` is where plugin files are served from. */
+  pluginContentSecurityPolicy(pluginId: string, origin: string): Promise<string>
 }

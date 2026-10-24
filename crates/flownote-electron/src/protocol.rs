@@ -252,6 +252,21 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             Err(e) => Response::err(req.id, e),
         },
 
+        // Content-Security-Policy for a plugin's documents (DESIGN.md §9.3,
+        // `network:fetch`) — main.ts puts it on plugin HTML responses, and
+        // the frontend on the registration iframe. See
+        // `flownote_core::store::plugin_content_security_policy`.
+        "plugin_csp" => match (
+            req.params.get("pluginId").and_then(Value::as_str),
+            req.params.get("origin").and_then(Value::as_str),
+        ) {
+            (Some(plugin_id), Some(origin)) => match plugin_csp_for(conn, plugin_id, origin) {
+                Ok(csp) => Response::ok(req.id, Value::String(csp)),
+                Err(e) => Response::err(req.id, e),
+            },
+            _ => Response::err(req.id, "plugin_csp requires string `pluginId` and `origin` params"),
+        },
+
         other => Response::err(req.id, format!("method not implemented: {other}")),
     }
 }
@@ -1217,5 +1232,26 @@ mod tests {
 
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM plugin_storage", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn plugin_csp_returns_the_policy_for_an_installed_plugin() {
+        let conn = db::open_in_memory().unwrap();
+        dispatch(&conn, Request { id: 90, method: "install_plugin".into(), params: json!({ "source": spreadsheet_manifest().to_string() }) });
+        let res = dispatch(
+            &conn,
+            Request { id: 91, method: "plugin_csp".into(), params: json!({ "pluginId": "com.sandeep.spreadsheet", "origin": "flownote-plugin://localhost" }) },
+        );
+        let csp = res.result.unwrap();
+        let csp = csp.as_str().unwrap();
+        assert!(csp.contains("connect-src flownote-plugin://localhost;"), "{csp}");
+        assert!(!csp.contains("https:"), "spreadsheet has no network:fetch: {csp}");
+    }
+
+    #[test]
+    fn plugin_csp_requires_both_params() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(&conn, Request { id: 92, method: "plugin_csp".into(), params: json!({ "pluginId": "x" }) });
+        assert!(res.error.unwrap().contains("requires"));
     }
 }

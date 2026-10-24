@@ -147,6 +147,27 @@ await check('spreadsheet plugin: loads after restart-equivalent reload, register
   }
 })
 
+await check('the spreadsheet plugin (no network:fetch) can\'t reach the network from its grid', async () => {
+  const http = await import('node:http')
+  let hits = 0
+  const server = http.createServer((_req, res) => {
+    hits++
+    res.writeHead(200, { 'Access-Control-Allow-Origin': '*' })
+    res.end('pong')
+  })
+  await new Promise((r) => server.listen(0, '127.0.0.1', r))
+  const url = `http://127.0.0.1:${server.address().port}/`
+  try {
+    const grid = page.frames().find((f) => f.url().includes('grid.html'))
+    if (!grid) throw new Error('no grid frame (the plugin check above must pass first)')
+    const result = await grid.evaluate((u) => fetch(u).then((r) => r.text(), () => 'blocked'), url)
+    expectEqual(result, 'blocked', 'fetch from the grid')
+    expectEqual(hits, 0, 'requests that reached the server')
+  } finally {
+    server.close()
+  }
+})
+
 await browser.close().catch(() => {})
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed')
 process.exit(failures ? 1 : 0)

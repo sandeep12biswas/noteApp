@@ -44,13 +44,17 @@ fn not_found(message: impl Into<String>) -> Response<Vec<u8>> {
 /// Serves a file from the bundled frontend for the `flownote-plugin` scheme.
 ///
 /// `get_asset(path)` looks a path up in the bundled frontend, returning
-/// `(bytes, mime)`. Tauri's own lookup falls back to `index.html` for a path
+/// `(bytes, mime)`. `csp_for(plugin_id)` gives that plugin's
+/// Content-Security-Policy (`store::plugin_csp_for`), sent with its HTML
+/// documents — a plugin's own page can't be trusted to carry a `<meta>`
+/// policy itself, so the header is what enforces `network:fetch`. Tauri's own lookup falls back to `index.html` for a path
 /// it doesn't have (single-page-app routing), which here would load the whole
 /// FlowNote app inside a plugin's iframe — so a result identical to
 /// `index.html` is treated as "not found".
 pub fn plugin_asset_response(
     path: &str,
     get_asset: impl Fn(&str) -> Option<(Vec<u8>, String)>,
+    csp_for: impl Fn(&str) -> String,
 ) -> Response<Vec<u8>> {
     let path = path.trim_start_matches('/');
     if !(path.starts_with("plugins/") || path.starts_with("sdk/")) || path.split('/').any(|seg| seg == "..") {
@@ -62,7 +66,14 @@ pub fn plugin_asset_response(
     if get_asset("index.html").is_some_and(|(index, _)| index == bytes) {
         return not_found(format!("no such plugin asset: /{path}"));
     }
-    respond(StatusCode::OK, &mime, bytes)
+    let mut response = respond(StatusCode::OK, &mime, bytes);
+    let plugin_id = path.strip_prefix("plugins/").and_then(|rest| rest.split('/').next());
+    if let (Some(plugin_id), true) = (plugin_id, mime.starts_with("text/html"))
+        && let Ok(value) = header::HeaderValue::from_str(&csp_for(plugin_id))
+    {
+        response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, value);
+    }
+    response
 }
 
 /// Serves an attachment's bytes for the `flownote-attachment` scheme;
@@ -101,29 +112,41 @@ mod tests {
         a.get(path).or_else(|| a.get("index.html")).cloned()
     }
 
+    fn fake_csp(plugin_id: &str) -> String {
+        format!("policy-for-{plugin_id}")
+    }
+
+    #[test]
+    fn a_plugins_html_carries_its_content_security_policy_but_scripts_dont_need_one() {
+        let html = plugin_asset_response("/plugins/p/grid.html", tauri_like_lookup, fake_csp);
+        assert_eq!(html.headers()[header::CONTENT_SECURITY_POLICY], "policy-for-p");
+        let sdk = plugin_asset_response("/sdk/index.js", tauri_like_lookup, fake_csp);
+        assert!(sdk.headers().get(header::CONTENT_SECURITY_POLICY).is_none());
+    }
+
     #[test]
     fn serves_plugin_and_sdk_files_with_their_mime_type_and_cors() {
-        let res = plugin_asset_response("/plugins/p/grid.html", tauri_like_lookup);
+        let res = plugin_asset_response("/plugins/p/grid.html", tauri_like_lookup, fake_csp);
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.body(), b"<grid>");
         assert_eq!(res.headers()[header::CONTENT_TYPE], "text/html");
         assert_eq!(res.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
 
-        let res = plugin_asset_response("/sdk/index.js", tauri_like_lookup);
+        let res = plugin_asset_response("/sdk/index.js", tauri_like_lookup, fake_csp);
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.headers()[header::CONTENT_TYPE], "text/javascript");
     }
 
     #[test]
     fn a_missing_plugin_file_is_404_not_the_app_shell() {
-        let res = plugin_asset_response("/plugins/p/missing.js", tauri_like_lookup);
+        let res = plugin_asset_response("/plugins/p/missing.js", tauri_like_lookup, fake_csp);
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]
     fn only_plugin_and_sdk_paths_are_served() {
         for path in ["/index.html", "/assets/app.js", "/plugins/../index.html", "/sdk/../../etc"] {
-            assert_eq!(plugin_asset_response(path, tauri_like_lookup).status(), StatusCode::NOT_FOUND, "{path}");
+            assert_eq!(plugin_asset_response(path, tauri_like_lookup, fake_csp).status(), StatusCode::NOT_FOUND, "{path}");
         }
     }
 

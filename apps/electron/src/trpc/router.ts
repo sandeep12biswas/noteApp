@@ -187,6 +187,16 @@ export const appRouter = t.router({
       return pluginId
     })
     .query(({ ctx, input }) => ctx.sidecar.request('plugin_storage_list', { pluginId: input })),
+
+  pluginContentSecurityPolicy: t.procedure
+    .input((input: unknown): { pluginId: string; origin: string } => {
+      const i = input as { pluginId?: unknown; origin?: unknown }
+      if (typeof i?.pluginId !== 'string' || typeof i?.origin !== 'string') {
+        throw new Error('pluginContentSecurityPolicy expects { pluginId: string, origin: string }')
+      }
+      return { pluginId: i.pluginId, origin: i.origin }
+    })
+    .query(({ ctx, input }) => ctx.sidecar.request('plugin_csp', input)),
 })
 
 export type AppRouter = typeof appRouter

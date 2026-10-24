@@ -437,6 +437,15 @@ pub fn get_installed_plugins(state: State<AppState>) -> Result<Vec<Value>, Strin
     with_conn(&state, get_installed_plugins_impl)
 }
 
+/// Content-Security-Policy for a plugin's documents (DESIGN.md §9.3
+/// `network:fetch`); the frontend puts it on the registration iframe. See
+/// `flownote_core::store::plugin_content_security_policy`.
+#[tauri::command]
+#[specta::specta]
+pub fn plugin_content_security_policy(state: State<AppState>, plugin_id: String, origin: String) -> Result<String, String> {
+    with_conn(&state, |c| store::plugin_csp_for(c, &plugin_id, &origin))
+}
+
 // `plugin_id` arrives from the frontend, already resolved from the sending
 // iframe's identity by PluginIPCBridge.ts — never from plugin-supplied
 // message contents. See the matching comment in flownote-electron's

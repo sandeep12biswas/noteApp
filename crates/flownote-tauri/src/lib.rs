@@ -9,7 +9,7 @@ pub mod protocols;
 pub use commands::{
     add_dictionary_word, delete_attachment, delete_folder, delete_page, delete_segment, get_attachment,
     get_ink_layer, get_installed_plugins, get_page, install_plugin, list_dictionary_words, list_folders, list_pages,
-    list_segments, open_attachment, ping, plugin_storage_delete, plugin_storage_get, plugin_storage_list,
+    list_segments, open_attachment, ping, plugin_content_security_policy, plugin_storage_delete, plugin_storage_get, plugin_storage_list,
     plugin_storage_set, save_attachment, save_folder, save_ink_layer, save_page, save_segment, save_segments_batch,
     search, set_page_mode, set_plugin_enabled, uninstall_plugin, AppState, AttachmentDto, AttachmentWithPathDto,
     FolderDto, FolderInput, PageDto, PageInput, SearchResultDto, SegmentDto, SegmentInput,
@@ -52,6 +52,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         plugin_storage_set,
         plugin_storage_delete,
         plugin_storage_list,
+        plugin_content_security_policy,
     ])
 }
 

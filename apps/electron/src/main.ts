@@ -108,9 +108,9 @@ function createWindow(sidecar: SidecarSupervisor): void {
   }
 }
 
-/** `flownote-plugin://localhost/plugins/<id>/<path>` / `…/sdk/<path>` (or the old empty-host `flownote-plugin:///…` form) → a file under `frontendDistDir()`. Registered once `app` is ready, per Electron's `protocol.handle` API. */
-function registerPluginProtocol(): void {
-  protocol.handle('flownote-plugin', (request) => {
+/** `flownote-plugin://localhost/plugins/<id>/<path>` / `…/sdk/<path>` (or the old empty-host `flownote-plugin:///…` form) → a file under `frontendDistDir()`. A plugin's HTML gets its Content-Security-Policy header (DESIGN.md §9.3 `network:fetch`) from the sidecar — a plugin's own page can't be trusted to carry a `<meta>` policy itself. Registered once the sidecar exists, since it needs it for that lookup. */
+function registerPluginProtocol(sidecar: SidecarSupervisor): void {
+  protocol.handle('flownote-plugin', async (request) => {
     const url = new URL(request.url)
     // `pluginAssetUrl()`/`sdkAssetUrl()` (PluginManager.tsx) build
     // `flownote-plugin:///plugins/<id>/<path>` — an empty-host, "authority
@@ -133,7 +133,19 @@ function registerPluginProtocol(): void {
     // simply `url.pathname`; the fold above still handles the old
     // empty-host form.
     const pathname = url.host && url.host !== 'localhost' ? `/${url.host}${url.pathname}` : url.pathname
-    return net.fetch(pathToFileURL(join(frontendDistDir(), pathname)).toString())
+    const response = await net.fetch(pathToFileURL(join(frontendDistDir(), pathname)).toString())
+
+    const pluginId = /^\/plugins\/([^/]+)\//.exec(pathname)?.[1]
+    if (!pluginId || !pathname.endsWith('.html')) return response
+    const csp = (await sidecar
+      .request('plugin_csp', { pluginId, origin: 'flownote-plugin://localhost' })
+      .catch(() => null)) as string | null
+    const headers = new Headers(response.headers)
+    headers.set('Content-Type', 'text/html; charset=utf-8')
+    // If the policy can't be fetched, refuse rather than serve the page unrestricted.
+    if (!csp) return new Response('plugin policy unavailable', { status: 503 })
+    headers.set('Content-Security-Policy', csp)
+    return new Response(response.body, { status: response.status, headers })
   })
 }
 
@@ -153,8 +165,6 @@ function registerAttachmentProtocol(sidecar: SidecarSupervisor): void {
 }
 
 app.whenReady().then(() => {
-  registerPluginProtocol()
-
   const sidecar = new SidecarSupervisor({
     spawn: spawnSidecar,
     crashLogPath: join(app.getPath('userData'), 'sidecar-crash.log'),
@@ -165,6 +175,7 @@ app.whenReady().then(() => {
     },
   })
   sidecar.start()
+  registerPluginProtocol(sidecar)
   registerAttachmentProtocol(sidecar)
 
   createWindow(sidecar)

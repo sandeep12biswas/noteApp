@@ -249,6 +249,19 @@ async pluginStorageList(pluginId: string) : Promise<Result<string[], string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Content-Security-Policy for a plugin's documents (DESIGN.md §9.3
+ * `network:fetch`); the frontend puts it on the registration iframe. See
+ * `flownote_core::store::plugin_content_security_policy`.
+ */
+async pluginContentSecurityPolicy(pluginId: string, origin: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plugin_content_security_policy", { pluginId, origin }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 

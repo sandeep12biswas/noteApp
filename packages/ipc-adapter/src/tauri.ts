@@ -193,4 +193,8 @@ export class TauriIPCAdapter implements IPCAdapter {
     return unwrap(await commands.pluginStorageList(pluginId))
   }
 
+  async pluginContentSecurityPolicy(pluginId: string, origin: string): Promise<string> {
+    return unwrap(await commands.pluginContentSecurityPolicy(pluginId, origin))
+  }
+
 }

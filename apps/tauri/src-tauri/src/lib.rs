@@ -57,10 +57,27 @@ pub fn run() {
         .invoke_handler(specta_builder.invoke_handler())
         // Plugin files/SDK and attachment bytes — see flownote_tauri::protocols.
         .register_uri_scheme_protocol(PLUGIN_SCHEME, |ctx, request| {
-            let resolver = ctx.app_handle().asset_resolver();
-            protocols::plugin_asset_response(request.uri().path(), |path| {
-                resolver.get(path.to_string()).map(|asset| (asset.bytes, asset.mime_type))
-            })
+            let app = ctx.app_handle();
+            let resolver = app.asset_resolver();
+            // Where plugin files are served from, as the page sees it:
+            // flownote-plugin://localhost, or http://flownote-plugin.localhost
+            // on Windows — the plugin's CSP allows exactly that origin.
+            let uri = request.uri();
+            let origin = format!("{}://{}", uri.scheme_str().unwrap_or(PLUGIN_SCHEME), uri.authority().map(|a| a.as_str()).unwrap_or("localhost"));
+            protocols::plugin_asset_response(
+                uri.path(),
+                |path| resolver.get(path.to_string()).map(|asset| (asset.bytes, asset.mime_type)),
+                |plugin_id| {
+                    let strictest = flownote_core::store::plugin_content_security_policy(&[], &origin);
+                    let Some(state) = app.try_state::<AppState>() else { return strictest };
+                    state
+                        .pool
+                        .get()
+                        .ok()
+                        .and_then(|conn| flownote_core::store::plugin_csp_for(&conn, plugin_id, &origin).ok())
+                        .unwrap_or(strictest)
+                },
+            )
         })
         .register_uri_scheme_protocol(ATTACHMENT_SCHEME, |ctx, request| {
             let Some(state) = ctx.app_handle().try_state::<AppState>() else {

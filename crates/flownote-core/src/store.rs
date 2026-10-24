@@ -756,3 +756,126 @@ pub fn uninstall_plugin(conn: &Connection, id: &str) -> Result<(), String> {
     conn.execute("DELETE FROM plugins WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// The Content-Security-Policy for a plugin's documents — its registration
+/// iframe and its block iframes (DESIGN.md §9.3 permission model:
+/// "`network:fetch` … `fetch()` to external URLs blocked by CSP"). One
+/// implementation for every shell: the Electron sidecar and the Tauri
+/// handlers send it as a response header on the plugin's HTML, and the
+/// frontend puts it in the registration iframe's `<meta>`.
+///
+/// `origin` is where plugin files are served from — `flownote-plugin://localhost`,
+/// or `http://flownote-plugin.localhost` on Windows/WebView2. A plugin may
+/// load scripts, styles, images, fonts and media from there (plus inline
+/// scripts/styles, which its import map and registration page need, and
+/// `data:`/`blob:` images) and `fetch()` its own files. Everything else is
+/// blocked unless it declared `network:fetch`, which adds http(s)/ws(s) for
+/// requests and http(s) for images, media and fonts. Frames, workers,
+/// plugins (`<object>`), form submission and `<base>` are always blocked.
+///
+/// Not covered by CSP (documented limits): a plugin navigating its own
+/// iframe to an external URL, and WebRTC.
+pub fn plugin_content_security_policy(permissions: &[String], origin: &str) -> String {
+    let network = permissions.iter().any(|p| p == "network:fetch");
+    let (connect, remote_media) = if network {
+        (format!("{origin} https: http: wss: ws:"), " https: http:")
+    } else {
+        (origin.to_string(), "")
+    };
+    [
+        "default-src 'none'".to_string(),
+        format!("script-src {origin} 'unsafe-inline'"),
+        format!("style-src {origin} 'unsafe-inline'"),
+        format!("img-src {origin} data: blob:{remote_media}"),
+        format!("font-src {origin} data:{remote_media}"),
+        format!("media-src {origin} data: blob:{remote_media}"),
+        format!("connect-src {connect}"),
+        "frame-src 'none'".to_string(),
+        "worker-src 'none'".to_string(),
+        "object-src 'none'".to_string(),
+        "form-action 'none'".to_string(),
+        "base-uri 'none'".to_string(),
+    ]
+    .join("; ")
+}
+
+/// `plugin_content_security_policy` for an installed plugin, by id. An id
+/// that isn't installed gets the policy for no permissions (the strictest).
+pub fn plugin_csp_for(conn: &Connection, plugin_id: &str, origin: &str) -> Result<String, String> {
+    let manifest_json: Option<String> = conn
+        .query_row("SELECT manifest_json FROM plugins WHERE id = ?1", [plugin_id], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let permissions: Vec<String> = manifest_json
+        .and_then(|json| serde_json::from_str::<Value>(&json).ok())
+        .and_then(|m| m.get("permissions").and_then(Value::as_array).cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|p| p.as_str().map(str::to_string))
+        .collect();
+    Ok(plugin_content_security_policy(&permissions, origin))
+}
+
+#[cfg(test)]
+mod csp_tests {
+    use super::*;
+    use crate::db;
+
+    const ORIGIN: &str = "flownote-plugin://localhost";
+
+    fn directive<'a>(csp: &'a str, name: &str) -> &'a str {
+        csp.split("; ").find(|d| d.starts_with(&format!("{name} "))).unwrap_or_else(|| panic!("no {name} in {csp}"))
+    }
+
+    #[test]
+    fn without_network_fetch_only_the_plugin_origin_is_reachable() {
+        let csp = plugin_content_security_policy(&["storage:read".into()], ORIGIN);
+        assert_eq!(directive(&csp, "default-src"), "default-src 'none'");
+        assert_eq!(directive(&csp, "connect-src"), format!("connect-src {ORIGIN}"));
+        assert_eq!(directive(&csp, "img-src"), format!("img-src {ORIGIN} data: blob:"));
+        assert!(!csp.contains("https:"), "{csp}");
+        for d in ["frame-src 'none'", "worker-src 'none'", "object-src 'none'", "form-action 'none'", "base-uri 'none'"] {
+            assert!(csp.contains(d), "missing {d}: {csp}");
+        }
+    }
+
+    #[test]
+    fn network_fetch_opens_external_requests_and_media() {
+        let csp = plugin_content_security_policy(&["network:fetch".into()], ORIGIN);
+        assert_eq!(directive(&csp, "connect-src"), format!("connect-src {ORIGIN} https: http: wss: ws:"));
+        assert!(directive(&csp, "img-src").ends_with("https: http:"));
+        // Still no frames, workers or form posts.
+        assert!(csp.contains("frame-src 'none'") && csp.contains("worker-src 'none'"));
+    }
+
+    #[test]
+    fn uses_the_given_origin_for_windows_style_urls() {
+        let csp = plugin_content_security_policy(&[], "http://flownote-plugin.localhost");
+        assert_eq!(directive(&csp, "script-src"), "script-src http://flownote-plugin.localhost 'unsafe-inline'");
+    }
+
+    fn install(conn: &Connection, id: &str, permissions: &str) {
+        install_plugin(
+            conn,
+            &format!(
+                r#"{{"id":"{id}","name":"P","version":"1.0.0","entry":"i.js","sdkVersion":"1.0.0","permissions":{permissions}}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn plugin_csp_for_reads_the_installed_permissions() {
+        let conn = db::open_in_memory().unwrap();
+        install(&conn, "net.plugin", r#"["network:fetch"]"#);
+        install(&conn, "local.plugin", r#"["storage:read"]"#);
+        assert!(plugin_csp_for(&conn, "net.plugin", ORIGIN).unwrap().contains("https:"));
+        assert!(!plugin_csp_for(&conn, "local.plugin", ORIGIN).unwrap().contains("https:"));
+    }
+
+    #[test]
+    fn an_unknown_plugin_gets_the_strictest_policy() {
+        let conn = db::open_in_memory().unwrap();
+        assert_eq!(plugin_csp_for(&conn, "nope", ORIGIN).unwrap(), plugin_content_security_policy(&[], ORIGIN));
+    }
+}
