@@ -1,0 +1,58 @@
+name: Windows installer
+
+# Builds FlowNote's Windows installers from the Tauri shell (apps/tauri):
+#   - NSIS  `FlowNote_<version>_x64-setup.exe` — per-user install, no admin
+#     needed; registers an uninstaller under Settings → Apps.
+#   - MSI   `FlowNote_<version>_x64_en-US.msi` — uninstall the same way.
+# Both are uploaded as the `flownote-windows-installers` artifact on the run.
+#
+# Unsigned: Windows SmartScreen will warn on first run ("More info" → "Run
+# anyway"). Code signing needs a certificate this repo doesn't have yet.
+#
+# Runs on a pushed `v*` tag, or manually (workflow_dispatch — only available
+# once this file is on the default branch).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # `tauri build` runs tauri.conf.json's beforeBuildCommand (the frontend
+      # build) itself, then builds the release binary and both installers.
+      - name: Build installers
+        run: pnpm --filter @flownote/tauri tauri build --bundles nsis,msi
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: flownote-windows-installers
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          if-no-files-found: error
