@@ -1,10 +1,15 @@
 name: Windows installer
 
-# Builds FlowNote's Windows installers from the Tauri shell (apps/tauri):
+# Builds FlowNote's Windows package from the Tauri shell (apps/tauri) and
+# uploads it as the `flownote-windows` artifact:
 #   - NSIS  `FlowNote_<version>_x64-setup.exe` — per-user install, no admin
 #     needed; registers an uninstaller under Settings → Apps.
 #   - MSI   `FlowNote_<version>_x64_en-US.msi` — uninstall the same way.
-# Both are uploaded as the `flownote-windows-installers` artifact on the run.
+#   - `Uninstall FlowNote.cmd` + `Uninstall-FlowNote.ps1` — standalone
+#     uninstaller for either install (packaging/windows/), and README.txt.
+# Then, on the runner itself, each installer is tested end to end: silent
+# install → launch (must stay up and create its database) → uninstall via
+# Uninstall-FlowNote.ps1 → verify nothing is left behind.
 #
 # Unsigned: Windows SmartScreen will warn on first run ("More info" → "Run
 # anyway"). Code signing needs a certificate this repo doesn't have yet.
@@ -48,11 +53,73 @@ jobs:
       - name: Build installers
         run: pnpm --filter @flownote/tauri tauri build --bundles nsis,msi
 
-      - name: Upload installers
+      - name: Assemble package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item target/release/bundle/nsis/*.exe, target/release/bundle/msi/*.msi package/
+          Copy-Item packaging/windows/* package/
+          Get-ChildItem package | Format-Table Name, Length
+
+      - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: flownote-windows-installers
-          path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
+          name: flownote-windows
+          path: package/
           if-no-files-found: error
+
+      - name: "Test: setup.exe install -> launch -> uninstall"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem package/*-setup.exe)[0].FullName
+          Start-Process $setup -ArgumentList '/S' -Wait
+
+          $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+            Where-Object DisplayName -eq 'FlowNote'
+          if (-not $entry) { throw 'setup.exe did not register an uninstall entry under HKCU' }
+          $installDir = Split-Path $entry.UninstallString.Trim('"') -Parent
+          $exe = Get-ChildItem $installDir -Filter *.exe | Where-Object Name -ne 'uninstall.exe' | Select-Object -First 1
+          Write-Host "Installed to $installDir ($($exe.Name))"
+
+          $app = Start-Process $exe.FullName -PassThru
+          Start-Sleep -Seconds 15
+          if ($app.HasExited) { throw "FlowNote exited right after launch (code $($app.ExitCode))" }
+          $db = Join-Path $env:APPDATA 'com.sandeep.flownote\flownote.sqlite3'
+          if (-not (Test-Path $db)) { throw "FlowNote is running but did not create $db" }
+          Write-Host "Launched OK; database at $db"
+
+          & ./packaging/windows/Uninstall-FlowNote.ps1 -RemoveData
+          if ($LASTEXITCODE -ne 0) { throw "Uninstall-FlowNote.ps1 exited with $LASTEXITCODE" }
+
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'FlowNote') { throw 'uninstall entry still present' }
+          if (Test-Path $exe.FullName) { throw "$($exe.FullName) still present" }
+          if (Test-Path (Split-Path $db -Parent)) { throw 'app data still present after -RemoveData' }
+          Write-Host 'setup.exe: install, launch and uninstall all OK'
+
+      - name: "Test: MSI install -> launch -> uninstall"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msi = (Get-ChildItem package/*.msi)[0].FullName
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "msiexec /i exited with $($p.ExitCode)" }
+
+          $roots = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+          $entry = Get-ItemProperty $roots -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'FlowNote'
+          if (-not $entry) { throw 'MSI did not register an uninstall entry' }
+          $exe = Get-ChildItem "$env:ProgramFiles\FlowNote", "$env:LOCALAPPDATA\FlowNote", "$env:LOCALAPPDATA\Programs\FlowNote" -Filter *.exe -ErrorAction SilentlyContinue |
+            Where-Object Name -ne 'uninstall.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'could not find the installed FlowNote executable' }
+          Write-Host "Installed $($exe.FullName)"
+
+          $app = Start-Process $exe.FullName -PassThru
+          Start-Sleep -Seconds 15
+          if ($app.HasExited) { throw "FlowNote exited right after launch (code $($app.ExitCode))" }
+
+          & ./packaging/windows/Uninstall-FlowNote.ps1 -RemoveData
+          if ($LASTEXITCODE -ne 0) { throw "Uninstall-FlowNote.ps1 exited with $LASTEXITCODE" }
+
+          if (Get-ItemProperty $roots -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'FlowNote') { throw 'uninstall entry still present' }
+          if (Test-Path $exe.FullName) { throw "$($exe.FullName) still present" }
+          Write-Host 'MSI: install, launch and uninstall all OK'
