@@ -123,3 +123,28 @@ jobs:
           if (Get-ItemProperty $roots -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'FlowNote') { throw 'uninstall entry still present' }
           if (Test-Path $exe.FullName) { throw "$($exe.FullName) still present" }
           Write-Host 'MSI: install, launch and uninstall all OK'
+
+      # Exercises what the launch checks above can't: the Windows-only
+      # http://<scheme>.localhost URLs for plugins and attachments, the
+      # spreadsheet plugin end to end, and IPC through the installed app —
+      # by attaching Playwright to WebView2's DevTools port.
+      - name: "Test: installed app smoke test (protocols, plugins, IPC) via WebView2 CDP"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem package/*-setup.exe)[0].FullName
+          Start-Process $setup -ArgumentList '/S' -Wait
+          $entry = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+            Where-Object DisplayName -eq 'FlowNote'
+          $exe = Join-Path (Split-Path $entry.UninstallString.Trim('"') -Parent) 'FlowNote.exe'
+          if (-not (Test-Path $exe)) { throw "expected the app binary at $exe (mainBinaryName)" }
+
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+          $app = Start-Process $exe -PassThru
+          try {
+            node e2e-tauri/windows-smoke.mjs http://127.0.0.1:9222
+            $code = $LASTEXITCODE
+          } finally {
+            & ./packaging/windows/Uninstall-FlowNote.ps1 -RemoveData
+          }
+          if ($code -ne 0) { throw "smoke test failed ($code)" }
