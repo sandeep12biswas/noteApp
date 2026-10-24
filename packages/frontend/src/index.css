@@ -32,6 +32,23 @@
   outline: none;
 }
 
+/* Canvas segments only (SegmentHost's `<EditorContent className=
+   "segment-editor">`, inside a `flex flex-col` wrapper): stretch the
+   editable area to the whole segment box. A new segment's box is
+   `DEFAULT_SEGMENT_HEIGHT` (~5 lines) tall but holds one empty paragraph —
+   without this, clicking below that first line hit the non-editable
+   wrapper, blurred the editor, and auto-deleted the still-empty segment
+   (issue #3). `flex: 1` only fills up to the wrapper's `minHeight`, so a
+   segment still shrinks back once typed text is deleted. */
+.segment-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.segment-editor > .ProseMirror {
+  flex: 1;
+}
+
 /* Heading sizes/weight inside the TipTap editor (`.ProseMirror` is the
    class TipTap puts on its editable root — see SegmentHost/LinearSegmentHost).
    Tailwind's preflight resets h1-h6 to `font-size: inherit; font-weight:

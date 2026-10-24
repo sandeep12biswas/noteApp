@@ -24,6 +24,24 @@ describe('SegmentHost autofocus', () => {
     const editable = screen.getByRole('textbox', { name: 'Segment' }).querySelector('[contenteditable="true"]')
     await waitFor(() => expect(document.activeElement).toBe(editable))
   })
+
+  // Issue #3: a mousedown on the segment's own (non-editable) wrapper area
+  // used to move focus off the editor, and the resulting blur auto-deleted
+  // a still-empty, uncoloured segment the user had just clicked into. jsdom
+  // doesn't move focus on mousedown itself, so assert the handler cancels
+  // the default focus change and keeps the editor focused.
+  it('a mousedown on the segment wrapper keeps focus in the editor instead of blurring it', async () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+    const wrapper = screen.getByTestId(`segment-${id}`)
+    const editable = wrapper.querySelector('[contenteditable="true"]')
+    await waitFor(() => expect(document.activeElement).toBe(editable))
+
+    const notCancelled = fireEvent.mouseDown(wrapper)
+    expect(notCancelled).toBe(false)
+    expect(document.activeElement).toBe(editable)
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+  })
 })
 
 describe('SegmentHost height tracking', () => {

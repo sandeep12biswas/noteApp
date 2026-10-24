@@ -40,6 +40,26 @@ test('an empty segment disappears on blur; a non-empty one does not', async ({ p
   await expect(page.getByRole('textbox', { name: 'Segment' }).first()).toBeVisible()
 })
 
+// Issue #3: a new segment's box is ~5 lines tall but holds one empty line —
+// clicking the blank area below that line used to blur the editor and
+// auto-delete the segment the user had just clicked into.
+test('clicking the blank area inside a new, empty segment keeps it and it stays typeable', async ({ page }) => {
+  await clickCanvasAt(page, 100, 100)
+  const segment = page.getByRole('textbox', { name: 'Segment' }).first()
+  await expect(segment).toBeVisible()
+
+  const box = await segment.boundingBox()
+  if (!box) throw new Error('segment has no bounding box')
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 10) // well below the first line
+  await segment.click() // box centre — the exact click e2e-electron's plugin-lifecycle spec makes
+  await expect(segment).toBeVisible()
+
+  const editable = segment.locator('.ProseMirror')
+  await expect(editable).toBeFocused()
+  await page.keyboard.type('still here')
+  await expect(editable).toHaveText('still here')
+})
+
 test('clicking two different spots creates two independent, non-overlapping segments', async ({ page }) => {
   await clickCanvasAt(page, 100, 100)
   await page.keyboard.type('first')

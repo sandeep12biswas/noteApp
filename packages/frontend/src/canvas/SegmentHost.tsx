@@ -373,7 +373,10 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       role="textbox"
       aria-label="Segment"
       className={
-        'absolute rounded px-2 py-1 transition-colors ' +
+        // `flex flex-col` lets the editor (`segment-editor`, index.css) stretch
+        // to the full `minHeight` box instead of just its one empty line —
+        // see the `onMouseDown` comment below for why that matters (issue #3).
+        'absolute flex flex-col rounded px-2 py-1 transition-colors ' +
         (revealed ? 'border' : 'border border-transparent hover:border-gray-200 dark:hover:border-gray-700')
       }
       style={{
@@ -392,6 +395,17 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
         zIndex: segment.zIndex,
         borderColor: segment.borderColor ?? undefined,
         backgroundColor: segment.fillColor ?? undefined,
+      }}
+      // Issue #3: a mousedown on the segment's own non-editable area (its
+      // padding — the `segment-editor` flex fill covers the rest) would move
+      // DOM focus off the ProseMirror node, firing `onBlur` above and
+      // auto-deleting a still-empty, uncoloured segment the user just
+      // clicked *into*. Keep focus in the editor instead. Only the wrapper
+      // itself — the drag/resize handles and menus are their own targets.
+      onMouseDown={(e) => {
+        if (e.target !== containerRef.current || !editor) return
+        e.preventDefault()
+        editor.commands.focus('end')
       }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => {
@@ -415,7 +429,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           onPointerDown={startDrag}
         />
       )}
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} className="segment-editor" />
       {revealed && (
         <div
           data-testid={`segment-${segment.id}-resize-handle`}
