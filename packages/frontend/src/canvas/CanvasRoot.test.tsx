@@ -33,7 +33,11 @@ describe('CanvasRoot', () => {
   })
 
   it('places a second segment clear of the first (8px min gap)', () => {
-    useCanvasStore.getState().createSegment('page-1', 0, 0)
+    // Coloured so it survives losing focus to the new segment — an empty,
+    // uncoloured one is auto-deleted on blur (DESIGN.md §4.1), which would
+    // leave nothing to collide with.
+    const firstId = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    useCanvasStore.getState().setSegmentColor(firstId, '#dc2626', 'rgba(220, 38, 38, 0.08)')
     render(<CanvasRoot pageId="page-1" />)
 
     fireEvent.click(screen.getByTestId('canvas-root'), { clientX: 0, clientY: 0 })

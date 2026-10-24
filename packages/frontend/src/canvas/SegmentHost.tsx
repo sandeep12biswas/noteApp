@@ -77,6 +77,12 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   useEffect(() => {
     attachmentChoiceRef.current = attachmentChoice
   }, [attachmentChoice])
+  // Same idea for the colour menu, but set synchronously when it opens: the
+  // menu focuses its first swatch on mount (a child effect, which runs
+  // before an effect here could update a ref), blurring the editor — and an
+  // empty, uncoloured segment would then be auto-deleted, menu and all,
+  // before a colour could be picked.
+  const colorMenuOpenRef = useRef(false)
 
   const editor = useEditor({
     extensions: segmentEditorExtensions,
@@ -126,7 +132,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     // `AttachmentChoiceMenu.tsx`'s own `autoFocus: false` comment for the
     // other half of this same race.
     onBlur: () => {
-      if (!attachmentChoiceRef.current) deleteIfEmptyAndUncolored(segment.id)
+      if (!attachmentChoiceRef.current && !colorMenuOpenRef.current) deleteIfEmptyAndUncolored(segment.id)
     },
     onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
@@ -153,8 +159,17 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   // this segment newly becomes active — not on every render, since
   // `editor.isFocused` only differs from `isActive` right after creation or
   // a programmatic activeSegmentId change, never mid-typing.
+  //
+  // `view.focus()` first, synchronously: TipTap's `commands.focus()` only
+  // moves DOM focus on the next animation frame, and the browser handles
+  // already-queued keystrokes before that frame — so text typed straight
+  // after the click was lost ("flownotexyz" -> "wnotexyz"), worst while the
+  // main thread was busy (e.g. loading the spell-check dictionary at
+  // startup). `commands.focus('end')` still places the caret.
   useEffect(() => {
-    if (isActive && editor && !editor.isFocused) editor.commands.focus('end')
+    if (!isActive || !editor || editor.isFocused) return
+    editor.view.focus()
+    editor.commands.focus('end')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, editor])
 
@@ -428,6 +443,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           setSpellMenu({ x: e.clientX, y: e.clientY, ...hit })
           return
         }
+        colorMenuOpenRef.current = true
         setColorMenu({ x: e.clientX, y: e.clientY })
       }}
     >
@@ -457,7 +473,15 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           activeColor={segment.borderColor}
           onPick={(border, fill) => setSegmentColor(segment.id, border, fill)}
           onClear={() => setSegmentColor(segment.id, null, null)}
-          onClose={() => setColorMenu(null)}
+          onClose={() => {
+            colorMenuOpenRef.current = false
+            setColorMenu(null)
+            // Give focus back to the segment the menu was opened on. If the
+            // menu closed because the user clicked elsewhere, that click
+            // moves focus away right after this, and the usual blur rule
+            // (auto-delete if empty and uncoloured) applies as normal.
+            editor?.view.focus()
+          }}
         />
       )}
       {slashMenu && (

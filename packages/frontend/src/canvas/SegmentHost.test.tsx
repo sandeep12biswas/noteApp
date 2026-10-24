@@ -25,6 +25,19 @@ describe('SegmentHost autofocus', () => {
     await waitFor(() => expect(document.activeElement).toBe(editable))
   })
 
+  // Text typed straight after click-to-create used to be lost: focus went
+  // through TipTap's `commands.focus()`, which only focuses on the next
+  // animation frame, and queued keystrokes are handled before that frame
+  // (what made e2e-electron/dictionary-persistence.spec.ts fail ~4/10). The
+  // editor must already be focused when the render commits — no waitFor.
+  it('focuses a newly created segment synchronously, not on a later frame', () => {
+    useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+
+    const editable = screen.getByRole('textbox', { name: 'Segment' }).querySelector('[contenteditable="true"]')
+    expect(document.activeElement).toBe(editable)
+  })
+
   // Issue #3: a mousedown on the segment's own (non-editable) wrapper area
   // used to move focus off the editor, and the resulting blur auto-deleted
   // a still-empty, uncoloured segment the user had just clicked into. jsdom
@@ -115,6 +128,41 @@ describe('SegmentHost colour menu (DESIGN.md §4.2)', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'None' }))
 
     await waitFor(() => expect(useCanvasStore.getState().segments[id]?.borderColor).toBeNull())
+  })
+})
+
+// Used to be impossible: the menu focusing its first swatch blurred the new,
+// empty editor, which auto-deleted the segment (menu and all) before a
+// colour could be picked. Only hidden in these tests until the new segment
+// was focused synchronously.
+describe('colouring a brand-new empty segment', () => {
+  it('right-click keeps the empty segment while the menu is open, and picking a colour keeps it for good', async () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+    const editable = screen.getByTestId(`segment-${id}`).querySelector('[contenteditable="true"]')
+    expect(document.activeElement).toBe(editable)
+
+    fireEvent.contextMenu(screen.getByTestId(`segment-${id}`))
+    const menu = await screen.findByRole('menu', { name: 'Segment colour' })
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+
+    fireEvent.click(within(menu).getAllByRole('menuitemradio')[0]!)
+    expect(useCanvasStore.getState().segments[id]?.borderColor).not.toBeNull()
+    expect(document.activeElement).toBe(editable) // focus handed back to the segment
+  })
+
+  it('Escape closes the menu and hands focus back, leaving the segment', async () => {
+    const id = useCanvasStore.getState().createSegment('page-1', 0, 0)
+    render(<CanvasRoot pageId="page-1" />)
+    const editable = screen.getByTestId(`segment-${id}`).querySelector('[contenteditable="true"]')
+
+    fireEvent.contextMenu(screen.getByTestId(`segment-${id}`))
+    await screen.findByRole('menu', { name: 'Segment colour' })
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Segment colour' })).toBeNull())
+    expect(useCanvasStore.getState().segments[id]).toBeDefined()
+    expect(document.activeElement).toBe(editable)
   })
 })
 
