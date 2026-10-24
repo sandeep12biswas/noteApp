@@ -14,10 +14,11 @@ export default defineConfig({
   testDir: '.',
   fullyParallel: false, // one Electron instance (and one SQLite file) per spec file, run serially
   forbidOnly: !!process.env.CI,
-  // One retry in CI: plugin-lifecycle.spec.ts is still flaky (~1 run in 15,
-  // pre-existing). A test that passes on retry is reported as "flaky", not
-  // hidden, and doesn't fail the build. Locally, no retries.
-  retries: process.env.CI ? 1 : 0,
+  // No retries: every spec here is stable (the last flaky one,
+  // plugin-lifecycle, was a read-too-early race in the test, fixed
+  // 2026-10-24), so a failure should fail the build rather than be retried
+  // away.
+  retries: 0,
   reporter: process.env.CI ? 'github' : 'list',
   timeout: 30_000,
   use: {

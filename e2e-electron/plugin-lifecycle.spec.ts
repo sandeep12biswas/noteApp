@@ -88,7 +88,12 @@ test.describe.serial('plugin lifecycle: install, use, disable/re-enable, uninsta
 
     await page.getByTestId(/^plugin-block-/).first().locator('iframe').waitFor()
     const grid = await waitForGridFrame(page)
-    expect(await readGridCell(grid, 0, 0)).toBe('42')
+    // Poll, don't read once: the grid only draws its cells when it receives
+    // its saved data (`onInit`), a moment after its frame appears. A single
+    // immediate read occasionally saw no cells yet and returned '' — this
+    // was the "flaky" failure (~1 in 15; diagnosed 2026-10-24: 0 cells at
+    // the first read, "42" a moment later — never a lost value).
+    await expect.poll(() => readGridCell(grid, 0, 0)).toBe('42')
   })
 
   test('disabling the plugin shows the "Plugin inactive" placeholder, data untouched', async () => {
@@ -107,7 +112,12 @@ test.describe.serial('plugin lifecycle: install, use, disable/re-enable, uninsta
 
     await page.getByTestId(/^plugin-block-/).first().locator('iframe').waitFor()
     const grid = await waitForGridFrame(page)
-    expect(await readGridCell(grid, 0, 0)).toBe('42')
+    // Poll, don't read once: the grid only draws its cells when it receives
+    // its saved data (`onInit`), a moment after its frame appears. A single
+    // immediate read occasionally saw no cells yet and returned '' — this
+    // was the "flaky" failure (~1 in 15; diagnosed 2026-10-24: 0 cells at
+    // the first read, "42" a moment later — never a lost value).
+    await expect.poll(() => readGridCell(grid, 0, 0)).toBe('42')
   })
 
   test('uninstalling leaves the placeholder in place (fallback, no crash)', async () => {
