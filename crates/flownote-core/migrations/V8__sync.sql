@@ -36,8 +36,10 @@ CREATE TABLE crdt_docs (
   updated_at INTEGER
 );
 
--- Documents with local changes not uploaded yet. Written in the same
--- transaction as the change itself, so a crash can't lose track of one.
+-- Documents whose rows changed since their Automerge doc was last brought up
+-- to date (V9's triggers fill it, in the same transaction as the write, so a
+-- crash can't lose track of one). What still needs uploading is the doc's
+-- changes after crdt_docs.synced_heads.
 CREATE TABLE sync_outbox (
   doc_id TEXT PRIMARY KEY,
   queued_at INTEGER NOT NULL
