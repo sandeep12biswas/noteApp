@@ -1,6 +1,6 @@
 # FlowNote — Execution Plan
 
-**Status:** IN PROGRESS — Phase 0 complete, Phase 1 scaffolding complete (2026-09-10); Phase 2 rows all done as of 2026-09-11, including a real Electron window launch (see that phase's Electron shell row for the three bugs that surfaced and were fixed); Phases 3–4 done and Phases 5–7 done apart from the deferred items they list. As of 2026-10-24, CI runs green on GitHub Actions on all three OSes — Linux, macOS and Windows (Phase 1's CI matrix row) — and a Windows installer + uninstaller is built by CI (Features → Windows installer row); preview builds tagged `v0.1.0-preview.1`–`.5` · **Based on:** `DESIGN.md` §3, §6, §9 (source: Notion "FlowNote — Canvas Editor Architecture" v1.4, §9 Implementation Plan) · **Repo state at time of writing:** empty scaffold (`README.md` only), branch `feature/linote`
+**Status:** IN PROGRESS — Phase 0 complete, Phase 1 scaffolding complete (2026-09-10); Phase 2 rows all done as of 2026-09-11, including a real Electron window launch (see that phase's Electron shell row for the three bugs that surfaced and were fixed); Phases 3–4 done and Phases 5–7 done apart from the deferred items they list; Phase 8 (mobile, added 2026-11-01) planned, not started. As of 2026-10-24, CI runs green on GitHub Actions on all three OSes — Linux, macOS and Windows (Phase 1's CI matrix row) — and a Windows installer + uninstaller is built by CI (Features → Windows installer row); preview builds tagged `v0.1.0-preview.1`–`.5` · **Based on:** `DESIGN.md` §3, §6, §9 (source: Notion "FlowNote — Canvas Editor Architecture" v1.4, §9 Implementation Plan) · **Repo state at time of writing:** empty scaffold (`README.md` only), branch `feature/linote`
 
 This turns the design's 7-phase plan into a checklist-driven execution plan, scoped to actually bootstrapping this repo from scratch. Each phase lists concrete tasks, its testing gate, and an explicit exit criterion.
 
@@ -159,6 +159,33 @@ Nothing exists yet beyond `README.md`, so this has to happen before Phase 1's ta
 
 ---
 
+## Phase 8 — Mobile: iOS + Android via Tauri v2 (added 2026-11-01)
+
+Not part of DESIGN.md's original 7 phases. Mobile is built on the Tauri shell (Tauri v2 targets iOS/Android; Electron has none) and the same `packages/frontend` build. A code review on 2026-11-01 found the Rust side close to mobile-ready — `apps/tauri/src-tauri/src/lib.rs` already has `#[cfg_attr(mobile, tauri::mobile_entry_point)]` and `staticlib`/`cdylib` crate types, `flownote-core` has no process spawning or hard-coded desktop paths, the DB path comes from `app_data_dir()`, and `lib/customProtocolUrl.ts` takes its prefix from `convertFileSrc` (Android uses the same `http://<scheme>.localhost` form as Windows). Most of the work is the frontend, which assumes a wide window, a mouse and right-click. Nothing below has been compiled for a mobile target yet — this environment has no Android SDK/NDK or iOS toolchain.
+
+| Task | Details |
+|---|---|
+| Mobile project scaffold | ⬜ `tauri android init` / `tauri ios init` under `apps/tauri/src-tauri` (iOS needs macOS + Xcode). Add a mobile capability file (`capabilities/` currently only targets `desktop-schema.json`). |
+| Backend: `open_attachment` | ⬜ `crates/flownote-tauri/src/commands.rs` uses `open::that_detached`, which has no mobile backend — route through `tauri-plugin-opener` (already a dependency) on mobile. |
+| Backend: TLS | ⬜ `flownote-core`'s `reqwest` uses `default-tls` → `native-tls`/`openssl`, painful to cross-compile for Android. Switch to `rustls-tls`; re-run `ai.rs` tests. |
+| Backend: main window | ⬜ `create_main_window` builds a fixed 1200×800 window from config plus the WebView2 debug-port hook — gate it `#[cfg(desktop)]` and let mobile use the default full-screen webview. |
+| Backend: unused deps | ⬜ `axum` is a `flownote-core` dependency but unused in `src/` — drop it to shrink the mobile binary. |
+| Smoke test on device/emulator | ⬜ `tauri android dev`: SQLite round-trip (folder → page → segment survives restart), `flownote-attachment://` image, spreadsheet plugin over `flownote-plugin://` with its CSP. Plugin iframes are the riskiest part on WKWebView/Android WebView. |
+| Responsive layout | ⬜ `AppShell.tsx` always renders ribbon + three panels side by side, with `MIN_EDITOR_WIDTH = 320`, and no Tailwind breakpoints exist anywhere. Tablet: keep three panels. Phone: stacked folders → pages → editor with back navigation; collapsible ribbon or bottom toolbar. |
+| Touch alternatives to right-click | ⬜ 13 `onContextMenu` handlers (segment colour, spelling suggestions, folder/file/panel menus) — add long-press and/or visible "⋯" buttons. |
+| Touch alternatives to HTML5 drag & drop | ⬜ Folder/file moves use `draggable`/`dataTransfer` (`SectionSidebar`, `PageList`, `lib/dragAndDrop.ts`), unsupported on mobile webviews — needs a "Move to…" action or pointer-based drag. |
+| Touch-friendly canvas | ⬜ Segment drag/resize handles are 12px/6px (`SegmentHost.tsx`) — need ~44px hit areas; borders reveal on `hover:` only; tap-to-create must not fire on a scroll gesture; pinch-zoom/pan instead of ribbon-only `scale()`; re-check the `onMouseDown` focus workarounds (`SegmentHost`, `CanvasRoot`, ribbon) against touch event order and the soft keyboard. Consider Linear mode as the phone default. |
+| Ink on touch/stylus | ⬜ Already Pointer Events with `touch-action: none` — verify finger and stylus; pressure is unused. |
+| Offline fonts | ⬜ Ribbon fonts load from Google Fonts (`index.html`); bundle them or accept the fallback when offline. |
+
+**Depends on:** CRDT sync (Phase 5, still deferred) for mobile to be more than a separate per-device notebook; Tauri shell verification (P2) since mobile builds on that shell.
+
+**Testing gate:** ⬜ Rust workspace builds for `aarch64-linux-android` and `aarch64-apple-ios` in CI. ⬜ Smoke test above passes on an Android emulator and an iOS simulator. ⬜ A touch-emulated Playwright project (mobile viewport, `hasTouch`) covering create/edit segment, context actions via long-press, and folder/page navigation on a phone-width layout.
+
+**Exit criteria:** ⬜ A tablet build that does everything the desktop build does, by touch; a phone build usable for reading and writing notes (Linear mode at minimum).
+
+---
+
 ## Features
 
 User-requested features that fall outside the original 7-phase build plan
@@ -209,6 +236,7 @@ in place as items land.
 |---|---|
 | Tauri shell verification | Builds, tests and passes Clippy on CI's macOS and Windows runners; the Windows installer launches it and it creates its database (Features → Windows installer row). ⬜ Windows: the WebView2 smoke test (plugins, attachment images, IPC) hasn't passed yet, and nobody has used the app by hand on Windows 11. ⬜ macOS: no `.dmg`/`.app` packaging, never launched. |
 | Code signing | Windows installers are unsigned, so SmartScreen warns on first run (and macOS would need notarization). Needs a code-signing certificate — a cost/ownership decision, not code. |
+| Mobile (iOS/Android) | Phase 8, not started. Backend fixes are small (`open_attachment`, `rustls`, desktop-only window code, mobile capability file); the bulk is touch/responsive frontend work. Best sequenced after Tauri shell verification and alongside CRDT sync. |
 
 ### P3 — Plugin ecosystem isn't actually usable end-to-end yet
 
