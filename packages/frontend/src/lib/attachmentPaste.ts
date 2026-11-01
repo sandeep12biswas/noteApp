@@ -17,15 +17,10 @@
 import type { EditorView } from '@tiptap/pm/view'
 import type { Attachment, IPCAdapter } from '@flownote/ipc-adapter'
 import { attachmentBlockAttrs } from '../canvas/attachmentBlockNode'
+import { makeId } from './ids'
 
-// Salted the same way and for the same reason as canvasStore.ts's
-// makeSegmentId/notebookStore.ts's makeId: a bare per-module-load counter
-// could collide with a real persisted attachment id from an earlier
-// session.
-const sessionSalt = Math.random().toString(36).slice(2, 8)
-let nextAttachmentId = 1
 export function makeAttachmentId(): string {
-  return `attachment-${sessionSalt}-${nextAttachmentId++}`
+  return makeId('attachment')
 }
 
 /**

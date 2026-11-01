@@ -40,6 +40,27 @@ pub fn get_page(conn: &Connection, page_id: &str) -> rusqlite::Result<Option<Val
     .optional()
 }
 
+/// Runs `f` atomically: everything it writes is committed together, or
+/// nothing is if it returns `Err`. Uses a SAVEPOINT rather than BEGIN so it
+/// nests — a function that uses it can be called from another one that does
+/// (e.g. `save_segments_batch` → `save_segment`) — and so it works on the
+/// shared `&Connection` every function here takes.
+pub fn in_transaction<T>(conn: &Connection, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    conn.execute_batch("SAVEPOINT flownote_tx").map_err(|e| e.to_string())?;
+    match f() {
+        Ok(value) => {
+            conn.execute_batch("RELEASE flownote_tx").map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        Err(e) => {
+            // ROLLBACK TO undoes the writes but leaves the savepoint open;
+            // RELEASE then closes it.
+            let _ = conn.execute_batch("ROLLBACK TO flownote_tx; RELEASE flownote_tx");
+            Err(e)
+        }
+    }
+}
+
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -163,10 +184,15 @@ pub fn delete_page(conn: &Connection, page_id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     drop(attach_stmt);
 
-    conn.execute("DELETE FROM pages WHERE id = ?1", [page_id]).map_err(|e| e.to_string())?;
-    for block_id in block_ids {
-        conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [&block_id]).map_err(|e| e.to_string())?;
-    }
+    in_transaction(conn, || {
+        conn.execute("DELETE FROM pages WHERE id = ?1", [page_id]).map_err(|e| e.to_string())?;
+        for block_id in &block_ids {
+            conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [block_id]).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })?;
+    // Files only once the rows are gone for good — a rolled-back delete
+    // must not leave rows pointing at missing files.
     delete_attachment_files(conn, &attachment_paths)?;
     Ok(())
 }
@@ -220,10 +246,15 @@ pub fn delete_folder(conn: &Connection, folder_id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     drop(attach_stmt);
 
-    conn.execute("DELETE FROM folders WHERE id = ?1", [folder_id]).map_err(|e| e.to_string())?;
-    for block_id in block_ids {
-        conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [&block_id]).map_err(|e| e.to_string())?;
-    }
+    in_transaction(conn, || {
+        conn.execute("DELETE FROM folders WHERE id = ?1", [folder_id]).map_err(|e| e.to_string())?;
+        for block_id in &block_ids {
+            conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [block_id]).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })?;
+    // Files only once the rows are gone for good — a rolled-back delete
+    // must not leave rows pointing at missing files.
     delete_attachment_files(conn, &attachment_paths)?;
     Ok(())
 }
@@ -289,28 +320,29 @@ pub fn save_segment(conn: &Connection, seg: &Value) -> Result<(), String> {
     let content = content_value.map(Value::to_string).unwrap_or_else(|| "null".into());
     let now = now_ms();
 
-    conn.execute(
-        "INSERT INTO segments (id, page_id, x, y, w, h, z_index, border_color, fill_color, content, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
-         ON CONFLICT(id) DO UPDATE SET
-           x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h,
-           z_index = excluded.z_index, border_color = excluded.border_color,
-           fill_color = excluded.fill_color, content = excluded.content,
-           updated_at = excluded.updated_at",
-        rusqlite::params![id, page_id, x, y, w, h, z_index, border_color, fill_color, content, now],
-    )
-    .map_err(|e| e.to_string())?;
+    in_transaction(conn, || {
+        conn.execute(
+            "INSERT INTO segments (id, page_id, x, y, w, h, z_index, border_color, fill_color, content, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
+             ON CONFLICT(id) DO UPDATE SET
+               x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h,
+               z_index = excluded.z_index, border_color = excluded.border_color,
+               fill_color = excluded.fill_color, content = excluded.content,
+               updated_at = excluded.updated_at",
+            rusqlite::params![id, page_id, x, y, w, h, z_index, border_color, fill_color, content, now],
+        )
+        .map_err(|e| e.to_string())?;
 
-    let text = content_value.map(flatten_tiptap_text).unwrap_or_default();
-    conn.execute(
-        "INSERT INTO blocks (id, segment_id, position, type, content, attrs)
-         VALUES (?1, ?1, 0, 'text', ?2, '{}')
-         ON CONFLICT(id) DO UPDATE SET content = excluded.content",
-        rusqlite::params![id, text],
-    )
-    .map_err(|e| e.to_string())?;
-    sync_block_fts(conn, id, &text)?;
-    Ok(())
+        let text = content_value.map(flatten_tiptap_text).unwrap_or_default();
+        conn.execute(
+            "INSERT INTO blocks (id, segment_id, position, type, content, attrs)
+             VALUES (?1, ?1, 0, 'text', ?2, '{}')
+             ON CONFLICT(id) DO UPDATE SET content = excluded.content",
+            rusqlite::params![id, text],
+        )
+        .map_err(|e| e.to_string())?;
+        sync_block_fts(conn, id, &text)
+    })
 }
 
 /// Keeps `blocks_fts` (self-contained FTS5, V3 migration) in sync with one
@@ -326,11 +358,14 @@ pub fn sync_block_fts(conn: &Connection, block_id: &str, text: &str) -> Result<(
     Ok(())
 }
 
+/// All-or-nothing: one bad segment in the batch leaves none of them saved.
 pub fn save_segments_batch(conn: &Connection, segments: &[Value]) -> Result<(), String> {
-    for seg in segments {
-        save_segment(conn, seg)?;
-    }
-    Ok(())
+    in_transaction(conn, || {
+        for seg in segments {
+            save_segment(conn, seg)?;
+        }
+        Ok(())
+    })
 }
 
 /// Deleting a segment cascades (`ON DELETE CASCADE`, V1/V6 schema) to its
@@ -347,8 +382,11 @@ pub fn delete_segment(conn: &Connection, id: &str) -> Result<(), String> {
         .collect::<Result<_, _>>()
         .map_err(|e| e.to_string())?;
 
-    conn.execute("DELETE FROM segments WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [id]).map_err(|e| e.to_string())?;
+    in_transaction(conn, || {
+        conn.execute("DELETE FROM segments WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM blocks_fts WHERE block_id = ?1", [id]).map_err(|e| e.to_string())?;
+        Ok(())
+    })?;
     delete_attachment_files(conn, &attachment_paths)?;
     Ok(())
 }
@@ -411,6 +449,7 @@ pub fn save_attachment(conn: &Connection, params: &Value) -> Result<Value, Strin
 
     let bytes = base64::engine::general_purpose::STANDARD.decode(data_base64).map_err(|e| e.to_string())?;
     let size = bytes.len() as i64;
+    let sha256 = sha256_hex(&bytes);
     let relative_path = format!("{id}-{}", sanitize_file_name(file_name));
 
     let dir = attachments_dir(conn)?;
@@ -418,13 +457,19 @@ pub fn save_attachment(conn: &Connection, params: &Value) -> Result<Value, Strin
 
     let now = now_ms();
     conn.execute(
-        "INSERT INTO attachments (id, segment_id, file_name, mime_type, size, relative_path, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![id, segment_id, file_name, mime_type, size, relative_path, now],
+        "INSERT INTO attachments (id, segment_id, file_name, mime_type, size, relative_path, created_at, sha256)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![id, segment_id, file_name, mime_type, size, relative_path, now, sha256],
     )
     .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({ "id": id, "fileName": file_name, "mimeType": mime_type, "size": size }))
+}
+
+/// Lower-case hex SHA-256 — the content address attachments sync under.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn get_attachment(conn: &Connection, id: &str) -> Result<Option<Value>, String> {
@@ -1059,5 +1104,70 @@ mod ai_provider_tests {
         let conn = db::open_in_memory().unwrap();
         assert!(save_ai_provider(&conn, &json!({ "id": "x", "kind": "skynet", "name": "X" })).unwrap_err().contains("unknown AI provider kind"));
         assert!(ai_provider_config(&conn, None).unwrap_err().contains("No AI provider is set up yet"));
+    }
+}
+
+#[cfg(test)]
+mod transaction_tests {
+    use super::*;
+    use crate::db;
+    use serde_json::json;
+
+    fn page(conn: &Connection) {
+        save_folder(conn, &json!({ "id": "f1", "name": "Notes" })).unwrap();
+        save_page(conn, &json!({ "id": "p1", "folderId": "f1", "title": "Page" })).unwrap();
+    }
+
+    fn segment(id: &str) -> Value {
+        json!({ "id": id, "pageId": "p1", "x": 0, "y": 0, "w": 100, "h": 40,
+                "content": { "type": "doc", "content": [{ "type": "paragraph" }] } })
+    }
+
+    fn count(conn: &Connection, sql: &str) -> i64 {
+        conn.query_row(sql, [], |row| row.get(0)).unwrap()
+    }
+
+    #[test]
+    fn an_error_rolls_back_everything_written_inside() {
+        let conn = db::open_in_memory().unwrap();
+        page(&conn);
+        let result: Result<(), String> = in_transaction(&conn, || {
+            save_segment(&conn, &segment("s1"))?;
+            Err("boom".into())
+        });
+        assert_eq!(result.unwrap_err(), "boom");
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM segments"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM blocks_fts"), 0);
+        // The connection is usable afterwards — no transaction left open.
+        save_segment(&conn, &segment("s2")).unwrap();
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM segments"), 1);
+    }
+
+    #[test]
+    fn a_batch_with_one_bad_segment_saves_none() {
+        let conn = db::open_in_memory().unwrap();
+        page(&conn);
+        let bad = json!({ "id": "s2", "pageId": "p1" }); // no geometry
+        assert!(save_segments_batch(&conn, &[segment("s1"), bad]).is_err());
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM segments"), 0);
+        save_segments_batch(&conn, &[segment("s1"), segment("s2")]).unwrap();
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM segments"), 2);
+    }
+
+    #[test]
+    fn saved_attachments_record_their_content_hash() {
+        let dir = std::env::temp_dir().join(format!("flownote-core-sha-{}-{}", std::process::id(), now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = Connection::open(dir.join("db.sqlite3")).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        crate::migrations::run(&mut conn).unwrap();
+        page(&conn);
+        save_segment(&conn, &segment("s1")).unwrap();
+
+        let data = base64::engine::general_purpose::STANDARD.encode(b"hello");
+        save_attachment(&conn, &json!({ "id": "a1", "segmentId": "s1", "fileName": "h.txt", "mimeType": "text/plain", "dataBase64": data })).unwrap();
+        let sha: String = conn.query_row("SELECT sha256 FROM attachments WHERE id = 'a1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(sha, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

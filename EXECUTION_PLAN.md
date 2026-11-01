@@ -227,7 +227,7 @@ in place as items land.
 
 | Task | Details |
 |---|---|
-| CRDT sync | `crates/flownote-sync` is still the `cargo new` placeholder (Phase 5). Explicitly deferred as "materially bigger than the other three tasks." One of the app's headline architectural promises (offline-first sync); nothing exists yet beyond `resolvePosition()` (Phase 3), already in place as the mitigation DESIGN.md §10 calls for once remote events exist. |
+| CRDT sync | **In progress (2026-11-01):** bring-your-own-cloud sync to OneDrive / Google Drive, end-to-end encrypted, one Automerge change log per device — no relay server. Steps S0–S8; ✅ S0 (V8 migration: `sync_settings`/`crdt_docs`/`sync_outbox`/`attachments.sha256`; UUID ids; transactional batch save and deletes). Before this: `crates/flownote-sync` is still the `cargo new` placeholder (Phase 5). Explicitly deferred as "materially bigger than the other three tasks." One of the app's headline architectural promises (offline-first sync); nothing exists yet beyond `resolvePosition()` (Phase 3), already in place as the mitigation DESIGN.md §10 calls for once remote events exist. |
 | ~~Real Ollama AI integration~~ | ✅ **Done 2026-10-24, generalised** — see the Features table's "Generic AI interface" row. Ollama is one OpenAI-compatible provider among Claude, Gemini, OpenAI and others. |
 
 ### P2 — Windows/macOS platform parity

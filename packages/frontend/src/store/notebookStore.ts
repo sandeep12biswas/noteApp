@@ -11,6 +11,7 @@ import { create } from 'zustand'
 import { capitalizeFirstLetter, validateFileName } from '../lib/validation'
 import { naturalSortBy } from '../lib/naturalSort'
 import { saveLastOpenedPage } from '../lib/lastOpenedPage'
+import { makeId } from '../lib/ids'
 
 let ipc: IPCAdapter | null = null
 
@@ -172,19 +173,6 @@ interface NotebookState {
   hydrateFromIPC: () => Promise<void>
 }
 
-let nextId = 1
-// Salted the same way and for the same reason as `canvasStore.ts`'s
-// `makeSegmentId` (see its comment): a plain per-session counter here means
-// a freshly created folder/file can collide with a real persisted id from
-// an *earlier* session (this module's counter restarts at 1 on every
-// launch) — and because `CanvasRoot.loadSegmentsForPage` loads by page id,
-// a colliding new page would silently inherit an old page's segments. Found
-// live via `run-electron` chasing what looked like a search bug but turned
-// out to be exactly this, one layer up from the segment-id version of it.
-const sessionSalt = Math.random().toString(36).slice(2, 8)
-function makeId(prefix: string): string {
-  return `${prefix}-${sessionSalt}-${nextId++}`
-}
 
 export const useNotebookStore = create<NotebookState>((set, get) => ({
   folders: {},

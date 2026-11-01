@@ -11,6 +11,7 @@ import type { IPCAdapter } from '@flownote/ipc-adapter'
 import type { Editor } from '@tiptap/react'
 import { create } from 'zustand'
 import { type AABB, MIN_GAP, overlaps } from '../lib/collision'
+import { makeId } from '../lib/ids'
 
 /** Guard against runaway recursion (DESIGN.md §10 "ResizeObserver cascade loops"). */
 const MAX_CASCADE_DEPTH = 20
@@ -175,20 +176,12 @@ interface CanvasState {
   cascadePushBelow: (id: string, visited: Set<string>, depth: number) => void
 }
 
-let nextSegmentId = 1
-// A plain in-session counter (`segment-1`, `segment-2`, …) collides with a
-// real persisted id from a *previous* session the moment this module
-// reloads (every launch restarts the counter at 1) — found live via
-// `run-electron`: a freshly clicked-into-existence segment reused an old
-// segment's id, and since React keys `SegmentHost` by that id, the already-
-// mounted TipTap editor for the old segment was never remounted, so typing
-// into the "new" segment silently appended onto the old one's text. The
-// counter still makes ids human-readable in tests/logs; salting with a
-// per-module-load random suffix is enough to make them unique *across*
-// sessions too, without switching to opaque UUIDs everywhere.
-const sessionSalt = Math.random().toString(36).slice(2, 8)
+// Ids must never repeat across sessions — found live via `run-electron`: a
+// plain per-launch counter reused an old segment's id, and since React keys
+// `SegmentHost` by id, the old segment's still-mounted editor absorbed the
+// new segment's typing. See lib/ids.ts.
 function makeSegmentId(): string {
-  return `segment-${sessionSalt}-${nextSegmentId++}`
+  return makeId('segment')
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
