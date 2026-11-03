@@ -18,6 +18,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
+import { readableTextOn } from '../lib/textColors'
 import { PluginBlock } from '../plugins/pluginBlockNode'
 import { AiDraftExtension } from './aiDraftExtension'
 import { AttachmentBlock } from './attachmentBlockNode'
@@ -48,7 +49,29 @@ export const segmentEditorExtensions = [
   // TextStyle piggyback; TipTap v2 has no official font-size package, so
   // this is a small local extension (fontSizeExtension.ts).
   FontSize,
-  Highlight.configure({ multicolor: true }),
+  // Issue #6: TipTap's highlight renders `color: inherit`, so in the dark
+  // theme highlighted text kept the theme's near-white on a pastel
+  // background. Each highlight instead carries a readable text colour for
+  // its own background (`--highlight-text`, used by index.css), which text
+  // with its own colour still overrides.
+  Highlight.extend({
+    addAttributes() {
+      return {
+        color: {
+          default: null,
+          parseHTML: (element: HTMLElement) => element.getAttribute('data-color') || element.style.backgroundColor,
+          renderHTML: (attributes: { color?: string | null }) => {
+            if (!attributes.color) return {}
+            const text = readableTextOn(attributes.color)
+            return {
+              'data-color': attributes.color,
+              style: `background-color: ${attributes.color}` + (text ? `; --highlight-text: ${text}` : ''),
+            }
+          },
+        },
+      }
+    },
+  }).configure({ multicolor: true }),
   TaskList,
   TaskItem.configure({ nested: true }),
   // Not in StarterKit (DESIGN.md §5.3 Home row needs all four): Underline

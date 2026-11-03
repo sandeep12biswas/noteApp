@@ -279,3 +279,14 @@
   font-style: italic;
   opacity: 0.75;
 }
+
+/* Highlighted text (issue #6): the readable colour each highlight carries
+   for its own background (`--highlight-text`, segmentEditorExtensions.ts) —
+   in both themes. Text with its own colour (a `textStyle` span around the
+   mark) keeps that colour; a span inside the mark sets its own anyway. */
+.ProseMirror mark[data-color] {
+  color: var(--highlight-text, inherit);
+}
+.ProseMirror span[style*='color:'] mark[data-color] {
+  color: inherit;
+}
