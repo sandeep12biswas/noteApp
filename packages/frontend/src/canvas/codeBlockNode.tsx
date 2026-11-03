@@ -7,9 +7,18 @@
 // `hljs-*` spans as ProseMirror decorations; the colours are in index.css.
 // "Auto" (`language: null`) lets highlight.js guess. Typing ```python at
 // the start of a line still creates a Python block (CodeBlock's input rule).
+//
+// Leaving the block (issue #10): Esc moves the caret to a normal line below
+// it, and a code block that ends the segment always has an empty paragraph
+// after it, so a click below the block lands on a normal line instead of
+// back at the end of the code. (TipTap's own exits — Enter three times at
+// the end, ArrowDown on the last line — still work too.)
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
+import type { Editor } from '@tiptap/core'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state'
 import { common, createLowlight } from 'lowlight'
+import { useUIStore } from '../store/uiStore'
 
 /** highlight.js's "common" bundle (~37 languages) — enough for notes without shipping all ~190 grammars. */
 export const lowlight = createLowlight(common)
@@ -84,8 +93,67 @@ function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps) {
   )
 }
 
+/**
+ * Moves the caret out of the code block it's in, onto the empty paragraph
+ * right after it — created if there isn't one. False outside a code block.
+ */
+export function exitCodeBlock(editor: Editor): boolean {
+  const { $head } = editor.state.selection
+  if ($head.parent.type.name !== 'codeBlock') return false
+  const after = $head.after()
+  const next = editor.state.doc.resolve(after).nodeAfter
+  const chain = editor.chain()
+  if (!(next?.type.name === 'paragraph' && next.content.size === 0)) chain.insertContentAt(after, { type: 'paragraph' })
+  return chain.setTextSelection(after + 1).scrollIntoView().run()
+}
+
+const trailingParagraphKey = new PluginKey('codeBlockTrailingParagraph')
+
+/** An empty paragraph after a code block that ends the document, or null if none is needed. */
+function addTrailingParagraph(state: EditorState): Transaction | null {
+  if (state.doc.lastChild?.type.name !== 'codeBlock') return null
+  const paragraph = state.schema.nodes.paragraph
+  if (!paragraph) return null
+  // Out of undo history: it's scaffolding, not an edit the user made.
+  return state.tr.insert(state.doc.content.size, paragraph.create()).setMeta('addToHistory', false).setMeta(trailingParagraphKey, true)
+}
+
 export const CodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockView)
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      // Esc's other jobs come first: the "/" menu and an AI draft are
+      // handled by SegmentHost's editorProps.handleKeyDown (which runs
+      // before any keymap), and an armed Format Painter is switched off by
+      // CanvasRoot — so leave Esc to it then.
+      Escape: ({ editor }) => {
+        if (useUIStore.getState().formatPainter.armed) return false
+        return exitCodeBlock(editor as Editor)
+      },
+    }
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: trailingParagraphKey,
+        appendTransaction: (_trs, _old, state) => addTrailingParagraph(state),
+        // A note saved with a code block at the end gets its trailing
+        // paragraph when it's opened, not only after the next edit.
+        view: (view) => {
+          queueMicrotask(() => {
+            if (view.isDestroyed || !view.editable) return
+            const tr = addTrailingParagraph(view.state)
+            if (tr) view.dispatch(tr)
+          })
+          return {}
+        },
+      }),
+    ]
   },
 }).configure({ lowlight, defaultLanguage: null })

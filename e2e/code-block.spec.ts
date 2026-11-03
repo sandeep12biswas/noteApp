@@ -65,3 +65,56 @@ test('typing in the code block after using the picker still works', async ({ pag
   await expect(editable.locator('pre code')).toHaveText('let n: number = 1')
   await expect(page.getByRole('textbox', { name: 'Segment' })).toHaveCount(1) // still there, not auto-deleted
 })
+
+// Issue #10: getting out of a code block to type normal text below it.
+test.describe('leaving a code block (issue #10)', () => {
+  test.beforeEach(async ({ page }) => {
+    const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+    await editable.pressSequentially('/')
+    await page.getByRole('menu', { name: 'Insert block' }).getByRole('menuitem', { name: 'Code block' }).click()
+    await page.keyboard.type('let a = 1\nlet b = 2')
+  })
+
+  test('Esc moves the caret to a normal line below the block', async ({ page }) => {
+    const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+    await page.keyboard.press('Escape')
+    await page.keyboard.type('After the code')
+    await expect(editable.locator('pre code')).toHaveText('let a = 1\nlet b = 2')
+    await expect(editable.locator(':scope > p').last()).toHaveText('After the code')
+    // Esc again on the normal line does nothing odd; no extra lines appear.
+    await expect(editable.locator(':scope > p')).toHaveCount(1)
+  })
+
+  test('clicking below the block puts the caret on a normal line under it', async ({ page }) => {
+    const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+    const segment = page.getByRole('textbox', { name: 'Segment' })
+    const box = (await segment.boundingBox())!
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 4)
+    await page.keyboard.type('Below')
+    await expect(editable.locator('pre code')).toHaveText('let a = 1\nlet b = 2')
+    await expect(editable.locator(':scope > p').last()).toHaveText('Below')
+  })
+
+  test('clicking back into the block edits code again, and the language picker still works', async ({ page }) => {
+    const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+    await page.keyboard.press('Escape')
+    await page.keyboard.type('Text')
+    await editable.locator('pre code').click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(';')
+    await expect(editable.locator('pre code')).toContainText(';')
+    await page.getByRole('combobox', { name: 'Code language' }).selectOption('rust')
+    await expect(editable.locator('pre code')).toHaveClass(/language-rust/)
+    await expect(editable.locator(':scope > p').last()).toHaveText('Text')
+  })
+
+  test('Esc closes the "/" menu inside a segment with a code block, without leaving anything behind', async ({ page }) => {
+    const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+    await page.keyboard.press('Escape')
+    await page.keyboard.type('/')
+    await expect(page.getByRole('menu', { name: 'Insert block' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('menu', { name: 'Insert block' })).not.toBeVisible()
+    await expect(editable.locator(':scope > p').last()).toHaveText('/')
+  })
+})
