@@ -83,4 +83,14 @@ describe('applyFormat', () => {
     editor.commands.setTextSelection({ from: 14, to: 20 })
     expect(editor.isActive('italic')).toBe(false)
   })
+
+  // Issue #9: a selection that isn't uniformly formatted (a double-clicked
+  // word plus its plain trailing space) used to capture nothing.
+  it('captures the first character\'s formatting when the selection is mixed', () => {
+    const editor = makeEditor('<p><strong><span style="color: #ff0000">Hello</span></strong> world</p>')
+    editor.commands.setTextSelection({ from: 1, to: 7 }) // "Hello " — bold red word + plain space
+    const format = captureFormat(editor)
+    expect(format.bold).toBe(true)
+    expect(format.color).toBe('rgb(255, 0, 0)') // the browser's form of the parsed #ff0000
+  })
 })

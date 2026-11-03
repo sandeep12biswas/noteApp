@@ -1,7 +1,7 @@
 import { Editor } from '@tiptap/core'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CanvasRoot } from './CanvasRoot'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CanvasRoot, FORMAT_PAINTER_KEYBOARD_SETTLE_MS, FORMAT_PAINTER_SETTLE_MS } from './CanvasRoot'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
 import type { CapturedFormat } from '../lib/formatPainter'
 import { DEFAULT_SEGMENT_HEIGHT, DEFAULT_SEGMENT_WIDTH, useCanvasStore } from '../store/canvasStore'
@@ -130,8 +130,10 @@ describe('Format Painter (RibbonRoot arms it, CanvasRoot applies it on pointerup
     useCanvasStore.getState().registerEditor('seg-1', editor)
     useCanvasStore.getState().setActiveSegment('seg-1')
     useUIStore.setState({ formatPainter: { armed: false, sticky: false, format: null } })
+    vi.useFakeTimers()
   })
   afterEach(() => {
+    vi.useRealTimers()
     useCanvasStore.getState().unregisterEditor('seg-1')
     editor.destroy()
   })
@@ -142,6 +144,7 @@ describe('Format Painter (RibbonRoot arms it, CanvasRoot applies it on pointerup
     render(<CanvasRoot pageId="page-1" />)
 
     fireEvent.pointerUp(screen.getByTestId('canvas-root'))
+    act(() => vi.advanceTimersByTime(FORMAT_PAINTER_SETTLE_MS))
 
     expect(editor.isActive('bold')).toBe(true)
     expect(editor.getAttributes('textStyle').color).toBe('#ff0000')
@@ -154,6 +157,7 @@ describe('Format Painter (RibbonRoot arms it, CanvasRoot applies it on pointerup
     render(<CanvasRoot pageId="page-1" />)
 
     fireEvent.pointerUp(screen.getByTestId('canvas-root'))
+    act(() => vi.advanceTimersByTime(FORMAT_PAINTER_SETTLE_MS))
 
     expect(editor.isActive('bold')).toBe(true)
     expect(useUIStore.getState().formatPainter.armed).toBe(true)
@@ -164,9 +168,47 @@ describe('Format Painter (RibbonRoot arms it, CanvasRoot applies it on pointerup
     render(<CanvasRoot pageId="page-1" />)
 
     fireEvent.pointerUp(screen.getByTestId('canvas-root'))
+    act(() => vi.advanceTimersByTime(FORMAT_PAINTER_SETTLE_MS))
 
     expect(editor.isActive('bold')).toBe(false)
     expect(useUIStore.getState().formatPainter.armed).toBe(true)
+  })
+
+  it('waits for the click sequence to finish: a second press cancels the first release\'s paint', () => {
+    useUIStore.getState().armFormatPainter(boldRedFormat, false)
+    render(<CanvasRoot pageId="page-1" />)
+    const canvas = screen.getByTestId('canvas-root')
+
+    // First click of a double-click: nothing selected yet.
+    fireEvent.pointerUp(canvas)
+    fireEvent.pointerDown(canvas)
+    // The double-click selects a word; ProseMirror syncs it after pointerup.
+    fireEvent.pointerUp(canvas)
+    editor.commands.setTextSelection({ from: 1, to: 6 })
+    act(() => vi.advanceTimersByTime(FORMAT_PAINTER_SETTLE_MS))
+
+    expect(editor.isActive('bold')).toBe(true)
+    expect(useUIStore.getState().formatPainter.armed).toBe(false)
+  })
+
+  it('paints a keyboard selection once Shift has been released for a moment, not between presses', () => {
+    useUIStore.getState().armFormatPainter(boldRedFormat, false)
+    render(<CanvasRoot pageId="page-1" />)
+    const canvas = screen.getByTestId('canvas-root')
+
+    editor.commands.setTextSelection({ from: 1, to: 2 }) // Shift+ArrowRight once: "H"
+    fireEvent.keyUp(canvas, { key: 'Shift' })
+    fireEvent.keyDown(canvas, { key: 'Shift' }) // ...and again, before the delay ran out
+    editor.commands.setTextSelection({ from: 1, to: 6 }) // "Hello"
+    fireEvent.keyUp(canvas, { key: 'Shift' })
+    act(() => vi.advanceTimersByTime(FORMAT_PAINTER_KEYBOARD_SETTLE_MS))
+
+    // The whole of "Hello", not just "H".
+    expect(editor.state.doc.firstChild?.firstChild?.text).toBe('Hello')
+    expect(editor.state.doc.firstChild?.firstChild?.marks.map((m) => m.type.name)).toContain('bold')
+
+    expect(editor.isActive('bold')).toBe(true)
+    expect(useUIStore.getState().formatPainter.armed).toBe(false)
   })
 
   it('Escape disarms without applying anything', () => {

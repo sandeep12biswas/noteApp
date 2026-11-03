@@ -12,6 +12,11 @@ import { useUIStore } from '../store/uiStore'
 import { SegmentHost } from './SegmentHost'
 import { useSyncFileContent } from './useSyncFileContent'
 
+/** How long after the mouse button is released the Format Painter waits before painting — long enough for a double/triple-click to finish. */
+export const FORMAT_PAINTER_SETTLE_MS = 200
+/** Same, after a keyboard selection's keys are released — long enough to press Shift+Arrow again. */
+export const FORMAT_PAINTER_KEYBOARD_SETTLE_MS = 600
+
 export function CanvasRoot({ pageId }: { pageId: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const segments = useCanvasStore((s) => s.segments)
@@ -33,13 +38,39 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
   // or nothing selected: no-op. Single-shot mode disarms after one
   // application; sticky mode (double-click to arm) stays armed for
   // painting several spots until Escape or the button again.
-  const handleFormatPainterApply = useCallback(() => {
-    if (!formatPainter.armed || !formatPainter.format) return
+  //
+  // Issue #9: reading the selection at `pointerup` itself only worked for a
+  // drag. A double-click (select a word) or triple-click (a line) selection
+  // isn't in ProseMirror's state yet at that moment — ProseMirror syncs it
+  // from the DOM afterwards — so the painter saw an empty selection and did
+  // nothing. The apply now waits `FORMAT_PAINTER_SETTLE_MS` after the
+  // button is released; another press in that window (the next click of a
+  // double/triple-click) cancels it, so the *final* selection is painted.
+  // Reads the store at apply time, not this render's values.
+  const applyFormatPainter = useCallback(() => {
+    const { formatPainter: fp, disarmFormatPainter: disarm } = useUIStore.getState()
+    if (!fp.armed || !fp.format) return
     const editor = getActiveEditor()
     if (!editor || editor.state.selection.empty) return
-    applyFormat(editor, formatPainter.format)
-    if (!formatPainter.sticky) disarmFormatPainter()
-  }, [formatPainter, getActiveEditor, disarmFormatPainter])
+    applyFormat(editor, fp.format)
+    if (!fp.sticky) disarm()
+  }, [getActiveEditor])
+
+  const painterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelPendingPaint = () => {
+    if (painterTimer.current) clearTimeout(painterTimer.current)
+    painterTimer.current = null
+  }
+  useEffect(() => cancelPendingPaint, [])
+  const schedulePaint = (delayMs: number) => {
+    if (!useUIStore.getState().formatPainter.armed) return
+    cancelPendingPaint()
+    painterTimer.current = setTimeout(() => {
+      painterTimer.current = null
+      applyFormatPainter()
+    }, delayMs)
+  }
+  const handleFormatPainterApply = () => schedulePaint(FORMAT_PAINTER_SETTLE_MS)
 
   const pageSegments = useMemo(() => Object.values(segments).filter((s) => s.pageId === pageId), [segments, pageId])
 
@@ -87,9 +118,22 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
       onMouseDown={(e) => {
         if (e.target === containerRef.current) setActiveSegment(null)
       }}
+      onPointerDown={cancelPendingPaint}
       onPointerUp={handleFormatPainterApply}
       onKeyDown={(e) => {
-        if (e.key === 'Escape' && formatPainter.armed) disarmFormatPainter()
+        cancelPendingPaint() // still extending a keyboard selection
+        if (e.key === 'Escape' && formatPainter.armed) {
+          cancelPendingPaint()
+          disarmFormatPainter()
+        }
+      }}
+      // Issue #9: a selection made from the keyboard (Shift+arrows,
+      // Shift+Home/End, Ctrl+A) is painted once the keys are released and
+      // stay released for a moment — the next keypress cancels, so tapping
+      // Shift+ArrowRight several times paints the whole selection, not just
+      // its first character.
+      onKeyUp={(e) => {
+        if (e.key === 'Shift' || (e.key.toLowerCase() === 'a' && (e.ctrlKey || e.metaKey))) schedulePaint(FORMAT_PAINTER_KEYBOARD_SETTLE_MS)
       }}
     >
       {pageSegments.length === 0 && (

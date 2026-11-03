@@ -7,6 +7,7 @@
 // target's formatting rather than merging with it — that's what makes the
 // tool actually paint one specific look, not just add marks on top of
 // whatever was already there.
+import type { Mark } from '@tiptap/pm/model'
 import type { Editor } from '@tiptap/react'
 
 export interface CapturedFormat {
@@ -23,29 +24,43 @@ export interface CapturedFormat {
   textAlign: string | null
 }
 
+/**
+ * The formatting of the selection's first character, as Word does. Issue #9:
+ * this used to require each format to cover the *whole* selection
+ * (`isActive`), so a selection that wasn't uniformly formatted — e.g. a
+ * double-clicked word plus its unformatted trailing space, or a heading
+ * and the plain text after it — captured nothing and painted plain text.
+ */
 export function captureFormat(editor: Editor): CapturedFormat {
-  const textStyle = editor.getAttributes('textStyle') as { fontFamily?: string; fontSize?: string; color?: string }
-  const highlight = editor.getAttributes('highlight') as { color?: string }
-  // `textAlign` is set on whichever block node the selection is in
-  // (paragraph/heading — see `segmentEditorExtensions.ts`'s
-  // `TextAlign.configure({ types: ['heading', 'paragraph'] })`); checking
-  // both covers either case without needing to know which one it is.
-  const blockAttrs = (editor.getAttributes('paragraph') as { textAlign?: string }).textAlign
-    ? (editor.getAttributes('paragraph') as { textAlign?: string })
-    : (editor.getAttributes('heading') as { textAlign?: string })
+  const { state } = editor
+  const { from, to, $from } = state.selection
+  let marks: readonly Mark[] | null = null
+  state.doc.nodesBetween(from, to, (node) => {
+    if (marks) return false
+    if (node.isText) marks = node.marks
+    return true
+  })
+  // No text in the selection (e.g. only an empty line): fall back to what
+  // would be typed at the selection start.
+  const firstMarks: readonly Mark[] = marks ?? state.storedMarks ?? $from.marks()
+  const mark = (name: string) => firstMarks.find((m) => m.type.name === name)
+  const textStyle = (mark('textStyle')?.attrs ?? {}) as { fontFamily?: string | null; fontSize?: string | null; color?: string | null }
+  const highlight = mark('highlight')
 
   return {
-    bold: editor.isActive('bold'),
-    italic: editor.isActive('italic'),
-    underline: editor.isActive('underline'),
-    strike: editor.isActive('strike'),
-    subscript: editor.isActive('subscript'),
-    superscript: editor.isActive('superscript'),
+    bold: !!mark('bold'),
+    italic: !!mark('italic'),
+    underline: !!mark('underline'),
+    strike: !!mark('strike'),
+    subscript: !!mark('subscript'),
+    superscript: !!mark('superscript'),
     fontFamily: textStyle.fontFamily ?? null,
     fontSize: textStyle.fontSize ?? null,
     color: textStyle.color ?? null,
-    highlightColor: editor.isActive('highlight') ? (highlight.color ?? null) : null,
-    textAlign: blockAttrs.textAlign ?? null,
+    highlightColor: highlight ? ((highlight.attrs.color as string | null) ?? null) : null,
+    // `textAlign` lives on the block (paragraph/heading — see
+    // segmentEditorExtensions.ts's TextAlign config) the selection starts in.
+    textAlign: ($from.parent.attrs.textAlign as string | null | undefined) ?? null,
   }
 }
 

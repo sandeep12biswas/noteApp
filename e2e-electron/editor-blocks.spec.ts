@@ -47,3 +47,45 @@ test('"/" menu works from the keyboard, and a code block keeps its language acro
 
   await closeApp(ctx)
 })
+
+// Issue #9 in the desktop app: Format Painter onto a word picked by
+// double-click (it used to paint only drag selections).
+test('Format Painter paints a double-clicked word', async () => {
+  const ctx: LaunchedApp = await launchApp()
+  const page = ctx.page
+  await createFolderAndPage(page, 'Notes', 'Painter')
+  await page.getByTestId('canvas-root').click({ position: { x: 100, y: 100 } })
+  const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+  await expect(editable).toBeFocused()
+  await page.keyboard.type('Styled plain')
+
+  const centre = async (word: string) =>
+    editable.evaluate((el, word) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+      for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+        const i = t.textContent!.indexOf(word)
+        if (i < 0) continue
+        const range = document.createRange()
+        range.setStart(t, i)
+        range.setEnd(t, i + word.length)
+        const b = range.getBoundingClientRect()
+        return { x: b.left + b.width / 2, y: b.top + b.height / 2 }
+      }
+      throw new Error(`"${word}" not found`)
+    }, word)
+
+  let p = await centre('Styled')
+  await page.mouse.dblclick(p.x, p.y)
+  await page.getByRole('button', { name: 'Bold', exact: true }).click()
+  await page.mouse.dblclick(p.x, p.y)
+  const painter = page.getByRole('button', { name: 'Format Painter' })
+  await painter.click()
+  await expect(painter).toHaveAttribute('aria-pressed', 'true')
+
+  p = await centre('plain')
+  await page.mouse.dblclick(p.x, p.y)
+  await expect(editable.locator('strong', { hasText: 'plain' })).toBeVisible()
+  await expect(painter).toHaveAttribute('aria-pressed', 'false')
+
+  await closeApp(ctx)
+})
