@@ -1,0 +1,129 @@
+name: Linux installer
+
+# Builds FlowNote's Linux packages from the Electron shell (apps/electron)
+# and uploads them as the `flownote-linux` artifact:
+#   - `FlowNote-<version>-amd64.deb`       — system package (/opt/FlowNote)
+#   - `FlowNote-<version>-x86_64.AppImage` — runs anywhere, no root
+#   - `install.sh` / `uninstall.sh` / README.txt (packaging/linux/) — install
+#     either one, and uninstall with or without the user's notes.
+# Then, on the runner, each install path is tested end to end: install with
+# install.sh → launch (must stay up and create its database) → uninstall
+# with uninstall.sh --remove-data → verify nothing is left behind.
+#
+# Unsigned. Runs on a pushed `v*` tag, or manually (workflow_dispatch —
+# only available once this file is on the default branch).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.0"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # The three pieces electron-builder.yml packages: frontend, Electron
+      # main process, release sidecar (same steps as scripts/linux/install.sh).
+      - name: Build
+        run: |
+          pnpm --filter @flownote/frontend run build
+          pnpm --filter @flownote/electron run build
+          cargo build --release -p flownote-electron
+
+      - name: Package (.deb + AppImage)
+        working-directory: apps/electron
+        run: pnpm exec electron-builder --linux --publish never
+
+      - name: Assemble package
+        run: |
+          mkdir -p package
+          cp apps/electron/release/*.deb apps/electron/release/*.AppImage package/
+          cp packaging/linux/* package/
+          chmod +x package/install.sh package/uninstall.sh package/*.AppImage
+          ls -l package
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: flownote-linux
+          path: package/
+          if-no-files-found: error
+
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # Launches `$1`, checks it stays up for 15 s and creates its database,
+      # then closes it.
+      - name: Write launch check
+        run: |
+          cat > "$RUNNER_TEMP/launch-check.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          db="$HOME/.config/@flownote/electron/flownote.sqlite3"
+          xvfb-run -a "$@" > "$RUNNER_TEMP/app.log" 2>&1 &
+          for _ in $(seq 1 30); do [ -f "$db" ] && break; sleep 1; done
+          sleep 5
+          if ! pgrep -x flownote >/dev/null; then
+            cat "$RUNNER_TEMP/app.log"; echo "FlowNote exited right after launch"; exit 1
+          fi
+          [ -f "$db" ] || { cat "$RUNNER_TEMP/app.log"; echo "FlowNote is running but did not create $db"; exit 1; }
+          echo "Launched OK; database at $db"
+          EOF
+          chmod +x "$RUNNER_TEMP/launch-check.sh"
+
+      - name: "Test: .deb install -> launch -> uninstall"
+        run: |
+          set -euo pipefail
+          ./package/install.sh --deb
+          [ "$(dpkg-query -W -f='${Status}' flownote)" = "install ok installed" ]
+          command -v flownote
+          "$RUNNER_TEMP/launch-check.sh" flownote
+
+          ./package/uninstall.sh --remove-data
+          if dpkg-query -W -f='${Status}' flownote 2>/dev/null | grep -q "install ok installed"; then echo "package still installed"; exit 1; fi
+          if [ -e /opt/FlowNote ]; then echo "/opt/FlowNote still present"; exit 1; fi
+          if [ -e "$HOME/.config/@flownote/electron" ]; then echo "app data still present after --remove-data"; exit 1; fi
+          if pgrep -x flownote; then echo "FlowNote still running"; exit 1; fi
+          echo ".deb: install, launch and uninstall all OK"
+
+      # No libfuse2 on the runner, so this also covers install.sh's
+      # unpack-on-start fallback.
+      - name: "Test: AppImage install -> launch -> uninstall"
+        run: |
+          set -euo pipefail
+          ./package/install.sh --appimage
+          for f in "$HOME/.local/opt/flownote/FlowNote.AppImage" "$HOME/.local/bin/flownote" "$HOME/.local/share/applications/flownote.desktop"; do
+            [ -e "$f" ] || { echo "missing $f"; exit 1; }
+          done
+          "$RUNNER_TEMP/launch-check.sh" "$HOME/.local/bin/flownote"
+
+          ./package/uninstall.sh --keep-data
+          [ -f "$HOME/.config/@flownote/electron/flownote.sqlite3" ] || { echo "--keep-data deleted the notes"; exit 1; }
+          ./package/install.sh --appimage
+          ./package/uninstall.sh --remove-data
+          for f in "$HOME/.local/opt/flownote" "$HOME/.local/bin/flownote" "$HOME/.local/share/applications/flownote.desktop" "$HOME/.config/@flownote/electron"; do
+            if [ -e "$f" ]; then echo "$f still present"; exit 1; fi
+          done
+          echo "AppImage: install, launch and uninstall all OK"

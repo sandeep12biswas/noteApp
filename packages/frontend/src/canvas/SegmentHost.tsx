@@ -1,0 +1,747 @@
+// One segment's editor host — DESIGN.md §4.1 (invisible segment model,
+// hover-to-reveal, auto-delete when empty unless coloured) + §7.1
+// (`editorRefs`). One TipTap `Editor` instance per segment; `ResizeObserver`
+// wiring propagates content-driven height changes back into the store
+// (`onHeightChange`, cascaded in canvasStore). Drag (move) and resize
+// (width) handles apply `resolvePosition()`/`clampResizeWidth()` on every
+// `pointermove` and mutate this segment's own DOM style directly for 60fps
+// (DESIGN.md §4.6/Phase 3) — the store only gets one commit, on release.
+import type { Mark } from '@tiptap/pm/model'
+import { EditorContent, useEditor } from '@tiptap/react'
+import { useEffect, useRef, useState } from 'react'
+import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, resolvePosition } from '../lib/collision'
+import { runAiStream, type AiStreamHandle } from '../lib/aiStream'
+import { handleAttachmentPaste } from '../lib/attachmentPaste'
+import { DEFAULT_SEGMENT_HEIGHT, useCanvasStore, type Segment } from '../store/canvasStore'
+import { getIPCAdapter } from '../store/notebookStore'
+import { useExtensionRegistry } from '../store/extensionRegistry'
+import { useUIStore } from '../store/uiStore'
+import { getAiDraft } from './aiDraftExtension'
+import { AiDraftBar, type AiDraftStatus } from './AiDraftBar'
+import { AiPromptPopover } from './AiPromptPopover'
+import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
+import { AttachmentChoiceMenu } from './AttachmentChoiceMenu'
+import { insertPluginBlock } from './insertPluginBlock'
+import { SegmentColorMenu } from './SegmentColorMenu'
+import { segmentEditorExtensions } from './segmentEditorExtensions'
+import { misspelledWordAt } from './spellcheckExtension'
+import { SlashMenu, slashMenuItems } from './SlashMenu'
+import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
+
+const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
+
+// Inline style, not a Tailwind class: a highlighted segment is very often
+// not `revealed` (DESIGN.md §4.1 segments are invisible by rest), whose own
+// `border-transparent` utility class would otherwise win the cascade over
+// a same-specificity highlight class in an order that depends on Tailwind's
+// generated stylesheet, not on which class was toggled on last. An inline
+// style always wins, and clearing it (rather than setting `''`) hands
+// control back to whatever React last rendered for this element — which is
+// exactly "no inline borderColor" for an uncoloured segment.
+function setHighlighted(el: HTMLElement | undefined, on: boolean) {
+  if (!el) return
+  if (on) el.style.borderColor = HIGHLIGHT_COLOR
+  else el.style.removeProperty('border-color')
+}
+
+export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTextChange: (id: string, text: string) => void }) {
+  const activeSegmentId = useCanvasStore((s) => s.activeSegmentId)
+  const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
+  const updateSegmentContent = useCanvasStore((s) => s.updateSegmentContent)
+  const updateSegmentHeight = useCanvasStore((s) => s.updateSegmentHeight)
+  const updateSegmentPosition = useCanvasStore((s) => s.updateSegmentPosition)
+  const updateSegmentWidth = useCanvasStore((s) => s.updateSegmentWidth)
+  const setSegmentColor = useCanvasStore((s) => s.setSegmentColor)
+  const deleteIfEmptyAndUncolored = useCanvasStore((s) => s.deleteIfEmptyAndUncolored)
+  const registerEditor = useCanvasStore((s) => s.registerEditor)
+  const unregisterEditor = useCanvasStore((s) => s.unregisterEditor)
+  const registerSegmentEl = useCanvasStore((s) => s.registerSegmentEl)
+  const unregisterSegmentEl = useCanvasStore((s) => s.unregisterSegmentEl)
+
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const highlightedRef = useRef<Set<string>>(new Set())
+  const gapLineElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
+  const isActive = activeSegmentId === segment.id
+
+  const [colorMenu, setColorMenu] = useState<{ x: number; y: number } | null>(null)
+  // `charPos` is the ProseMirror position right after the "/" — needed to
+  // delete it before applying the chosen block type.
+  const [slashMenu, setSlashMenuState] = useState<{ x: number; y: number; charPos: number } | null>(null)
+  // Highlighted item while the menu is open (issue #8). Both are mirrored
+  // into refs synchronously: the editor's `handleKeyDown` (created once with
+  // the editor) reads them on the very next keystroke.
+  const [slashIndex, setSlashIndexState] = useState(0)
+  const slashMenuRef = useRef(slashMenu)
+  const slashIndexRef = useRef(0)
+  const setSlashMenu = (value: { x: number; y: number; charPos: number } | null) => {
+    if (value && !slashMenuRef.current) setSlashIndex(0) // a fresh menu starts on the first item
+    slashMenuRef.current = value
+    setSlashMenuState(value)
+  }
+  const setSlashIndex = (index: number) => {
+    slashIndexRef.current = index
+    setSlashIndexState(index)
+  }
+  // Applies the menu item at an index; reassigned every render so it sees
+  // the current editor and menu position.
+  const selectSlashItemRef = useRef<(index: number) => void>(() => {})
+
+  // "/ Ask AI": the prompt box (where the `/` was, with the formatting the
+  // `/` had — the answer is typed in that formatting), then the draft
+  // session while the answer streams in and waits for Keep / Discard.
+  const [aiPrompt, setAiPrompt] = useState<{ x: number; y: number; pos: number; marks: readonly Mark[] } | null>(null)
+  type AiSession = { prompt: string; providerId?: string; status: AiDraftStatus; error?: string }
+  const [aiSession, setAiSessionState] = useState<AiSession | null>(null)
+  // Mirrored synchronously, like the slash menu: the editor's key handler
+  // (Ctrl/Cmd+Enter = Keep, Escape = Discard) reads it on the next keystroke.
+  const aiSessionRef = useRef<AiSession | null>(null)
+  const setAiSession = (value: AiSession | null) => {
+    aiSessionRef.current = value
+    setAiSessionState(value)
+  }
+  const aiStreamRef = useRef<AiStreamHandle | null>(null)
+  const aiActionsRef = useRef({ keep: () => {}, discard: () => {} })
+  // Leaving the page (or deleting the segment) mid-answer cancels the request.
+  useEffect(() => () => aiStreamRef.current?.stop(), [])
+  const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
+  const [attachmentChoice, setAttachmentChoice] = useState<{
+    x: number
+    y: number
+    fileName: string
+    onChoose: (mode: 'file' | 'embed') => void
+  } | null>(null)
+  // `useEditor`'s callbacks (`onBlur` below) close over whatever
+  // `attachmentChoice` was at the editor's *creation* render, not its
+  // current value — the editor instance itself isn't recreated on every
+  // render, so a plain state read there would be permanently stale. A ref
+  // mirrors the latest value for `onBlur` to read instead.
+  const attachmentChoiceRef = useRef(attachmentChoice)
+  useEffect(() => {
+    attachmentChoiceRef.current = attachmentChoice
+  }, [attachmentChoice])
+  // Same idea for the colour menu, but set synchronously when it opens: the
+  // menu focuses its first swatch on mount (a child effect, which runs
+  // before an effect here could update a ref), blurring the editor — and an
+  // empty, uncoloured segment would then be auto-deleted, menu and all,
+  // before a colour could be picked.
+  const colorMenuOpenRef = useRef(false)
+
+  // See onBlur: re-runs the empty-segment check at the next click/focus
+  // outside both the ribbon and this segment. Cleaned up on unmount.
+  const pendingAutoDeleteRef = useRef<(() => void) | null>(null)
+  const deferAutoDelete = () => {
+    if (pendingAutoDeleteRef.current) return
+    const onElsewhere = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[data-ribbon]') || (target && containerRef.current?.contains(target))) return
+      cancel()
+      deleteIfEmptyAndUncolored(segment.id)
+    }
+    const cancel = () => {
+      document.removeEventListener('pointerdown', onElsewhere, true)
+      document.removeEventListener('focusin', onElsewhere, true)
+      pendingAutoDeleteRef.current = null
+    }
+    document.addEventListener('pointerdown', onElsewhere, true)
+    document.addEventListener('focusin', onElsewhere, true)
+    pendingAutoDeleteRef.current = cancel
+  }
+  useEffect(() => () => pendingAutoDeleteRef.current?.(), [])
+
+  const editor = useEditor({
+    extensions: segmentEditorExtensions,
+    content: segment.content,
+    editorProps: {
+      // Chromium's own native spellcheck would otherwise double-underline
+      // alongside spellcheckExtension.ts's decoration.
+      attributes: { spellcheck: 'false' },
+      // File attachment support (EXECUTION_PLAN.md "Features") — shared
+      // with LinearSegmentHost.tsx via lib/attachmentPaste.ts, not
+      // reimplemented per host; see that module's own doc for why.
+      handlePaste: (view, event) => handleAttachmentPaste(view, event, segment.id, getIPCAdapter(), { onChooseMode: setAttachmentChoice }),
+      // Issue #8: while the `/` menu is open, focus stays here in the editor
+      // (the user is still typing), so the menu's own keys have to be
+      // handled here — otherwise ArrowDown moved the caret, Enter split the
+      // line and the menu closed with nothing applied.
+      handleKeyDown: (_view, event) => {
+        if (aiSessionRef.current) {
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+            aiActionsRef.current.keep()
+            return true
+          }
+          if (event.key === 'Escape') {
+            aiActionsRef.current.discard()
+            return true
+          }
+        }
+        if (!slashMenuRef.current) return false
+        const count = slashMenuItems(useExtensionRegistry.getState().slashCommands).length
+        if (count === 0) return false
+        switch (event.key) {
+          case 'ArrowDown':
+            setSlashIndex((slashIndexRef.current + 1) % count)
+            return true
+          case 'ArrowUp':
+            setSlashIndex((slashIndexRef.current - 1 + count) % count)
+            return true
+          case 'Home':
+            setSlashIndex(0)
+            return true
+          case 'End':
+            setSlashIndex(count - 1)
+            return true
+          // Tab is left alone: it still moves focus into the menu, where
+          // the arrows move focus and Enter clicks (useMenuKeyboardNav).
+          case 'Enter':
+            if (event.shiftKey) return false
+            selectSlashItemRef.current(Math.min(slashIndexRef.current, count - 1))
+            return true
+          case 'Escape':
+            setSlashMenu(null)
+            return true
+          default:
+            return false
+        }
+      },
+    },
+    onUpdate: ({ editor }) => {
+      const json = editor.getJSON()
+      updateSegmentContent(segment.id, json)
+      onTextChange(segment.id, editor.getText())
+
+      // Slash command menu (DESIGN.md §4.4): opens only when the current
+      // line is exactly "/" — an empty paragraph the user just typed "/"
+      // into, never mid-word or on a non-empty line.
+      const { $from } = editor.state.selection
+      if ($from.parent.type.name === 'paragraph' && $from.parent.textContent === '/' && $from.parentOffset === 1) {
+        // `coordsAtPos` needs real layout (`Range.getClientRects`,
+        // `document.elementFromPoint`) that jsdom doesn't implement — falls
+        // back to (0, 0) there rather than crashing the whole editor update;
+        // real browsers always have this, so the menu still opens where
+        // typed outside of tests.
+        let coords = { left: 0, bottom: 0 }
+        try {
+          coords = editor.view.coordsAtPos($from.pos)
+        } catch {
+          // jsdom: no layout engine — see comment above.
+        }
+        setSlashMenu({ x: coords.left, y: coords.bottom, charPos: $from.pos })
+      } else {
+        setSlashMenu(null)
+      }
+    },
+    onFocus: () => setActiveSegment(segment.id),
+    // Skipped while an attachment choice is pending — clicking "Attach as
+    // file"/"Embed in note" (or the chooser just opening) blurs this still-
+    // empty editor *before* the chosen node is inserted; auto-deleting here
+    // would race the insert and delete the segment out from under the user.
+    // Found live via `run-electron`: the segment (and the menu with it)
+    // vanished the instant the chooser opened. See
+    // `AttachmentChoiceMenu.tsx`'s own `autoFocus: false` comment for the
+    // other half of this same race.
+    onBlur: ({ event }) => {
+      if (attachmentChoiceRef.current || colorMenuOpenRef.current) return
+      // Focus moved to something of this segment's own — the AI prompt box,
+      // the AI draft bar, a code block's language picker: still working here.
+      const into = (event as FocusEvent).relatedTarget as Node | null
+      if (into && containerRef.current?.contains(into)) return
+      // Focus went to the ribbon (the AI prompt, a font picker, …) — the user
+      // is still working on this segment, e.g. asking AI to fill it, so
+      // don't delete it yet. Check again once they click or focus anywhere
+      // that's neither the ribbon nor this segment.
+      const next = (event as FocusEvent).relatedTarget as HTMLElement | null
+      if (next?.closest('[data-ribbon]')) {
+        deferAutoDelete()
+        return
+      }
+      deleteIfEmptyAndUncolored(segment.id)
+    },
+    onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
+  })
+
+  useEffect(() => {
+    if (!editor) return
+    registerEditor(segment.id, editor)
+    return () => unregisterEditor(segment.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, segment.id])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    registerSegmentEl(segment.id, el)
+    return () => unregisterSegmentEl(segment.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segment.id])
+
+  // Segments start invisible/unfocused (DESIGN.md §4.1); `createSegment`
+  // marks the new one active immediately, but that alone doesn't move DOM
+  // focus into its ProseMirror node, so a click-to-create left the user
+  // having to click a second time before they could type. Focus whenever
+  // this segment newly becomes active — not on every render, since
+  // `editor.isFocused` only differs from `isActive` right after creation or
+  // a programmatic activeSegmentId change, never mid-typing.
+  //
+  // `view.focus()` first, synchronously: TipTap's `commands.focus()` only
+  // moves DOM focus on the next animation frame, and the browser handles
+  // already-queued keystrokes before that frame — so text typed straight
+  // after the click was lost ("flownotexyz" -> "wnotexyz"), worst while the
+  // main thread was busy (e.g. loading the spell-check dictionary at
+  // startup). `commands.focus('end')` still places the caret.
+  useEffect(() => {
+    if (!isActive || !editor || editor.isFocused) return
+    editor.view.focus()
+    editor.commands.focus('end')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, editor])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      // `entry.contentRect` deliberately unused — it excludes padding and
+      // border, undercounting this element's actual footprint by ~10px
+      // (`px-2 py-1` + the 1px border). Every collision function measures
+      // in the same border-box terms `getBoundingClientRect()` returns, so
+      // that's what has to feed `segment.h`, or two segments could visually
+      // sit closer than DESIGN.md §4.6's 8px minimum gap while the AABB
+      // math still thinks they're clear.
+      const measured = Math.round(el.getBoundingClientRect().height)
+      if (measured > 0) updateSegmentHeight(segment.id, measured)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segment.id])
+
+  // Clears every currently-highlighted neighbour's border, tracked via
+  // `highlightedRef` so drag/resize don't have to know which segments were
+  // lit up on a previous frame.
+  const clearHighlights = () => {
+    const state = useCanvasStore.getState()
+    for (const id of highlightedRef.current) setHighlighted(state.segmentEls.get(id), false)
+    highlightedRef.current = new Set()
+    for (const el of gapLineElsRef.current.values()) el.remove()
+    gapLineElsRef.current.clear()
+  }
+
+  /**
+   * One dashed `<div>` per near neighbour, positioned in the shared
+   * canvas-root coordinate space (this segment's own `containerRef`'s
+   * parent — the same ancestor `left`/`top: segment.x/y` are already
+   * relative to, so no separate scale/offset math is needed) rather than
+   * inside this segment's own subtree, since a gap line spans *between*
+   * two segments' boxes. DESIGN.md Phase 3's gap-highlight follow-up: the
+   * border brighten alone didn't show exactly where the gap was; this
+   * draws it. Reuses `gapLineFor`'s `null` return (diagonal/corner
+   * neighbours) to just fall back to the border highlight for those.
+   */
+  const updateGapLine = (id: string, movingBox: { x: number; y: number; w: number; h: number }, neighbourBox: { x: number; y: number; w: number; h: number }) => {
+    const line = gapLineFor(movingBox, neighbourBox)
+    if (!line) {
+      gapLineElsRef.current.get(id)?.remove()
+      gapLineElsRef.current.delete(id)
+      return
+    }
+    let el = gapLineElsRef.current.get(id)
+    if (!el) {
+      const canvasEl = containerRef.current?.parentElement
+      if (!canvasEl) return
+      el = document.createElement('div')
+      el.setAttribute('data-testid', 'gap-line')
+      el.style.position = 'absolute'
+      el.style.pointerEvents = 'none'
+      canvasEl.appendChild(el)
+      gapLineElsRef.current.set(id, el)
+    }
+    el.style.left = `${line.x}px`
+    el.style.top = `${line.y}px`
+    el.style.width = `${line.w}px`
+    el.style.height = `${line.h}px`
+    el.style.borderTop = line.orientation === 'horizontal' ? `1px dashed ${HIGHLIGHT_COLOR}` : ''
+    el.style.borderLeft = line.orientation === 'vertical' ? `1px dashed ${HIGHLIGHT_COLOR}` : ''
+  }
+
+  const updateHighlights = (box: { x: number; y: number; w: number; h: number }) => {
+    const state = useCanvasStore.getState()
+    const neighbours = state
+      .segmentsForPage(segment.pageId)
+      .filter((s) => s.id !== segment.id)
+      .map((s) => ({ id: s.id, x: s.x, y: s.y, w: s.w, h: s.h }))
+    const near = new Set(idsWithinGap(box, neighbours, GAP_HIGHLIGHT_THRESHOLD))
+
+    for (const id of highlightedRef.current) {
+      if (!near.has(id)) {
+        setHighlighted(state.segmentEls.get(id), false)
+        gapLineElsRef.current.get(id)?.remove()
+        gapLineElsRef.current.delete(id)
+      }
+    }
+    for (const id of near) {
+      if (!highlightedRef.current.has(id)) setHighlighted(state.segmentEls.get(id), true)
+      const neighbour = neighbours.find((n) => n.id === id)
+      if (neighbour) updateGapLine(id, box, neighbour)
+    }
+    highlightedRef.current = near
+  }
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    const startClientX = e.clientX
+    const startClientY = e.clientY
+    const startX = segment.x
+    const startY = segment.y
+    // Captured once per drag, not read reactively per-move — CanvasRoot's
+    // `transform: scale(zoom)` means a screen-pixel pointer delta maps to
+    // `delta / zoom` canvas units (DESIGN.md §10 "Zoom corrects AABB
+    // coordinates"); changing zoom mid-drag isn't a real scenario the ribbon
+    // allows anyway (zoom buttons live outside this pointer capture).
+    const zoom = useUIStore.getState().zoom
+    let resolved = { x: startX, y: startY }
+
+    const onMove = (ev: PointerEvent) => {
+      const proposed = {
+        x: startX + (ev.clientX - startClientX) / zoom,
+        y: startY + (ev.clientY - startClientY) / zoom,
+        w: segment.w,
+        h: segment.h,
+      }
+      const existing = useCanvasStore.getState().aabbsForPage(segment.pageId, segment.id)
+      resolved = resolvePosition(proposed, existing)
+      const el = containerRef.current
+      if (el) {
+        el.style.left = `${resolved.x}px`
+        el.style.top = `${resolved.y}px`
+      }
+      updateHighlights({ ...resolved, w: segment.w, h: segment.h })
+    }
+    const onUp = () => {
+      handle.releasePointerCapture(e.pointerId)
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      clearHighlights()
+      updateSegmentPosition(segment.id, resolved.x, resolved.y)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+  }
+
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    const startClientX = e.clientX
+    const startW = segment.w
+    const zoom = useUIStore.getState().zoom
+    let resolvedW = startW
+
+    const onMove = (ev: PointerEvent) => {
+      const proposedW = startW + (ev.clientX - startClientX) / zoom
+      const existing = useCanvasStore.getState().aabbsForPage(segment.pageId, segment.id)
+      resolvedW = clampResizeWidth({ x: segment.x, y: segment.y, h: segment.h }, proposedW, existing)
+      const el = containerRef.current
+      if (el) el.style.width = `${resolvedW}px`
+      updateHighlights({ x: segment.x, y: segment.y, w: resolvedW, h: segment.h })
+    }
+    const onUp = () => {
+      handle.releasePointerCapture(e.pointerId)
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      clearHighlights()
+      updateSegmentWidth(segment.id, resolvedW)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+  }
+
+  // Issue #4: when an item is chosen from the keyboard (Tab into the menu,
+  // then Enter), DOM focus is on the menu button, not the editor, and
+  // `chain().focus()` below only restores it on the next animation frame —
+  // keystrokes in between would be lost. Refocus synchronously first. (A
+  // mouse choice never gets here unfocused: SlashMenu cancels the mousedown.)
+  const refocusEditorNow = () => {
+    if (editor && !editor.isFocused) editor.view.focus()
+  }
+
+  const applyCoreBlock = (id: string) => {
+    if (!editor || !slashMenu) return
+    refocusEditorNow()
+    const chain = editor.chain().focus().deleteRange({ from: slashMenu.charPos - 1, to: slashMenu.charPos })
+    switch (id) {
+      case 'paragraph':
+        chain.setParagraph().run()
+        break
+      case 'heading1':
+        chain.setHeading({ level: 1 }).run()
+        break
+      case 'heading2':
+        chain.setHeading({ level: 2 }).run()
+        break
+      case 'heading3':
+        chain.setHeading({ level: 3 }).run()
+        break
+      case 'bulletList':
+        chain.toggleBulletList().run()
+        break
+      case 'orderedList':
+        chain.toggleOrderedList().run()
+        break
+      case 'taskList':
+        chain.toggleTaskList().run()
+        break
+      case 'blockquote':
+        chain.toggleBlockquote().run()
+        break
+      case 'codeBlock':
+        chain.toggleCodeBlock().run()
+        break
+      case 'ai': {
+        // The `/`'s own formatting is the destination formatting: read it
+        // before the `/` is deleted.
+        const marks = editor.state.storedMarks ?? editor.state.doc.resolve(slashMenu.charPos).marks()
+        chain.run()
+        setAiPrompt({ x: slashMenu.x, y: slashMenu.y, pos: slashMenu.charPos - 1, marks })
+        break
+      }
+      default:
+        chain.run()
+    }
+    setSlashMenu(null)
+  }
+
+  const applyPluginBlock = (pluginId: string, slashCommandId: string) => {
+    if (!editor || !slashMenu) return
+    refocusEditorNow()
+    insertPluginBlock(editor, slashMenu.charPos, pluginId, slashCommandId)
+    setSlashMenu(null)
+  }
+
+  const aiBusy = aiSession !== null || aiPrompt !== null
+  const slashDisabledIds = aiBusy ? ['ai'] : []
+
+  selectSlashItemRef.current = (index: number) => {
+    const item = slashMenuItems(useExtensionRegistry.getState().slashCommands)[index]
+    if (!item) return
+    if (item.kind === 'core' && slashDisabledIds.includes(item.id)) return
+    if (item.kind === 'core') applyCoreBlock(item.id)
+    else applyPluginBlock(item.pluginId, item.id)
+  }
+
+  const startAiDraft = (prompt: string, providerId: string | undefined, pos: number, marks: readonly Mark[]) => {
+    if (!editor) return
+    setAiPrompt(null)
+    editor.view.focus()
+    editor.commands.startAiDraft({ pos, prompt, marks })
+    setAiSession({ prompt, providerId, status: 'streaming' })
+    // Only the prompt goes to the AI — no note text as context.
+    const handle = runAiStream({ prompt, context: '', providerId, onText: (text) => editor.commands.appendAiDraft(text) })
+    aiStreamRef.current = handle
+    void handle.done.then((result) => {
+      if (aiStreamRef.current !== handle) return // kept, discarded or retried meanwhile
+      aiStreamRef.current = null
+      const session = aiSessionRef.current
+      if (!session) return
+      setAiSession({ ...session, status: result.status, error: result.status === 'error' ? result.message : undefined })
+    })
+  }
+
+  // Keep / Discard / Try again: end the request and ignore its result.
+  const stopAiStream = () => {
+    const handle = aiStreamRef.current
+    aiStreamRef.current = null
+    handle?.stop()
+  }
+  // The Stop button: end the request but let it finish normally, so the bar
+  // switches to "Stopped." with Keep / Discard / Try again.
+  const stopAiStreamAndMarkStopped = () => aiStreamRef.current?.stop()
+
+  const keepAiDraft = () => {
+    if (!editor) return
+    stopAiStream()
+    const draft = getAiDraft(editor.state)
+    editor.view.focus()
+    if (draft) {
+      editor.commands.keepAiDraft()
+      editor.commands.setTextSelection(draft.to)
+    }
+    setAiSession(null)
+  }
+
+  const discardAiDraft = () => {
+    if (!editor) return
+    stopAiStream()
+    const draft = getAiDraft(editor.state)
+    editor.view.focus()
+    if (draft) {
+      editor.commands.discardAiDraft()
+      editor.commands.setTextSelection(draft.from)
+    }
+    setAiSession(null)
+  }
+
+  const retryAiDraft = () => {
+    const session = aiSessionRef.current
+    if (!editor || !session) return
+    stopAiStream()
+    const draft = getAiDraft(editor.state)
+    if (!draft) return setAiSession(null)
+    editor.commands.discardAiDraft()
+    startAiDraft(session.prompt, session.providerId, draft.from, draft.marks)
+  }
+
+  aiActionsRef.current = { keep: keepAiDraft, discard: discardAiDraft }
+
+  const revealed = isActive || segment.borderColor !== null
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid={`segment-${segment.id}`}
+      role="textbox"
+      aria-label="Segment"
+      className={
+        // `flex flex-col` lets the editor (`segment-editor`, index.css) stretch
+        // to the full `minHeight` box instead of just its one empty line —
+        // see the `onMouseDown` comment below for why that matters (issue #3).
+        'absolute flex flex-col rounded px-2 py-1 transition-colors ' +
+        (revealed ? 'border' : 'border border-transparent hover:border-gray-200 dark:hover:border-gray-700')
+      }
+      style={{
+        left: segment.x,
+        top: segment.y,
+        width: segment.w,
+        // A fixed floor (not `segment.h`, which the ResizeObserver below
+        // keeps overwriting with whatever the box currently measures at) —
+        // using `segment.h` here would let a segment's height ratchet
+        // upward forever: whatever it grows to becomes the next render's
+        // floor, so it could never shrink back down after a burst of typed
+        // text was deleted. `DEFAULT_SEGMENT_HEIGHT` (currently ~5 empty
+        // lines' worth) is the same constant every segment created via
+        // `CanvasRoot`'s click handler starts at.
+        minHeight: DEFAULT_SEGMENT_HEIGHT,
+        zIndex: segment.zIndex,
+        borderColor: segment.borderColor ?? undefined,
+        backgroundColor: segment.fillColor ?? undefined,
+      }}
+      // Issue #3: a mousedown on the segment's own non-editable area (its
+      // padding — the `segment-editor` flex fill covers the rest) would move
+      // DOM focus off the ProseMirror node, firing `onBlur` above and
+      // auto-deleting a still-empty, uncoloured segment the user just
+      // clicked *into*. Keep focus in the editor instead. Only the wrapper
+      // itself — the drag/resize handles and menus are their own targets.
+      onMouseDown={(e) => {
+        if (e.target !== containerRef.current || !editor) return
+        e.preventDefault()
+        editor.commands.focus('end')
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const pos = editor?.view.posAtCoords({ left: e.clientX, top: e.clientY })
+        const hit = editor && pos ? misspelledWordAt(editor.view, pos.pos) : null
+        if (hit) {
+          setSpellMenu({ x: e.clientX, y: e.clientY, ...hit })
+          return
+        }
+        colorMenuOpenRef.current = true
+        setColorMenu({ x: e.clientX, y: e.clientY })
+      }}
+    >
+      {revealed && (
+        <div
+          data-testid={`segment-${segment.id}-drag-handle`}
+          role="button"
+          aria-label="Move segment"
+          className="absolute -top-2 -left-2 h-3 w-3 cursor-move rounded-sm border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
+          onPointerDown={startDrag}
+        />
+      )}
+      <EditorContent editor={editor} className="segment-editor" />
+      {revealed && (
+        <div
+          data-testid={`segment-${segment.id}-resize-handle`}
+          role="button"
+          aria-label="Resize segment"
+          className="absolute top-1/2 -right-1 h-4 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-sm bg-gray-300 dark:bg-gray-600"
+          onPointerDown={startResize}
+        />
+      )}
+      {colorMenu && (
+        <SegmentColorMenu
+          x={colorMenu.x}
+          y={colorMenu.y}
+          activeColor={segment.borderColor}
+          onPick={(border, fill) => setSegmentColor(segment.id, border, fill)}
+          onClear={() => setSegmentColor(segment.id, null, null)}
+          onClose={() => {
+            colorMenuOpenRef.current = false
+            setColorMenu(null)
+            // Give focus back to the segment the menu was opened on. If the
+            // menu closed because the user clicked elsewhere, that click
+            // moves focus away right after this, and the usual blur rule
+            // (auto-delete if empty and uncoloured) applies as normal.
+            editor?.view.focus()
+          }}
+        />
+      )}
+      {slashMenu && (
+        <SlashMenu
+          x={slashMenu.x}
+          y={slashMenu.y}
+          activeIndex={slashIndex}
+          onActiveIndexChange={setSlashIndex}
+          disabledIds={slashDisabledIds}
+          onSelectCore={applyCoreBlock}
+          onSelectPlugin={applyPluginBlock}
+          onClose={() => setSlashMenu(null)}
+        />
+      )}
+      {aiPrompt && (
+        <AiPromptPopover
+          x={aiPrompt.x}
+          y={aiPrompt.y}
+          onGenerate={(prompt, providerId) => startAiDraft(prompt, providerId, aiPrompt.pos, aiPrompt.marks)}
+          onCancel={() => {
+            setAiPrompt(null)
+            editor?.view.focus()
+          }}
+        />
+      )}
+      {aiSession && (
+        <AiDraftBar
+          status={aiSession.status}
+          error={aiSession.error}
+          onStop={stopAiStreamAndMarkStopped}
+          onKeep={keepAiDraft}
+          onDiscard={discardAiDraft}
+          onRetry={retryAiDraft}
+        />
+      )}
+      {spellMenu && editor && (
+        <SpellingSuggestionMenu
+          x={spellMenu.x}
+          y={spellMenu.y}
+          word={spellMenu.word}
+          from={spellMenu.from}
+          to={spellMenu.to}
+          editor={editor}
+          onClose={() => setSpellMenu(null)}
+        />
+      )}
+      {attachmentChoice && (
+        <AttachmentChoiceMenu
+          x={attachmentChoice.x}
+          y={attachmentChoice.y}
+          fileName={attachmentChoice.fileName}
+          onChoose={attachmentChoice.onChoose}
+          onClose={() => setAttachmentChoice(null)}
+        />
+      )}
+    </div>
+  )
+}

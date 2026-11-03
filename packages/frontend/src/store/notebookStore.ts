@@ -1,0 +1,376 @@
+// Folder/file domain state — DESIGN.md §2.1/§2.2. Reducers stay synchronous
+// and remain the source of truth for local state (so existing callers and
+// tests are untouched); each mutation additionally fires an IPCAdapter call
+// to persist it to real SQLite storage ("IPCAdapter calls wired",
+// EXECUTION_PLAN.md Phase 2) — fire-and-forget, since nothing here is on the
+// critical path for the UI to stay responsive. `setIPCAdapter` is a no-op
+// until `App.tsx` resolves a real adapter at startup, which is also what
+// keeps this store's ~30 existing unit tests adapter-free.
+import type { IPCAdapter } from '@flownote/ipc-adapter'
+import { create } from 'zustand'
+import { capitalizeFirstLetter, validateFileName } from '../lib/validation'
+import { naturalSortBy } from '../lib/naturalSort'
+import { saveLastOpenedPage } from '../lib/lastOpenedPage'
+import { makeId } from '../lib/ids'
+
+let ipc: IPCAdapter | null = null
+
+/** Called once at startup (App.tsx) once `resolveIPCAdapter()` settles. */
+export function setIPCAdapter(adapter: IPCAdapter | null): void {
+  ipc = adapter
+}
+
+/**
+ * The same adapter instance, for callers that need to reach IPCAdapter
+ * methods this store doesn't wrap itself — e.g. `PageList`'s content search
+ * calling `ipc.search()` directly (DESIGN.md §2.2, Phase 5 "Full-text
+ * search") rather than adding a thin pass-through action here for it.
+ */
+export function getIPCAdapter(): IPCAdapter | null {
+  return ipc
+}
+
+/**
+ * Every page currently belongs to this one implicit notebook —
+ * `flownote-electron/src/protocol.rs`'s `save_page` hardcodes the same
+ * value server-side. Multi-notebook support is a later feature, not
+ * Phase 5's; this constant is the single place both sides of that
+ * assumption meet on the frontend.
+ */
+export const DEFAULT_NOTEBOOK_ID = 'nb-1'
+
+function persist(label: string, promise: Promise<unknown> | undefined): void {
+  promise?.catch((err: unknown) => {
+    // eslint-disable-next-line no-console -- best-effort persistence; nothing else observes this failure yet
+    console.error(`notebookStore: ${label} failed`, err)
+  })
+}
+
+/** DESIGN.md §2.1: folder hierarchy depth is configurable, defaulting to 7. */
+export const DEFAULT_MAX_FOLDER_DEPTH = 7
+
+export interface Folder {
+  id: string
+  name: string
+  parentId: string | null
+  icon: string | null
+  expanded: boolean
+}
+
+export interface FileEntry {
+  id: string
+  name: string
+  folderId: string
+  content: string
+  updatedAt: number
+  /** Canvas vs. linear view (DESIGN.md §4.3, Phase 5 "Mode toggle") — defaults to 'canvas' for pages created client-side before a round-trip through `hydrateFromIPC`. */
+  mode: 'canvas' | 'linear'
+}
+
+type Folders = Record<string, Folder>
+type Files = Record<string, FileEntry>
+
+// Derived-data helpers, deliberately plain functions rather than store
+// methods: a Zustand selector that calls one of these must be wrapped in
+// `useMemo` (keyed on the raw `folders`/`files` map) by the caller, since
+// each of these allocates a new array — calling them directly as
+// `useStore(s => s.childFolders(id))` would hand useSyncExternalStore a new
+// reference every render and infinite-loop.
+
+export function folderDepthOf(folders: Folders, id: string): number {
+  let depth = 0
+  let current = folders[id]
+  while (current?.parentId) {
+    depth++
+    current = folders[current.parentId]
+  }
+  return depth
+}
+
+export function childFoldersOf(folders: Folders, parentId: string | null): Folder[] {
+  return naturalSortBy(
+    Object.values(folders).filter((f) => f.parentId === parentId),
+    (f) => f.name,
+  )
+}
+
+/** `id` plus every folder nested under it, any depth — used by `deleteFolder` to know which files/subfolders a folder delete must also remove. */
+export function descendantFolderIds(folders: Folders, id: string): string[] {
+  const result = [id]
+  for (let i = 0; i < result.length; i++) {
+    const current = result[i]
+    for (const f of Object.values(folders)) {
+      if (f.parentId === current) result.push(f.id)
+    }
+  }
+  return result
+}
+
+export function fileCountOf(files: Files, folderId: string): number {
+  return Object.values(files).filter((f) => f.folderId === folderId).length
+}
+
+export function filesInFolderOf(files: Files, folderId: string): FileEntry[] {
+  return naturalSortBy(
+    Object.values(files).filter((f) => f.folderId === folderId),
+    (f) => f.name,
+  )
+}
+
+function searchFiles(files: Files, query: string, matches: (f: FileEntry, q: string) => boolean): FileEntry[] {
+  const q = query.trim().toLowerCase()
+  if (q.length === 0) return []
+  return naturalSortBy(
+    Object.values(files).filter((f) => matches(f, q)),
+    (f) => f.name,
+  )
+}
+
+export function searchFilesByName(files: Files, query: string): FileEntry[] {
+  return searchFiles(files, query, (f, q) => f.name.toLowerCase().includes(q))
+}
+
+export function searchFilesByContent(files: Files, query: string): FileEntry[] {
+  return searchFiles(files, query, (f, q) => f.content.toLowerCase().includes(q))
+}
+
+interface MutationResult {
+  ok: boolean
+  error?: string
+  id?: string
+}
+
+interface NotebookState {
+  folders: Folders
+  files: Files
+  selectedFolderId: string | null
+  selectedFileId: string | null
+  maxFolderDepth: number
+
+  createFolder: (parentId: string | null, rawName: string) => MutationResult
+  renameFolder: (id: string, rawName: string) => void
+  toggleFolderExpanded: (id: string) => void
+  setFolderIcon: (id: string, icon: string | null) => void
+  selectFolder: (id: string | null) => void
+  /** Deletes a folder, every subfolder nested under it, and every file those folders contain (mirrors the backend's FK-cascading `delete_folder`, DESIGN.md §2.1). */
+  deleteFolder: (id: string) => void
+  /** Drag-and-drop reparent (sidebar folder dropped onto another folder, or onto the root) — rejects moving a folder into itself or one of its own subfolders, and the same max-depth rule `createFolder` enforces. */
+  moveFolder: (id: string, newParentId: string | null) => MutationResult
+
+  createFile: (folderId: string, rawName: string, content?: string) => MutationResult
+  /** Editor pane title rename (DESIGN.md §5.2) — same validation/uniqueness rules as create. */
+  renameFile: (id: string, rawName: string) => MutationResult
+  selectFile: (id: string | null) => void
+  /** Deletes a single file/page. */
+  deleteFile: (id: string) => void
+  /** Drag-and-drop move (page list file dropped onto a sidebar folder) — same per-folder name-uniqueness rule `createFile`/`renameFile` enforce. */
+  moveFile: (id: string, newFolderId: string) => MutationResult
+  /** Mirrors CanvasRoot segment text into the file record so content search stays live (DESIGN.md §2.2). */
+  updateFileContent: (id: string, content: string) => void
+  /** Canvas ↔ linear toggle (DESIGN.md §4.3, Phase 5 "Mode toggle") — persists via `ipc.setPageMode()`. */
+  setFileMode: (id: string, mode: 'canvas' | 'linear') => void
+  /** Loads every folder and its pages from IPCAdapter — called once at startup once an adapter resolves. */
+  hydrateFromIPC: () => Promise<void>
+}
+
+
+export const useNotebookStore = create<NotebookState>((set, get) => ({
+  folders: {},
+  files: {},
+  selectedFolderId: null,
+  selectedFileId: null,
+  maxFolderDepth: DEFAULT_MAX_FOLDER_DEPTH,
+
+  createFolder: (parentId, rawName) => {
+    const name = capitalizeFirstLetter(rawName.trim())
+    if (name.length === 0) return { ok: false, error: 'Folder name cannot be empty.' }
+
+    const parentDepth = parentId ? folderDepthOf(get().folders, parentId) : -1
+    if (parentDepth + 1 >= get().maxFolderDepth) {
+      return { ok: false, error: `Folders can be nested at most ${get().maxFolderDepth} levels deep.` }
+    }
+
+    const id = makeId('folder')
+    const folder: Folder = { id, name, parentId, icon: null, expanded: false }
+    set((state) => ({ folders: { ...state.folders, [id]: folder } }))
+    persist('saveFolder', ipc?.saveFolder(folder))
+    return { ok: true, id }
+  },
+
+  renameFolder: (id, rawName) => {
+    const name = capitalizeFirstLetter(rawName)
+    set((state) => {
+      const folder = state.folders[id]
+      if (!folder) return state
+      const updated = { ...folder, name }
+      persist('saveFolder', ipc?.saveFolder(updated))
+      return { folders: { ...state.folders, [id]: updated } }
+    })
+  },
+
+  toggleFolderExpanded: (id) =>
+    set((state) => {
+      const folder = state.folders[id]
+      if (!folder) return state
+      const updated = { ...folder, expanded: !folder.expanded }
+      persist('saveFolder', ipc?.saveFolder(updated))
+      return { folders: { ...state.folders, [id]: updated } }
+    }),
+
+  setFolderIcon: (id, icon) =>
+    set((state) => {
+      const folder = state.folders[id]
+      if (!folder) return state
+      const updated = { ...folder, icon }
+      persist('saveFolder', ipc?.saveFolder(updated))
+      return { folders: { ...state.folders, [id]: updated } }
+    }),
+
+  selectFolder: (id) => set({ selectedFolderId: id }),
+
+  deleteFolder: (id) =>
+    set((state) => {
+      if (!state.folders[id]) return state
+      const idsToRemove = new Set(descendantFolderIds(state.folders, id))
+
+      const folders = { ...state.folders }
+      for (const fid of idsToRemove) delete folders[fid]
+
+      const files = { ...state.files }
+      for (const [fileId, file] of Object.entries(state.files)) {
+        if (idsToRemove.has(file.folderId)) delete files[fileId]
+      }
+
+      persist('deleteFolder', ipc?.deleteFolder(id))
+      return {
+        folders,
+        files,
+        selectedFolderId: state.selectedFolderId && idsToRemove.has(state.selectedFolderId) ? null : state.selectedFolderId,
+        selectedFileId: state.selectedFileId && !files[state.selectedFileId] ? null : state.selectedFileId,
+      }
+    }),
+
+  moveFolder: (id, newParentId) => {
+    const folder = get().folders[id]
+    if (!folder) return { ok: false, error: 'No such folder.' }
+    if (newParentId === folder.parentId) return { ok: true, id }
+    if (newParentId === id) return { ok: false, error: 'A folder cannot be moved into itself.' }
+    if (newParentId !== null && descendantFolderIds(get().folders, id).includes(newParentId)) {
+      return { ok: false, error: 'A folder cannot be moved into one of its own subfolders.' }
+    }
+
+    const parentDepth = newParentId ? folderDepthOf(get().folders, newParentId) : -1
+    if (parentDepth + 1 >= get().maxFolderDepth) {
+      return { ok: false, error: `Folders can be nested at most ${get().maxFolderDepth} levels deep.` }
+    }
+
+    const updated = { ...folder, parentId: newParentId }
+    set((state) => ({ folders: { ...state.folders, [id]: updated } }))
+    persist('saveFolder', ipc?.saveFolder(updated))
+    return { ok: true, id }
+  },
+
+  createFile: (folderId, rawName, content = '') => {
+    const name = rawName.trim()
+    const validation = validateFileName(name)
+    if (!validation.valid) return { ok: false, error: validation.error }
+
+    // Per-folder uniqueness (DESIGN.md §2.2) — the same name may exist in
+    // different folders, so only check within this one.
+    const duplicate = Object.values(get().files).some((f) => f.folderId === folderId && f.name === name)
+    if (duplicate) return { ok: false, error: `"${name}" already exists in this folder.` }
+
+    const id = makeId('file')
+    set((state) => ({
+      files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now(), mode: 'canvas' } },
+    }))
+    persist('savePage', ipc?.savePage({ id, folderId, title: name }))
+    return { ok: true, id }
+  },
+
+  renameFile: (id, rawName) => {
+    const file = get().files[id]
+    if (!file) return { ok: false, error: 'No such page.' }
+
+    const name = rawName.trim()
+    const validation = validateFileName(name)
+    if (!validation.valid) return { ok: false, error: validation.error }
+
+    if (name === file.name) return { ok: true, id }
+
+    const duplicate = Object.values(get().files).some((f) => f.folderId === file.folderId && f.id !== id && f.name === name)
+    if (duplicate) return { ok: false, error: `"${name}" already exists in this folder.` }
+
+    const updated = { ...file, name, updatedAt: Date.now() }
+    set((state) => ({ files: { ...state.files, [id]: updated } }))
+    persist('savePage', ipc?.savePage({ id, folderId: file.folderId, title: name }))
+    return { ok: true, id }
+  },
+
+  selectFile: (id) => {
+    // Remembers the opened page (lib/lastOpenedPage.ts) so the next launch
+    // reopens it instead of starting on an empty canvas — only on an actual
+    // open, not a deselect (`id === null`, e.g. `deleteFile` clearing the
+    // current selection sets `selectedFileId` directly, bypassing this).
+    if (id) {
+      const file = get().files[id]
+      if (file) saveLastOpenedPage(file.folderId, id)
+    }
+    set({ selectedFileId: id })
+  },
+
+  deleteFile: (id) =>
+    set((state) => {
+      if (!state.files[id]) return state
+      const files = { ...state.files }
+      delete files[id]
+      persist('deletePage', ipc?.deletePage(id))
+      return { files, selectedFileId: state.selectedFileId === id ? null : state.selectedFileId }
+    }),
+
+  moveFile: (id, newFolderId) => {
+    const file = get().files[id]
+    if (!file) return { ok: false, error: 'No such page.' }
+    if (newFolderId === file.folderId) return { ok: true, id }
+    if (!get().folders[newFolderId]) return { ok: false, error: 'No such folder.' }
+
+    const duplicate = Object.values(get().files).some((f) => f.folderId === newFolderId && f.id !== id && f.name === file.name)
+    if (duplicate) return { ok: false, error: `"${file.name}" already exists in that folder.` }
+
+    const updated = { ...file, folderId: newFolderId, updatedAt: Date.now() }
+    set((state) => ({ files: { ...state.files, [id]: updated } }))
+    persist('savePage', ipc?.savePage({ id, folderId: newFolderId, title: file.name }))
+    return { ok: true, id }
+  },
+
+  updateFileContent: (id, content) =>
+    set((state) => {
+      const file = state.files[id]
+      if (!file) return state
+      return { files: { ...state.files, [id]: { ...file, content, updatedAt: Date.now() } } }
+    }),
+
+  setFileMode: (id, mode) =>
+    set((state) => {
+      const file = state.files[id]
+      if (!file || file.mode === mode) return state
+      persist('setPageMode', ipc?.setPageMode(id, mode))
+      return { files: { ...state.files, [id]: { ...file, mode, updatedAt: Date.now() } } }
+    }),
+
+  hydrateFromIPC: async () => {
+    if (!ipc) return
+    const folders = await ipc.listFolders()
+    const folderMap: Folders = {}
+    for (const f of folders) folderMap[f.id] = f
+
+    const fileMap: Files = {}
+    for (const folder of folders) {
+      const pages = await ipc.listPages(folder.id)
+      for (const p of pages) {
+        fileMap[p.id] = { id: p.id, name: p.title, folderId: folder.id, content: '', updatedAt: p.updatedAt, mode: p.mode }
+      }
+    }
+    set({ folders: folderMap, files: fileMap })
+  },
+}))

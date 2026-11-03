@@ -1,0 +1,12 @@
+{
+  "id": "com.sandeep.spreadsheet",
+  "name": "Spreadsheet",
+  "version": "1.0.0",
+  "description": "Embed a simple live spreadsheet inside any note segment",
+  "author": "Sandeep Biswas",
+  "entry": "index.js",
+  "sdkVersion": "0.0.1",
+  "permissions": ["storage:read", "storage:write"],
+  "extensionPoints": ["blockType:spreadsheet", "slashCommand:/sheet"],
+  "minAppVersion": "0.0.0"
+}

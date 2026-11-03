@@ -1,0 +1,31 @@
+{
+  "name": "@flownote/electron",
+  "private": true,
+  "version": "0.0.0",
+  "description": "FlowNote — Linux desktop shell (Electron)",
+  "author": {
+    "name": "Sandeep Biswas",
+    "email": "sandeep12.biswas@gmail.com"
+  },
+  "homepage": "https://github.com/sandeep12biswas/noteApp",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "pnpm build && electron .",
+    "typecheck": "tsc --noEmit",
+    "package": "pnpm build && electron-builder --linux",
+    "package:dir": "pnpm build && electron-builder --linux --dir"
+  },
+  "dependencies": {
+    "electron-trpc": "^0.7.1",
+    "@trpc/server": "10.45.2",
+    "@trpc/client": "10.45.2",
+    "@flownote/ipc-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^32",
+    "electron-builder": "^25",
+    "@types/node": "^22",
+    "typescript": "~5.7.2"
+  }
+}

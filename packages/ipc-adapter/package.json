@@ -1,0 +1,18 @@
+{
+  "name": "@flownote/ipc-adapter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@trpc/client": "10.45.2",
+    "@trpc/server": "10.45.2",
+    "electron-trpc": "^0.7.1"
+  }
+}

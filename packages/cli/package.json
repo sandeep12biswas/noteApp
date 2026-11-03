@@ -1,0 +1,20 @@
+{
+  "name": "@flownote/cli",
+  "version": "0.0.1-alpha.0",
+  "description": "Scaffold, build, dev, and pack FlowNote plugins — DESIGN.md §9.6.",
+  "type": "commonjs",
+  "bin": {
+    "flownote": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "~5.7.2"
+  }
+}

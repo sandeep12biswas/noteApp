@@ -1,0 +1,218 @@
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { PageList } from './PageList'
+import { DEFAULT_MAX_FOLDER_DEPTH, setIPCAdapter, useNotebookStore } from '../store/notebookStore'
+
+afterEach(cleanup)
+beforeEach(() => {
+  useNotebookStore.setState({
+    folders: {},
+    files: {},
+    selectedFolderId: null,
+    selectedFileId: null,
+    maxFolderDepth: DEFAULT_MAX_FOLDER_DEPTH,
+  })
+})
+
+describe('PageList', () => {
+  it('prompts to select a folder when none is selected', () => {
+    render(<PageList />)
+    expect(screen.getByText('Select a folder')).toBeInTheDocument()
+  })
+
+  it('lists files of the selected folder in natural order', () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Page 10')
+    store.createFile(folder.id!, 'Page 2')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    render(<PageList />)
+    const items = screen.getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('Page 2')
+    expect(items[1]).toHaveTextContent('Page 10')
+  })
+
+  it('new-page flow: pick an existing folder, then name the file', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.click(screen.getByRole('button', { name: 'New page' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Existing folder' }), folder.id!)
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'Meeting Notes')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(screen.getByText('Meeting Notes')).toBeInTheDocument()
+    expect(useNotebookStore.getState().selectedFileId).not.toBeNull()
+  })
+
+  it('new-page flow: create a new folder, then name the file', async () => {
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.click(screen.getByRole('button', { name: 'New page' }))
+    await user.click(screen.getByRole('radio', { name: 'New folder' }))
+    await user.type(screen.getByRole('textbox', { name: 'New folder name' }), 'projects')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'Roadmap')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    const created = Object.values(useNotebookStore.getState().folders)[0]
+    expect(created?.name).toBe('Projects')
+    expect(screen.getByText('Roadmap')).toBeInTheDocument()
+  })
+
+  it('new-page flow: rejects an invalid file name and keeps the dialog open', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.click(screen.getByRole('button', { name: 'New page' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Existing folder' }), folder.id!)
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'untitled')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('capital letter')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('right-click on the list\'s empty space offers "New page", opening the dialog with the current folder pre-selected', async () => {
+    const store = useNotebookStore.getState()
+    store.createFolder(null, 'Archive')
+    const notes = store.createFolder(null, 'Notes')
+    useNotebookStore.setState({ selectedFolderId: notes.id! })
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('list', { name: 'Files' }) })
+    await user.click(screen.getByRole('menuitem', { name: 'New page' }))
+
+    expect(screen.getByRole('dialog', { name: 'New page' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Existing folder' })).toHaveValue(notes.id)
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'Plan')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    const files = Object.values(useNotebookStore.getState().files)
+    expect(files.map((f) => [f.name, f.folderId])).toEqual([['Plan', notes.id]])
+  })
+
+  it('right-click on a page row still opens that page\'s own menu, not the panel menu', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Page')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('button', { name: 'Page' }) })
+    expect(screen.queryByRole('menu', { name: 'Page panel actions' })).toBeNull()
+    expect(screen.getByRole('menu', { name: 'File actions' })).toBeInTheDocument()
+  })
+
+  it('search by name finds a page in a different folder than the selected one', async () => {
+    const store = useNotebookStore.getState()
+    const a = store.createFolder(null, 'A')
+    const b = store.createFolder(null, 'B')
+    store.createFile(b.id!, 'Roadmap')
+    useNotebookStore.setState({ selectedFolderId: a.id! })
+
+    const user = userEvent.setup()
+    render(<PageList />)
+    await user.type(screen.getByRole('textbox', { name: 'Search pages' }), 'road')
+
+    expect(screen.getByText('Roadmap')).toBeInTheDocument()
+  })
+
+  it('search by content only matches file text, not names', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Alpha', 'contains keyword')
+    store.createFile(folder.id!, 'Beta', 'nothing here')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    const user = userEvent.setup()
+    render(<PageList />)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Search mode' }), 'content')
+    await user.type(screen.getByRole('textbox', { name: 'Search pages' }), 'keyword')
+
+    expect(screen.getByText('Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+})
+
+describe('PageList content search backed by ipc.search (Phase 5 "Full-text search")', () => {
+  afterEach(() => setIPCAdapter(null))
+
+  it('uses backend search results, deduped by page, when an IPCAdapter is wired', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const { id: matchId } = store.createFile(folder.id!, 'Backend Match')
+    store.createFile(folder.id!, 'Local Only')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    setIPCAdapter({
+      search: async () => [
+        { pageId: matchId!, segmentId: 'seg-1', snippet: 'hit one' },
+        { pageId: matchId!, segmentId: 'seg-2', snippet: 'hit two' },
+      ],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- only `search` is exercised here
+    } as any)
+
+    const user = userEvent.setup()
+    render(<PageList />)
+    await user.click(screen.getByRole('combobox', { name: 'Search mode' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Search mode' }), 'content')
+    await user.type(screen.getByRole('textbox', { name: 'Search pages' }), 'anything')
+
+    await waitFor(() => {
+      const items = screen.getAllByRole('listitem')
+      expect(items).toHaveLength(1)
+      expect(items[0]).toHaveTextContent('Backend Match')
+    })
+  })
+
+  it('falls back to the local content index when no IPCAdapter is wired', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Has Match', 'findme in here')
+    store.createFile(folder.id!, 'No Match', 'nothing relevant')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    const user = userEvent.setup()
+    render(<PageList />)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Search mode' }), 'content')
+    await user.type(screen.getByRole('textbox', { name: 'Search pages' }), 'findme')
+
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toHaveTextContent('Has Match')
+  })
+})
+
+describe('PageList keyboard navigation (Phase 6 accessibility pass)', () => {
+  it('ArrowDown/ArrowUp rove focus through the file list', async () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    store.createFile(folder.id!, 'Page A')
+    store.createFile(folder.id!, 'Page B')
+    useNotebookStore.setState({ selectedFolderId: folder.id! })
+
+    render(<PageList />)
+    const items = screen.getAllByRole('listitem').map((li) => li.querySelector('button')!)
+    items[0]!.focus()
+    expect(items[0]).toHaveFocus()
+
+    const user = userEvent.setup()
+    await user.keyboard('{ArrowDown}')
+    expect(items[1]).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(items[0]).toHaveFocus()
+  })
+})

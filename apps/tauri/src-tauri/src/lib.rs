@@ -1,0 +1,101 @@
+// Tauri desktop shell entry point (Windows/macOS) — DESIGN.md §3.2/§8.1.
+// All actual command logic lives in flownote-tauri; this crate just wires
+// it into a running Tauri app: opens the SQLite pool, manages it as state,
+// attaches the generated invoke handler, and (debug builds only) exports
+// TypeScript bindings for packages/ipc-adapter's TauriIPCAdapter.
+use flownote_tauri::protocols::{self, ATTACHMENT_SCHEME, PLUGIN_SCHEME};
+use flownote_tauri::AppState;
+use tauri::http::{Response, StatusCode};
+use tauri::Manager;
+
+fn db_path(app: &tauri::App) -> String {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .expect("failed to resolve app data dir");
+    std::fs::create_dir_all(&dir).expect("failed to create app data dir");
+    dir.join("flownote.sqlite3").to_string_lossy().into_owned()
+}
+
+/// wry's default WebView2 arguments — passing any `additional_browser_args`
+/// replaces them, so they're repeated when adding our own.
+const WEBVIEW2_DEFAULT_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+
+/// Creates the main window from tauri.conf.json (which marks it
+/// `"create": false` so it's built here instead).
+///
+/// Test hook: when `FLOWNOTE_WEBVIEW_DEBUG_PORT` holds a port number, WebView2
+/// (Windows) opens its DevTools protocol on that port so
+/// e2e-tauri/windows-smoke.mjs can attach. WebView2's own
+/// `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` variable can't be used for this:
+/// wry always sets the browser arguments explicitly, which take precedence.
+/// Unset (the normal case), the window is exactly what the config describes.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let config = app.config().app.windows.first().cloned().expect("tauri.conf.json defines the main window");
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    if let Some(port) = std::env::var("FLOWNOTE_WEBVIEW_DEBUG_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+        builder = builder.additional_browser_args(&format!("{WEBVIEW2_DEFAULT_ARGS} --remote-debugging-port={port}"));
+    }
+    builder.build()?;
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let specta_builder = flownote_tauri::specta_builder();
+
+    #[cfg(debug_assertions)]
+    flownote_tauri::export_bindings("../../../packages/ipc-adapter/src/generated/tauri-bindings.ts")
+        .expect("failed to export tauri-specta TypeScript bindings");
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(specta_builder.invoke_handler())
+        // Plugin files/SDK and attachment bytes — see flownote_tauri::protocols.
+        .register_uri_scheme_protocol(PLUGIN_SCHEME, |ctx, request| {
+            let app = ctx.app_handle();
+            let resolver = app.asset_resolver();
+            // Where plugin files are served from, as the page sees it:
+            // flownote-plugin://localhost, or http://flownote-plugin.localhost
+            // on Windows — the plugin's CSP allows exactly that origin.
+            let uri = request.uri();
+            let origin = format!("{}://{}", uri.scheme_str().unwrap_or(PLUGIN_SCHEME), uri.authority().map(|a| a.as_str()).unwrap_or("localhost"));
+            protocols::plugin_asset_response(
+                uri.path(),
+                |path| resolver.get(path.to_string()).map(|asset| (asset.bytes, asset.mime_type)),
+                |plugin_id| {
+                    let strictest = flownote_core::store::plugin_content_security_policy(&[], &origin);
+                    let Some(state) = app.try_state::<AppState>() else { return strictest };
+                    state
+                        .pool
+                        .get()
+                        .ok()
+                        .and_then(|conn| flownote_core::store::plugin_csp_for(&conn, plugin_id, &origin).ok())
+                        .unwrap_or(strictest)
+                },
+            )
+        })
+        .register_uri_scheme_protocol(ATTACHMENT_SCHEME, |ctx, request| {
+            let Some(state) = ctx.app_handle().try_state::<AppState>() else {
+                return Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .body(b"database not open yet".to_vec())
+                    .unwrap();
+            };
+            match state.pool.get() {
+                Ok(conn) => protocols::attachment_response(&conn, request.uri().path()),
+                Err(e) => Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(e.to_string().into_bytes())
+                    .unwrap(),
+            }
+        })
+        .setup(move |app| {
+            let pool = flownote_core::db::open(&db_path(app)).expect("failed to open flownote db");
+            app.manage(AppState { pool });
+            create_main_window(app)?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

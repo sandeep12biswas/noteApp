@@ -1,0 +1,52 @@
+{
+  "name": "@flownote/frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@flownote/ipc-adapter": "workspace:*",
+    "@flownote/sdk": "workspace:*",
+    "@tiptap/core": "^2",
+    "@tiptap/extension-code-block-lowlight": "^2",
+    "@tiptap/extension-color": "^2",
+    "@tiptap/extension-font-family": "^2",
+    "@tiptap/extension-highlight": "^2",
+    "@tiptap/extension-subscript": "^2",
+    "@tiptap/extension-superscript": "^2",
+    "@tiptap/extension-table": "^2",
+    "@tiptap/extension-task-item": "^2",
+    "@tiptap/extension-task-list": "^2",
+    "@tiptap/extension-text-align": "^2",
+    "@tiptap/extension-text-style": "^2",
+    "@tiptap/extension-underline": "^2",
+    "@tiptap/pm": "^2",
+    "@tiptap/react": "^2",
+    "@tiptap/starter-kit": "^2",
+    "highlight.js": "^11",
+    "lowlight": "^3",
+    "nspell": "^2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^4",
+    "dictionary-en": "^4",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.7.2",
+    "vite": "^5"
+  }
+}
