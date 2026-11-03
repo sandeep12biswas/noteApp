@@ -45,6 +45,10 @@ const PAGE_FIELDS: &[&str] = &["folderId", "title", "mode"];
 const SEGMENT_FIELDS: &[&str] = &["x", "y", "w", "h", "zIndex", "borderColor", "fillColor", "content"];
 const ATTACHMENT_FIELDS: &[&str] = &["segmentId", "fileName", "mimeType", "size", "sha256"];
 
+/// Start of `apply_bundle`'s error when a bundle builds on changes this
+/// device doesn't have yet (they're in another device's log).
+pub const MISSING_DEPENDENCIES: &str = "missing dependencies";
+
 /// Border colour of a conflict-copy segment (amber), so it stands out.
 pub const CONFLICT_BORDER: &str = "#f59e0b";
 /// Vertical gap between the page's lowest segment and a new conflict copy.
@@ -91,6 +95,12 @@ pub fn apply_bundle(conn: &Connection, bundle: &[(String, Vec<u8>)]) -> Result<A
             doc.set_actor(actor.clone());
             let local = doc.get_heads();
             doc.load_incremental(bytes).map_err(crdt::err)?;
+            // Changes whose dependencies haven't arrived would sit in
+            // Automerge's queue, which isn't saved — refuse instead, and let
+            // the caller retry once the other device's changes are in.
+            if !doc.get_missing_deps(&[]).is_empty() {
+                return Err(format!("{MISSING_DEPENDENCIES}: {doc_id}"));
+            }
             let after = doc.get_heads();
             let remote: Vec<ChangeHash> = after.iter().filter(|h| !local.contains(h)).copied().collect();
             if remote.is_empty() {
@@ -576,7 +586,7 @@ fn materialize_page(conn: &Connection, page_id: &str, doc: &AutoCommit) -> Resul
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::db;
     use serde_json::json;
@@ -614,7 +624,7 @@ mod tests {
     }
 
     /// Every synced row, for comparing two devices.
-    fn dump(conn: &Connection) -> Value {
+    pub(crate) fn dump(conn: &Connection) -> Value {
         let query = |sql: &str| -> Vec<Value> {
             let mut stmt = conn.prepare(sql).unwrap();
             let n = stmt.column_count();

@@ -59,6 +59,7 @@ const MIGRATIONS: &[Migration] = &[
         name: "sync_outbox_triggers",
         sql: include_str!("../migrations/V9__sync_outbox_triggers.sql"),
     },
+    Migration { version: 10, name: "sync_engine", sql: include_str!("../migrations/V10__sync_engine.sql") },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -115,6 +116,8 @@ mod tests {
             "sync_settings",
             "crdt_docs",
             "sync_outbox",
+            "sync_peers",
+            "sync_quarantine",
         ];
         for table in expected_tables {
             let count: i64 = conn
@@ -130,7 +133,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 9);
+        assert_eq!(applied, 10);
     }
 
     #[test]
