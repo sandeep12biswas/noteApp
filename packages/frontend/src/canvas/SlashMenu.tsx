@@ -28,6 +28,9 @@ export const CORE_BLOCK_OPTIONS: CoreBlockOption[] = [
   { id: 'taskList', label: 'Checklist' },
   { id: 'blockquote', label: 'Quote' },
   { id: 'codeBlock', label: 'Code block' },
+  // Opens SegmentHost's AI prompt box; the answer arrives as a draft to
+  // keep or discard (aiDraftExtension.ts).
+  { id: 'ai', label: 'Ask AI…' },
 ]
 
 export type SlashMenuItem =
@@ -50,6 +53,7 @@ export function SlashMenu({
   y,
   activeIndex = 0,
   onActiveIndexChange,
+  disabledIds = [],
   onSelectCore,
   onSelectPlugin,
   onClose,
@@ -58,6 +62,8 @@ export function SlashMenu({
   y: number
   activeIndex?: number
   onActiveIndexChange?: (index: number) => void
+  /** Core items shown but not selectable right now (e.g. "Ask AI" while a draft is open). */
+  disabledIds?: readonly string[]
   onSelectCore: (id: string) => void
   onSelectPlugin: (pluginId: string, id: string) => void
   onClose: () => void
@@ -111,9 +117,10 @@ export function SlashMenu({
           type="button"
           role="menuitem"
           data-active={i === activeIndex || undefined}
+          disabled={disabledIds.includes(opt.id)}
           onClick={() => onSelectCore(opt.id)}
           onMouseEnter={() => onActiveIndexChange?.(i)}
-          className={ITEM_CLASS + (i === activeIndex ? ACTIVE_CLASS : '')}
+          className={ITEM_CLASS + (i === activeIndex ? ACTIVE_CLASS : '') + ' disabled:cursor-not-allowed disabled:opacity-40'}
         >
           {opt.label}
         </button>

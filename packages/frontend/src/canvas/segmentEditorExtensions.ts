@@ -19,6 +19,7 @@ import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
 import { PluginBlock } from '../plugins/pluginBlockNode'
+import { AiDraftExtension } from './aiDraftExtension'
 import { AttachmentBlock } from './attachmentBlockNode'
 import { CodeBlock } from './codeBlockNode'
 import { FontSize } from './fontSizeExtension'
@@ -65,4 +66,8 @@ export const segmentEditorExtensions = [
   // spellcheckExtension.ts's own module doc for why this must be shared
   // between both views like everything else here.
   Spellcheck,
+  // "/ Ask AI" drafts (aiDraftExtension.ts) — commands plus the draft's
+  // tint. Only the canvas view starts drafts; listed here like everything
+  // else so both views' editors stay identical.
+  AiDraftExtension,
 ]

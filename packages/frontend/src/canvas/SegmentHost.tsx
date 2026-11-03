@@ -6,14 +6,19 @@
 // (width) handles apply `resolvePosition()`/`clampResizeWidth()` on every
 // `pointermove` and mutate this segment's own DOM style directly for 60fps
 // (DESIGN.md §4.6/Phase 3) — the store only gets one commit, on release.
+import type { Mark } from '@tiptap/pm/model'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef, useState } from 'react'
 import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, resolvePosition } from '../lib/collision'
+import { runAiStream, type AiStreamHandle } from '../lib/aiStream'
 import { handleAttachmentPaste } from '../lib/attachmentPaste'
 import { DEFAULT_SEGMENT_HEIGHT, useCanvasStore, type Segment } from '../store/canvasStore'
 import { getIPCAdapter } from '../store/notebookStore'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { useUIStore } from '../store/uiStore'
+import { getAiDraft } from './aiDraftExtension'
+import { AiDraftBar, type AiDraftStatus } from './AiDraftBar'
+import { AiPromptPopover } from './AiPromptPopover'
 import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
 import { AttachmentChoiceMenu } from './AttachmentChoiceMenu'
 import { insertPluginBlock } from './insertPluginBlock'
@@ -80,6 +85,24 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   // Applies the menu item at an index; reassigned every render so it sees
   // the current editor and menu position.
   const selectSlashItemRef = useRef<(index: number) => void>(() => {})
+
+  // "/ Ask AI": the prompt box (where the `/` was, with the formatting the
+  // `/` had — the answer is typed in that formatting), then the draft
+  // session while the answer streams in and waits for Keep / Discard.
+  const [aiPrompt, setAiPrompt] = useState<{ x: number; y: number; pos: number; marks: readonly Mark[] } | null>(null)
+  type AiSession = { prompt: string; providerId?: string; status: AiDraftStatus; error?: string }
+  const [aiSession, setAiSessionState] = useState<AiSession | null>(null)
+  // Mirrored synchronously, like the slash menu: the editor's key handler
+  // (Ctrl/Cmd+Enter = Keep, Escape = Discard) reads it on the next keystroke.
+  const aiSessionRef = useRef<AiSession | null>(null)
+  const setAiSession = (value: AiSession | null) => {
+    aiSessionRef.current = value
+    setAiSessionState(value)
+  }
+  const aiStreamRef = useRef<AiStreamHandle | null>(null)
+  const aiActionsRef = useRef({ keep: () => {}, discard: () => {} })
+  // Leaving the page (or deleting the segment) mid-answer cancels the request.
+  useEffect(() => () => aiStreamRef.current?.stop(), [])
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
   const [attachmentChoice, setAttachmentChoice] = useState<{
     x: number
@@ -141,6 +164,16 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       // handled here — otherwise ArrowDown moved the caret, Enter split the
       // line and the menu closed with nothing applied.
       handleKeyDown: (_view, event) => {
+        if (aiSessionRef.current) {
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+            aiActionsRef.current.keep()
+            return true
+          }
+          if (event.key === 'Escape') {
+            aiActionsRef.current.discard()
+            return true
+          }
+        }
         if (!slashMenuRef.current) return false
         const count = slashMenuItems(useExtensionRegistry.getState().slashCommands).length
         if (count === 0) return false
@@ -208,6 +241,10 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     // other half of this same race.
     onBlur: ({ event }) => {
       if (attachmentChoiceRef.current || colorMenuOpenRef.current) return
+      // Focus moved to something of this segment's own — the AI prompt box,
+      // the AI draft bar, a code block's language picker: still working here.
+      const into = (event as FocusEvent).relatedTarget as Node | null
+      if (into && containerRef.current?.contains(into)) return
       // Focus went to the ribbon (the AI prompt, a font picker, …) — the user
       // is still working on this segment, e.g. asking AI to fill it, so
       // don't delete it yet. Check again once they click or focus anywhere
@@ -462,6 +499,14 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       case 'codeBlock':
         chain.toggleCodeBlock().run()
         break
+      case 'ai': {
+        // The `/`'s own formatting is the destination formatting: read it
+        // before the `/` is deleted.
+        const marks = editor.state.storedMarks ?? editor.state.doc.resolve(slashMenu.charPos).marks()
+        chain.run()
+        setAiPrompt({ x: slashMenu.x, y: slashMenu.y, pos: slashMenu.charPos - 1, marks })
+        break
+      }
       default:
         chain.run()
     }
@@ -475,12 +520,80 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     setSlashMenu(null)
   }
 
+  const aiBusy = aiSession !== null || aiPrompt !== null
+  const slashDisabledIds = aiBusy ? ['ai'] : []
+
   selectSlashItemRef.current = (index: number) => {
     const item = slashMenuItems(useExtensionRegistry.getState().slashCommands)[index]
     if (!item) return
+    if (item.kind === 'core' && slashDisabledIds.includes(item.id)) return
     if (item.kind === 'core') applyCoreBlock(item.id)
     else applyPluginBlock(item.pluginId, item.id)
   }
+
+  const startAiDraft = (prompt: string, providerId: string | undefined, pos: number, marks: readonly Mark[]) => {
+    if (!editor) return
+    setAiPrompt(null)
+    editor.view.focus()
+    editor.commands.startAiDraft({ pos, prompt, marks })
+    setAiSession({ prompt, providerId, status: 'streaming' })
+    // Only the prompt goes to the AI — no note text as context.
+    const handle = runAiStream({ prompt, context: '', providerId, onText: (text) => editor.commands.appendAiDraft(text) })
+    aiStreamRef.current = handle
+    void handle.done.then((result) => {
+      if (aiStreamRef.current !== handle) return // kept, discarded or retried meanwhile
+      aiStreamRef.current = null
+      const session = aiSessionRef.current
+      if (!session) return
+      setAiSession({ ...session, status: result.status, error: result.status === 'error' ? result.message : undefined })
+    })
+  }
+
+  // Keep / Discard / Try again: end the request and ignore its result.
+  const stopAiStream = () => {
+    const handle = aiStreamRef.current
+    aiStreamRef.current = null
+    handle?.stop()
+  }
+  // The Stop button: end the request but let it finish normally, so the bar
+  // switches to "Stopped." with Keep / Discard / Try again.
+  const stopAiStreamAndMarkStopped = () => aiStreamRef.current?.stop()
+
+  const keepAiDraft = () => {
+    if (!editor) return
+    stopAiStream()
+    const draft = getAiDraft(editor.state)
+    editor.view.focus()
+    if (draft) {
+      editor.commands.keepAiDraft()
+      editor.commands.setTextSelection(draft.to)
+    }
+    setAiSession(null)
+  }
+
+  const discardAiDraft = () => {
+    if (!editor) return
+    stopAiStream()
+    const draft = getAiDraft(editor.state)
+    editor.view.focus()
+    if (draft) {
+      editor.commands.discardAiDraft()
+      editor.commands.setTextSelection(draft.from)
+    }
+    setAiSession(null)
+  }
+
+  const retryAiDraft = () => {
+    const session = aiSessionRef.current
+    if (!editor || !session) return
+    stopAiStream()
+    const draft = getAiDraft(editor.state)
+    if (!draft) return setAiSession(null)
+    editor.commands.discardAiDraft()
+    startAiDraft(session.prompt, session.providerId, draft.from, draft.marks)
+  }
+
+  aiActionsRef.current = { keep: keepAiDraft, discard: discardAiDraft }
 
   const revealed = isActive || segment.borderColor !== null
 
@@ -582,9 +695,31 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           y={slashMenu.y}
           activeIndex={slashIndex}
           onActiveIndexChange={setSlashIndex}
+          disabledIds={slashDisabledIds}
           onSelectCore={applyCoreBlock}
           onSelectPlugin={applyPluginBlock}
           onClose={() => setSlashMenu(null)}
+        />
+      )}
+      {aiPrompt && (
+        <AiPromptPopover
+          x={aiPrompt.x}
+          y={aiPrompt.y}
+          onGenerate={(prompt, providerId) => startAiDraft(prompt, providerId, aiPrompt.pos, aiPrompt.marks)}
+          onCancel={() => {
+            setAiPrompt(null)
+            editor?.view.focus()
+          }}
+        />
+      )}
+      {aiSession && (
+        <AiDraftBar
+          status={aiSession.status}
+          error={aiSession.error}
+          onStop={stopAiStreamAndMarkStopped}
+          onKeep={keepAiDraft}
+          onDiscard={discardAiDraft}
+          onRetry={retryAiDraft}
         />
       )}
       {spellMenu && editor && (

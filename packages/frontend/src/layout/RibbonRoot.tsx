@@ -13,6 +13,7 @@ import { useExtensionRegistry } from '../store/extensionRegistry'
 import { INK_COLORS, INK_TOOLS, useInkStore } from '../store/inkStore'
 import { getIPCAdapter } from '../store/notebookStore'
 import { sendRibbonAction } from '../plugins/PluginIPCBridge'
+import { AI_NO_BACKEND, AI_NO_PROVIDER, runAiStream, type AiStreamHandle } from '../lib/aiStream'
 import { captureFormat } from '../lib/formatPainter'
 import { FONT_FAMILIES, type FontFamilyOption } from '../lib/fontFamilies'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
@@ -530,8 +531,7 @@ function AIInsertPanel() {
   const [status, setStatus] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const streamRef = useRef<AsyncIterableIterator<string> | null>(null)
-  const stoppedRef = useRef(false)
+  const streamRef = useRef<AiStreamHandle | null>(null)
 
   useEffect(() => {
     void loadProviders()
@@ -545,47 +545,38 @@ function AIInsertPanel() {
       setStatus('Select a segment first.')
       return
     }
-    const ipc = getIPCAdapter()
-    if (!ipc) {
-      setStatus('AI unavailable — no backend connected.')
+    if (!getIPCAdapter()) {
+      setStatus(AI_NO_BACKEND)
       return
     }
     if (!prompt.trim()) return
     if (providers.length === 0) {
-      setStatus('No AI provider set up yet — open AI settings (⚙).')
+      setStatus(AI_NO_PROVIDER)
       return
     }
 
     setStatus(`Generating with ${chosen?.name ?? 'AI'}…`)
     setStreaming(true)
-    const stream = ipc.aiComplete(prompt, editor.getText(), chosen?.id)
-    streamRef.current = stream
-    stoppedRef.current = false
-    try {
-      for await (const text of stream) {
-        editor.chain().focus().insertContent(text).run()
-      }
-      // Stopped: keep the prompt (to retry or tweak) and say so; finished: clear it.
-      if (stoppedRef.current) {
-        setStatus('Stopped.')
-      } else {
-        setStatus(null)
-        setPrompt('')
-      }
-    } catch (err) {
-      // A readable message from the backend — wrong key, unreachable
-      // server, provider error — never a crash or an unhandled rejection.
-      setStatus(err instanceof Error ? err.message : 'AI request failed.')
-    } finally {
-      streamRef.current = null
-      setStreaming(false)
+    const handle = runAiStream({
+      prompt,
+      context: editor.getText(),
+      providerId: chosen?.id,
+      onText: (text) => editor.chain().focus().insertContent(text).run(),
+    })
+    streamRef.current = handle
+    const result = await handle.done
+    streamRef.current = null
+    setStreaming(false)
+    // Stopped: keep the prompt (to retry or tweak) and say so; finished: clear it.
+    if (result.status === 'stopped') setStatus('Stopped.')
+    else if (result.status === 'error') setStatus(result.message)
+    else {
+      setStatus(null)
+      setPrompt('')
     }
   }
 
-  const stop = () => {
-    stoppedRef.current = true
-    void streamRef.current?.return?.()
-  }
+  const stop = () => streamRef.current?.stop()
 
   return (
     <div className="flex items-center gap-1" role="group" aria-label="AI">

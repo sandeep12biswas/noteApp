@@ -23,7 +23,8 @@ test('"/" menu works from the keyboard, and a code block keeps its language acro
 
   await page.keyboard.press('Enter')
   await page.keyboard.type('/')
-  await page.keyboard.press('ArrowUp') // wraps to Code block
+  await page.keyboard.press('ArrowUp') // wraps to Ask AI…
+  await page.keyboard.press('ArrowUp') // Code block
   await expect(menu.locator('[data-active]')).toHaveText('Code block')
   await page.keyboard.press('Enter')
   await page.keyboard.type('def add(a, b):\n    return a + b')

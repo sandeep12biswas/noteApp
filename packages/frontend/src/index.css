@@ -263,3 +263,19 @@
 .dark .ProseMirror pre .hljs-meta { color: #e3b341; }
 .dark .ProseMirror pre .hljs-addition { color: #aff5b4; background: #033a16; }
 .dark .ProseMirror pre .hljs-deletion { color: #ffdcd7; background: #67060c; }
+
+/* "/ Ask AI" draft (canvas/aiDraftExtension.ts): the prompt and the
+   streamed answer, tinted until Keep or Discard. Decorations only — none of
+   this is saved with the text, which keeps its own formatting. */
+.ProseMirror .ai-draft {
+  background: rgba(139, 92, 246, 0.12); /* violet-500 */
+  box-shadow: 0 1px 0 rgba(139, 92, 246, 0.6);
+}
+.dark .ProseMirror .ai-draft {
+  background: rgba(167, 139, 250, 0.18);
+  box-shadow: 0 1px 0 rgba(167, 139, 250, 0.6);
+}
+.ProseMirror .ai-draft-prompt {
+  font-style: italic;
+  opacity: 0.75;
+}
