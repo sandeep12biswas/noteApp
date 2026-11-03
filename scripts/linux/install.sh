@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Builds FlowNote from this source tree and installs it on the current
-# Linux machine. Two install paths, matching electron-builder.yml's two
+# Linux machine. Building is done here; installing is packaging/linux/
+# install.sh — the same script shipped with the prebuilt packages — run on
+# the fresh build. Two install paths, matching electron-builder.yml's two
 # `linux.target` outputs:
 #   1. .deb via apt/dpkg (default, when both are on PATH) — registers a
 #      normal system package: shows up in the software center / `apt list
@@ -8,7 +10,7 @@
 #      `apt remove`.
 #   2. .AppImage under ~/.local (--appimage, or automatic fallback when
 #      apt/dpkg aren't available) — no root needed; installs a desktop
-#      entry + launcher symlink under the current user's home directory.
+#      entry + `flownote` launcher under the current user's home directory.
 #
 # Either way this rebuilds all three pieces electron-builder.yml's own
 # comment describes (frontend, Electron main process, Rust sidecar) before
@@ -70,54 +72,6 @@ echo "==> Packaging (.deb + .AppImage)"
 (cd "$REPO_ROOT/apps/electron" && pnpm exec electron-builder --linux)
 
 RELEASE_DIR="$REPO_ROOT/apps/electron/release"
-DEB_FILE="$(find "$RELEASE_DIR" -maxdepth 1 -name '*.deb' | head -n1)"
-APPIMAGE_FILE="$(find "$RELEASE_DIR" -maxdepth 1 -name '*.AppImage' | head -n1)"
-
-use_appimage=0
-if [ "$FORCE_APPIMAGE" -eq 1 ]; then
-  use_appimage=1
-elif ! command -v dpkg >/dev/null 2>&1 || ! command -v apt >/dev/null 2>&1; then
-  use_appimage=1
-fi
-
-if [ "$use_appimage" -eq 0 ]; then
-  if [ -z "$DEB_FILE" ]; then
-    echo "error: expected a .deb under $RELEASE_DIR, none found" >&2
-    exit 1
-  fi
-  echo "==> Installing $DEB_FILE via apt (sudo required)"
-  # `apt install ./file.deb` (not `dpkg -i`) also resolves/installs the
-  # runtime deps electron-builder.yml declares (libgtk-3-0, libnss3, ...).
-  sudo apt install -y "$DEB_FILE"
-  echo "==> Installed. Launch FlowNote from your app menu, or run: flownote"
-else
-  if [ -z "$APPIMAGE_FILE" ]; then
-    echo "error: expected an .AppImage under $RELEASE_DIR, none found" >&2
-    exit 1
-  fi
-  INSTALL_DIR="$HOME/.local/opt/flownote"
-  BIN_DIR="$HOME/.local/bin"
-  DESKTOP_DIR="$HOME/.local/share/applications"
-  mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$DESKTOP_DIR"
-
-  echo "==> Installing AppImage to $INSTALL_DIR (no root needed)"
-  cp "$APPIMAGE_FILE" "$INSTALL_DIR/FlowNote.AppImage"
-  chmod +x "$INSTALL_DIR/FlowNote.AppImage"
-  ln -sf "$INSTALL_DIR/FlowNote.AppImage" "$BIN_DIR/flownote"
-
-  cat > "$DESKTOP_DIR/flownote.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=FlowNote
-Comment=Canvas note-taking app
-Exec=$INSTALL_DIR/FlowNote.AppImage %U
-Terminal=false
-Categories=Office;
-EOF
-
-  if [ ":$PATH:" != *":$BIN_DIR:"* ]; then
-    echo "note: $BIN_DIR isn't on your PATH — add it to your shell profile to run 'flownote' directly,"
-    echo "      or launch FlowNote from your app menu (desktop entry installed at $DESKTOP_DIR/flownote.desktop)."
-  fi
-  echo "==> Installed. Launch FlowNote from your app menu, or run: $BIN_DIR/flownote"
-fi
+INSTALL_ARGS=(--from "$RELEASE_DIR")
+[ "$FORCE_APPIMAGE" -eq 1 ] && INSTALL_ARGS+=(--appimage)
+exec "$REPO_ROOT/packaging/linux/install.sh" "${INSTALL_ARGS[@]}"

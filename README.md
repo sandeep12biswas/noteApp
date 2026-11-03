@@ -59,18 +59,31 @@ The `run-electron` and `run` skills in `.claude/skills/` automate driving the El
 
 ## Building & installing FlowNote
 
-FlowNote isn't distributed as prebuilt binaries yet — building an installer means building it from this source tree on the target OS. `scripts/` wraps that into one command per OS. Each script builds the frontend, builds the native shell, produces a real platform installer (`.deb`/`.AppImage` on Linux, `.msi`/NSIS `.exe` on Windows), and installs it; the matching uninstaller removes it again.
+Prebuilt packages come from CI (Linux: below; Windows: the `Windows installer` workflow). Otherwise, building an installer means building it from this source tree on the target OS. `scripts/` wraps that into one command per OS. Each script builds the frontend, builds the native shell, produces a real platform installer (`.deb`/`.AppImage` on Linux, `.msi`/NSIS `.exe` on Windows), and installs it; the matching uninstaller removes it again.
 
 ### Linux
 
+**Prebuilt (no build tools needed):** the `Linux installer` workflow (`.github/workflows/linux-installer.yml`, on `v*` tags or run by hand) builds the `flownote-linux` artifact — `FlowNote-<version>-amd64.deb`, `FlowNote-<version>-x86_64.AppImage`, and `packaging/linux/`'s `install.sh`, `uninstall.sh` and `README.txt`. Unzip it and:
+
+```bash
+./install.sh                    # the .deb on Debian/Ubuntu (sudo), otherwise the AppImage for your user only
+./install.sh --appimage         # the AppImage under ~/.local, no root
+./uninstall.sh                  # removes either install; asks whether to delete your notes too
+./uninstall.sh --remove-data    # ...and deletes them (--keep-data to keep them without asking)
+```
+
+Notes live in `~/.config/@flownote/electron/` and survive an uninstall unless you ask for them to be deleted. Where an AppImage can't be mounted (no FUSE 2), `install.sh` sets FlowNote up to unpack itself on start instead.
+
+**From source:**
+
 ```bash
 ./scripts/linux/install.sh      # builds + installs FlowNote (prefers a .deb via apt/dpkg, falls back to an AppImage under ~/.local)
-./scripts/linux/uninstall.sh    # removes it again, whichever install path was used
+./scripts/linux/uninstall.sh    # removes it again, whichever install path was used (same flags as above)
 ```
 
 Requires `pnpm`, `node`, and `cargo` on `PATH`; `sudo` is used only for the `.deb` path (installing a system package and registering a desktop entry). Run `./scripts/linux/install.sh --help` for flags (e.g. `--appimage` to force the AppImage path even when `apt`/`dpkg` are available).
 
-This is the same packaging `apps/electron/electron-builder.yml` and `pnpm --filter @flownote/electron run package` already produce — the script just builds all three pieces (frontend, Electron main process, Rust sidecar) in the right order and installs the result, instead of leaving you to run each step and the package manager by hand.
+The script builds all three pieces `apps/electron/electron-builder.yml` packages (frontend, Electron main process, Rust sidecar) in the right order, then installs the result with `packaging/linux/install.sh` — the same installer shipped with the prebuilt packages; `scripts/linux/uninstall.sh` likewise runs `packaging/linux/uninstall.sh`.
 
 ### Windows 11
 
