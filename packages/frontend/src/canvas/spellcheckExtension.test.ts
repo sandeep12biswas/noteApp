@@ -39,6 +39,19 @@ afterEach(() => {
 })
 
 describe('Spellcheck decoration', () => {
+  it('skips code blocks and inline code, but still checks the prose around them', async () => {
+    vi.spyOn(spellcheckModule, 'getSpellEngine').mockResolvedValue(fakeEngine(new Set(['wrold', 'println', 'const'])))
+    const editor = makeEditor('<p>wrold <code>const</code></p><pre><code>println</code></pre>')
+
+    await vi.advanceTimersByTimeAsync(300)
+
+    const text = editor.state.doc.textContent
+    expect(misspelledWordAt(editor.view, text.indexOf('wrold') + 2)?.word).toBe('wrold')
+    expect(misspelledWordAt(editor.view, text.indexOf('const') + 2)).toBeNull()
+    // The code block is the second block: +2 for its own opening position.
+    expect(misspelledWordAt(editor.view, text.indexOf('println') + 4)).toBeNull()
+  })
+
   it('decorates a misspelled word after the debounce fires, and misspelledWordAt finds it', async () => {
     vi.spyOn(spellcheckModule, 'getSpellEngine').mockResolvedValue(fakeEngine(new Set(['wrold'])))
     const editor = makeEditor('<p>hello wrold</p>')

@@ -20,11 +20,16 @@ import Underline from '@tiptap/extension-underline'
 import StarterKit from '@tiptap/starter-kit'
 import { PluginBlock } from '../plugins/pluginBlockNode'
 import { AttachmentBlock } from './attachmentBlockNode'
+import { CodeBlock } from './codeBlockNode'
 import { FontSize } from './fontSizeExtension'
 import { Spellcheck } from './spellcheckExtension'
 
 export const segmentEditorExtensions = [
-  StarterKit,
+  // StarterKit's own code block has no highlighting; `CodeBlock` (same node
+  // name and attributes, so saved content still loads) adds a language
+  // picker and syntax highlighting — issue #7, codeBlockNode.tsx.
+  StarterKit.configure({ codeBlock: false }),
+  CodeBlock,
   // One generic node for every plugin block type (DESIGN.md §9.2
   // `registerBlockType`) — always present, never added/removed per plugin;
   // see pluginBlockNode.tsx's module doc for why.

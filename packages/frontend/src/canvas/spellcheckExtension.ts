@@ -31,7 +31,11 @@ const FORCE_RESCAN_META = 'flownote-spellcheck-force-rescan'
 function scanDoc(state: EditorState, engine: Engine): DecorationSet {
   const decorations: Decoration[] = []
   state.doc.descendants((node, pos) => {
+    // Code (a code block, or text with the inline `code` mark) is
+    // identifiers and keywords, not English — don't flag it.
+    if (node.type.spec.code) return false
     if (!node.isText || !node.text) return
+    if (node.marks.some((m) => m.type.spec.code)) return
     for (const match of node.text.matchAll(WORD_PATTERN)) {
       const word = match[0]
       // Skip anything that's not going to be a real dictionary hit either

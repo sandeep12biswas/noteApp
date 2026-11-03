@@ -106,3 +106,160 @@
   text-decoration: line-through;
   opacity: 0.6;
 }
+
+/* Lists, quotes and code inside the editor (issue #8). Tailwind's preflight
+   strips list markers and padding and gives blockquote/pre no styling, so
+   choosing "Bulleted list", "Numbered list", "Quote" or "Code block" from
+   the `/` menu created the right node but it looked exactly like plain
+   text. Checklists are styled separately above. */
+.ProseMirror ul:not([data-type='taskList']) {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+.ProseMirror ul:not([data-type='taskList']) ul:not([data-type='taskList']) {
+  list-style-type: circle;
+}
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
+.ProseMirror blockquote {
+  border-left: 3px solid #d1d5db; /* gray-300 */
+  padding-left: 0.75rem;
+  color: #4b5563; /* gray-600 */
+}
+.dark .ProseMirror blockquote {
+  border-left-color: #4b5563;
+  color: #9ca3af;
+}
+.ProseMirror :not(pre) > code {
+  border-radius: 0.25rem;
+  background: #f3f4f6;
+  padding: 0.1em 0.3em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875em;
+}
+.dark .ProseMirror :not(pre) > code {
+  background: #1f2937;
+}
+
+/* Code block (canvas/codeBlockNode.tsx, issue #7): a framed block with the
+   language picker in its top-right corner. */
+.ProseMirror .code-block {
+  position: relative;
+  margin: 0.25rem 0;
+}
+.ProseMirror .code-block pre {
+  overflow-x: auto;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 0.6rem 0.75rem;
+  padding-top: 1.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #1f2937;
+  white-space: pre;
+  tab-size: 2;
+}
+.dark .ProseMirror .code-block pre {
+  border-color: #374151;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+.ProseMirror .code-block-language {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.35rem;
+  z-index: 1;
+  border-radius: 0.25rem;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0 0.25rem;
+  font-size: 0.7rem;
+  color: #6b7280;
+  cursor: pointer;
+}
+.ProseMirror .code-block-language:hover,
+.ProseMirror .code-block-language:focus {
+  border-color: #d1d5db;
+  background: #ffffff;
+  outline: none;
+}
+.dark .ProseMirror .code-block-language {
+  color: #9ca3af;
+}
+.dark .ProseMirror .code-block-language:hover,
+.dark .ProseMirror .code-block-language:focus {
+  border-color: #4b5563;
+  background: #111827;
+}
+
+/* Syntax colours for lowlight's `hljs-*` spans — GitHub-like light theme,
+   and a dark one for `.dark`. */
+.ProseMirror pre .hljs-comment,
+.ProseMirror pre .hljs-quote { color: #6a737d; font-style: italic; }
+.ProseMirror pre .hljs-keyword,
+.ProseMirror pre .hljs-selector-tag,
+.ProseMirror pre .hljs-meta .hljs-keyword,
+.ProseMirror pre .hljs-doctag { color: #d73a49; }
+.ProseMirror pre .hljs-string,
+.ProseMirror pre .hljs-regexp,
+.ProseMirror pre .hljs-meta .hljs-string { color: #032f62; }
+.ProseMirror pre .hljs-number,
+.ProseMirror pre .hljs-literal,
+.ProseMirror pre .hljs-variable,
+.ProseMirror pre .hljs-template-variable,
+.ProseMirror pre .hljs-attr,
+.ProseMirror pre .hljs-attribute,
+.ProseMirror pre .hljs-selector-attr,
+.ProseMirror pre .hljs-selector-class,
+.ProseMirror pre .hljs-selector-id { color: #005cc5; }
+.ProseMirror pre .hljs-title,
+.ProseMirror pre .hljs-title.function_,
+.ProseMirror pre .hljs-section { color: #6f42c1; }
+.ProseMirror pre .hljs-type,
+.ProseMirror pre .hljs-built_in,
+.ProseMirror pre .hljs-title.class_,
+.ProseMirror pre .hljs-symbol,
+.ProseMirror pre .hljs-bullet { color: #e36209; }
+.ProseMirror pre .hljs-name,
+.ProseMirror pre .hljs-tag { color: #22863a; }
+.ProseMirror pre .hljs-meta { color: #735c0f; }
+.ProseMirror pre .hljs-addition { color: #22863a; background: #f0fff4; }
+.ProseMirror pre .hljs-deletion { color: #b31d28; background: #ffeef0; }
+.ProseMirror pre .hljs-emphasis { font-style: italic; }
+.ProseMirror pre .hljs-strong { font-weight: 700; }
+
+.dark .ProseMirror pre .hljs-comment,
+.dark .ProseMirror pre .hljs-quote { color: #8b949e; }
+.dark .ProseMirror pre .hljs-keyword,
+.dark .ProseMirror pre .hljs-selector-tag,
+.dark .ProseMirror pre .hljs-meta .hljs-keyword,
+.dark .ProseMirror pre .hljs-doctag { color: #ff7b72; }
+.dark .ProseMirror pre .hljs-string,
+.dark .ProseMirror pre .hljs-regexp,
+.dark .ProseMirror pre .hljs-meta .hljs-string { color: #a5d6ff; }
+.dark .ProseMirror pre .hljs-number,
+.dark .ProseMirror pre .hljs-literal,
+.dark .ProseMirror pre .hljs-variable,
+.dark .ProseMirror pre .hljs-template-variable,
+.dark .ProseMirror pre .hljs-attr,
+.dark .ProseMirror pre .hljs-attribute,
+.dark .ProseMirror pre .hljs-selector-attr,
+.dark .ProseMirror pre .hljs-selector-class,
+.dark .ProseMirror pre .hljs-selector-id { color: #79c0ff; }
+.dark .ProseMirror pre .hljs-title,
+.dark .ProseMirror pre .hljs-title.function_,
+.dark .ProseMirror pre .hljs-section { color: #d2a8ff; }
+.dark .ProseMirror pre .hljs-type,
+.dark .ProseMirror pre .hljs-built_in,
+.dark .ProseMirror pre .hljs-title.class_,
+.dark .ProseMirror pre .hljs-symbol,
+.dark .ProseMirror pre .hljs-bullet { color: #ffa657; }
+.dark .ProseMirror pre .hljs-name,
+.dark .ProseMirror pre .hljs-tag { color: #7ee787; }
+.dark .ProseMirror pre .hljs-meta { color: #e3b341; }
+.dark .ProseMirror pre .hljs-addition { color: #aff5b4; background: #033a16; }
+.dark .ProseMirror pre .hljs-deletion { color: #ffdcd7; background: #67060c; }

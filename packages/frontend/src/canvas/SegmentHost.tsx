@@ -12,6 +12,7 @@ import { GAP_HIGHLIGHT_THRESHOLD, clampResizeWidth, gapLineFor, idsWithinGap, re
 import { handleAttachmentPaste } from '../lib/attachmentPaste'
 import { DEFAULT_SEGMENT_HEIGHT, useCanvasStore, type Segment } from '../store/canvasStore'
 import { getIPCAdapter } from '../store/notebookStore'
+import { useExtensionRegistry } from '../store/extensionRegistry'
 import { useUIStore } from '../store/uiStore'
 import { applyDefaultFontIfNew } from './applyDefaultFontIfNew'
 import { AttachmentChoiceMenu } from './AttachmentChoiceMenu'
@@ -19,7 +20,7 @@ import { insertPluginBlock } from './insertPluginBlock'
 import { SegmentColorMenu } from './SegmentColorMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { misspelledWordAt } from './spellcheckExtension'
-import { SlashMenu } from './SlashMenu'
+import { SlashMenu, slashMenuItems } from './SlashMenu'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 
 const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
@@ -60,7 +61,25 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   const [colorMenu, setColorMenu] = useState<{ x: number; y: number } | null>(null)
   // `charPos` is the ProseMirror position right after the "/" — needed to
   // delete it before applying the chosen block type.
-  const [slashMenu, setSlashMenu] = useState<{ x: number; y: number; charPos: number } | null>(null)
+  const [slashMenu, setSlashMenuState] = useState<{ x: number; y: number; charPos: number } | null>(null)
+  // Highlighted item while the menu is open (issue #8). Both are mirrored
+  // into refs synchronously: the editor's `handleKeyDown` (created once with
+  // the editor) reads them on the very next keystroke.
+  const [slashIndex, setSlashIndexState] = useState(0)
+  const slashMenuRef = useRef(slashMenu)
+  const slashIndexRef = useRef(0)
+  const setSlashMenu = (value: { x: number; y: number; charPos: number } | null) => {
+    if (value && !slashMenuRef.current) setSlashIndex(0) // a fresh menu starts on the first item
+    slashMenuRef.current = value
+    setSlashMenuState(value)
+  }
+  const setSlashIndex = (index: number) => {
+    slashIndexRef.current = index
+    setSlashIndexState(index)
+  }
+  // Applies the menu item at an index; reassigned every render so it sees
+  // the current editor and menu position.
+  const selectSlashItemRef = useRef<(index: number) => void>(() => {})
   const [spellMenu, setSpellMenu] = useState<{ x: number; y: number; word: string; from: number; to: number } | null>(null)
   const [attachmentChoice, setAttachmentChoice] = useState<{
     x: number
@@ -117,6 +136,40 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       // with LinearSegmentHost.tsx via lib/attachmentPaste.ts, not
       // reimplemented per host; see that module's own doc for why.
       handlePaste: (view, event) => handleAttachmentPaste(view, event, segment.id, getIPCAdapter(), { onChooseMode: setAttachmentChoice }),
+      // Issue #8: while the `/` menu is open, focus stays here in the editor
+      // (the user is still typing), so the menu's own keys have to be
+      // handled here — otherwise ArrowDown moved the caret, Enter split the
+      // line and the menu closed with nothing applied.
+      handleKeyDown: (_view, event) => {
+        if (!slashMenuRef.current) return false
+        const count = slashMenuItems(useExtensionRegistry.getState().slashCommands).length
+        if (count === 0) return false
+        switch (event.key) {
+          case 'ArrowDown':
+            setSlashIndex((slashIndexRef.current + 1) % count)
+            return true
+          case 'ArrowUp':
+            setSlashIndex((slashIndexRef.current - 1 + count) % count)
+            return true
+          case 'Home':
+            setSlashIndex(0)
+            return true
+          case 'End':
+            setSlashIndex(count - 1)
+            return true
+          // Tab is left alone: it still moves focus into the menu, where
+          // the arrows move focus and Enter clicks (useMenuKeyboardNav).
+          case 'Enter':
+            if (event.shiftKey) return false
+            selectSlashItemRef.current(Math.min(slashIndexRef.current, count - 1))
+            return true
+          case 'Escape':
+            setSlashMenu(null)
+            return true
+          default:
+            return false
+        }
+      },
     },
     onUpdate: ({ editor }) => {
       const json = editor.getJSON()
@@ -422,6 +475,13 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     setSlashMenu(null)
   }
 
+  selectSlashItemRef.current = (index: number) => {
+    const item = slashMenuItems(useExtensionRegistry.getState().slashCommands)[index]
+    if (!item) return
+    if (item.kind === 'core') applyCoreBlock(item.id)
+    else applyPluginBlock(item.pluginId, item.id)
+  }
+
   const revealed = isActive || segment.borderColor !== null
 
   return (
@@ -520,6 +580,8 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
         <SlashMenu
           x={slashMenu.x}
           y={slashMenu.y}
+          activeIndex={slashIndex}
+          onActiveIndexChange={setSlashIndex}
           onSelectCore={applyCoreBlock}
           onSelectPlugin={applyPluginBlock}
           onClose={() => setSlashMenu(null)}

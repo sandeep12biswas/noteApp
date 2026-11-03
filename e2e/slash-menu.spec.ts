@@ -58,3 +58,65 @@ test('"/" mid-word (not at an empty line start) never opens the menu', async ({ 
   await editable.pressSequentially('abc/')
   await expect(page.getByRole('menu', { name: 'Insert block' })).not.toBeVisible()
 })
+
+// Issue #8: the menu opens while the user is typing, so focus is in the
+// editor — the arrow keys and Enter have to drive the menu from there,
+// without tabbing into it first.
+test('arrow keys move the highlight and Enter applies it, without leaving the editor', async ({ page }) => {
+  const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+  await editable.pressSequentially('/')
+  const menu = page.getByRole('menu', { name: 'Insert block' })
+  await expect(menu.locator('[data-active]')).toHaveText('Text')
+
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await expect(menu.locator('[data-active]')).toHaveText('Heading 2')
+  await page.keyboard.press('Enter')
+
+  await expect(menu).not.toBeVisible()
+  await page.keyboard.type('Agenda')
+  await expect(editable.locator('h2')).toHaveText('Agenda')
+  await expect(editable).not.toContainText('/')
+})
+
+test('ArrowUp from the first item wraps to the last', async ({ page }) => {
+  const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+  await editable.pressSequentially('/')
+  await page.keyboard.press('ArrowUp')
+  await expect(page.getByRole('menu', { name: 'Insert block' }).locator('[data-active]')).toHaveText('Code block')
+  await page.keyboard.press('Enter')
+  await expect(editable.locator('pre')).toBeVisible()
+})
+
+test('Escape closes the menu and keeps the typed "/"', async ({ page }) => {
+  const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+  await editable.pressSequentially('/')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('menu', { name: 'Insert block' })).not.toBeVisible()
+  await expect(editable).toHaveText('/')
+})
+
+// Issue #8, second half: these block types were created but Tailwind's
+// reset made them look exactly like plain text.
+test('lists, quotes and code blocks look different from plain text', async ({ page }) => {
+  const editable = page.locator('[data-testid^="segment-"] .ProseMirror')
+  const menu = page.getByRole('menu', { name: 'Insert block' })
+  const choose = async (name: string) => {
+    await editable.press('End')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Enter') // leave the previous list/quote
+    await page.keyboard.type('/')
+    await menu.getByRole('menuitem', { name }).click()
+    await page.keyboard.type(name)
+  }
+  await page.keyboard.type('start')
+  await choose('Bulleted list')
+  await choose('Numbered list')
+  await choose('Quote')
+
+  const ul = editable.locator('ul').first()
+  await expect(ul).toHaveCSS('list-style-type', 'disc')
+  expect(parseFloat(await ul.evaluate((el) => getComputedStyle(el).paddingLeft))).toBeGreaterThan(0)
+  await expect(editable.locator('ol').first()).toHaveCSS('list-style-type', 'decimal')
+  expect(parseFloat(await editable.locator('blockquote').evaluate((el) => getComputedStyle(el).borderLeftWidth))).toBeGreaterThan(0)
+})

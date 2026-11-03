@@ -3,6 +3,12 @@
 // `SegmentHost`); core block types render first, then a "Plugins" section
 // populated from `ExtensionPointRegistry.slashCommands` (empty until
 // Phase 7's `PluginIPCBridge` wires `registerSlashCommand` — DESIGN.md §9.2).
+//
+// Keyboard (issue #8): the menu opens while the user is typing, so focus
+// stays in the editor and the editor forwards ArrowUp/ArrowDown/Enter/
+// Escape here (`SegmentHost`'s `handleKeyDown`). `activeIndex` is the
+// highlighted item, owned by the host so its key handler can apply it.
+// Tabbing into the menu and moving focus with the arrows still works too.
 import { useEffect, useRef } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import { useExtensionRegistry } from '../store/extensionRegistry'
@@ -24,15 +30,34 @@ export const CORE_BLOCK_OPTIONS: CoreBlockOption[] = [
   { id: 'codeBlock', label: 'Code block' },
 ]
 
+export type SlashMenuItem =
+  | { kind: 'core'; id: string; label: string }
+  | { kind: 'plugin'; pluginId: string; id: string; label: string }
+
+/** Every item in the menu, in display order: core block types, then plugin commands. */
+export function slashMenuItems(pluginCommands: Record<string, { pluginId: string; id: string; label: string }>): SlashMenuItem[] {
+  return [
+    ...CORE_BLOCK_OPTIONS.map((o): SlashMenuItem => ({ kind: 'core', id: o.id, label: o.label })),
+    ...Object.values(pluginCommands).map((c): SlashMenuItem => ({ kind: 'plugin', pluginId: c.pluginId, id: c.id, label: c.label })),
+  ]
+}
+
+const ITEM_CLASS = 'block w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800'
+const ACTIVE_CLASS = ' bg-gray-100 dark:bg-gray-800'
+
 export function SlashMenu({
   x,
   y,
+  activeIndex = 0,
+  onActiveIndexChange,
   onSelectCore,
   onSelectPlugin,
   onClose,
 }: {
   x: number
   y: number
+  activeIndex?: number
+  onActiveIndexChange?: (index: number) => void
   onSelectCore: (id: string) => void
   onSelectPlugin: (pluginId: string, id: string) => void
   onClose: () => void
@@ -40,6 +65,13 @@ export function SlashMenu({
   const ref = useRef<HTMLDivElement | null>(null)
   const pluginCommands = useExtensionRegistry((s) => s.slashCommands)
   useMenuKeyboardNav(ref, { autoFocus: false })
+
+  // Keep the highlighted item visible when the arrows move past the menu's
+  // scroll area. (`scrollIntoView` is missing in jsdom.)
+  useEffect(() => {
+    const el = ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]')[activeIndex]
+    el?.scrollIntoView?.({ block: 'nearest' })
+  }, [activeIndex])
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -73,13 +105,15 @@ export function SlashMenu({
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}
     >
-      {CORE_BLOCK_OPTIONS.map((opt) => (
+      {CORE_BLOCK_OPTIONS.map((opt, i) => (
         <button
           key={opt.id}
           type="button"
           role="menuitem"
+          data-active={i === activeIndex || undefined}
           onClick={() => onSelectCore(opt.id)}
-          className="block w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+          onMouseEnter={() => onActiveIndexChange?.(i)}
+          className={ITEM_CLASS + (i === activeIndex ? ACTIVE_CLASS : '')}
         >
           {opt.label}
         </button>
@@ -89,17 +123,22 @@ export function SlashMenu({
           <div className="mt-1 border-t border-gray-100 px-3 pt-1 text-[10px] font-semibold uppercase text-gray-400 dark:border-gray-800">
             Plugins
           </div>
-          {pluginList.map((cmd) => (
+          {pluginList.map((cmd, j) => {
+            const i = CORE_BLOCK_OPTIONS.length + j
+            return (
             <button
               key={`${cmd.pluginId}/${cmd.id}`}
               type="button"
               role="menuitem"
+              data-active={i === activeIndex || undefined}
               onClick={() => onSelectPlugin(cmd.pluginId, cmd.id)}
-              className="block w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+              onMouseEnter={() => onActiveIndexChange?.(i)}
+              className={ITEM_CLASS + (i === activeIndex ? ACTIVE_CLASS : '')}
             >
               {cmd.label}
             </button>
-          ))}
+            )
+          })}
         </>
       )}
     </div>
