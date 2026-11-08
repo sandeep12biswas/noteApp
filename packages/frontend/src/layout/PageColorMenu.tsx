@@ -1,6 +1,7 @@
 // Ribbon → View → "Page colour" (issue #11): the editor background in light
 // mode, for this page (saved with it, syncs) or for all pages (a per-device
-// default, store/editorBackgroundStore.ts).
+// default, store/editorBackgroundStore.ts). Any colour is allowed: the
+// editor's text follows the background (issue #12).
 import { useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import { useNotebookStore } from '../store/notebookStore'

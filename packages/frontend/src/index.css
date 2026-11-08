@@ -291,12 +291,51 @@
   color: inherit;
 }
 
-/* Editor background (issue #11), light mode only — the dark theme keeps its
-   own background, and the chosen colour comes back on switching to light
-   (themeStore's `.dark` class, "system" included). EditorPane sets
-   `--editor-bg` and `data-editor-bg` only when a page colour or default is
-   chosen; with none, the pane stays as before. Nothing inside the pane
-   (title header, canvas, linear view) paints a background of its own. */
-:root:not(.dark) [data-editor-bg] {
+/* Editor background (issue #11) and text that follows it (issue #12),
+   light mode only — the dark theme keeps its own colours, and the chosen
+   ones come back on switching to light (themeStore's `.dark` class,
+   "system" included). EditorPane sets `--editor-bg` and the `--editor-*`
+   ink colours (`editorInk`, lib/textColors.ts) only when a page colour or
+   default is chosen, and marks the pane `data-editor-ink` then; with none,
+   none of this applies and the pane looks as before. Unlayered, so these
+   win over the Tailwind utilities (`text-gray-900`, `border-gray-100`, …)
+   on the same elements. Code blocks, highlights and segment colours keep
+   their own colours; menus inside the pane set their own text colour. */
+:root:not(.dark) [data-editor-ink] {
   background-color: var(--editor-bg);
+  color: var(--editor-fg);
+}
+:root:not(.dark) [data-editor-ink] .editor-fg {
+  color: var(--editor-fg);
+}
+:root:not(.dark) [data-editor-ink] .editor-muted {
+  color: var(--editor-muted);
+}
+:root:not(.dark) [data-editor-ink] .editor-border {
+  border-color: var(--editor-border);
+}
+:root:not(.dark) [data-editor-ink] .editor-hover-border:hover {
+  border-color: var(--editor-border);
+}
+:root:not(.dark) [data-editor-ink] .editor-drag-handle {
+  border-color: var(--editor-border);
+  background-color: var(--editor-bg);
+}
+:root:not(.dark) [data-editor-ink] .editor-resize-handle {
+  background-color: var(--editor-border);
+}
+:root:not(.dark) [data-editor-ink] .ProseMirror blockquote {
+  border-left-color: var(--editor-border);
+  color: var(--editor-muted);
+}
+:root:not(.dark) [data-editor-ink] .ProseMirror :not(pre) > code {
+  background: var(--editor-faint);
+}
+
+/* "Show me" on the contrast notice (layout/ContrastNotice.tsx, issue #12):
+   briefly outlines the coloured passages that are hard to read. */
+.contrast-flash {
+  outline: 2px dashed #f59e0b;
+  outline-offset: 1px;
+  border-radius: 2px;
 }

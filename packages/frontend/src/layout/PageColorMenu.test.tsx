@@ -86,7 +86,7 @@ describe('Page colour menu', () => {
     expect(useEditorBackgroundStore.getState().defaultBackground).toBeNull()
   })
 
-  it('Custom… sets any colour for this page', async () => {
+  it('allows a dark custom colour (the text follows it, issue #12)', async () => {
     const { a } = seedPages()
     const user = userEvent.setup()
     render(<PageColorButton />)

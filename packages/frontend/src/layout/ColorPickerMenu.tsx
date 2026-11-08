@@ -6,8 +6,13 @@
 // it is simpler and more capable than building a custom one). Same popover
 // pattern as SegmentColorMenu.tsx/FolderIconMenu.tsx (outside-click/Escape
 // to close, roving keyboard nav).
-import { type RefObject, useEffect, useRef } from 'react'
+//
+// The Text colour menu also gets `suggested` colours and a `lowContrast`
+// check when the page has a background colour (issue #12).
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
+
+export const LOW_CONTRAST_TITLE = 'Hard to read on this background'
 
 /** Closes a popover on an outside pointer-down or Escape. */
 export function useDismiss(ref: RefObject<HTMLElement | null>, onClose: () => void) {
@@ -40,6 +45,7 @@ export function SwatchGrid({
   colors,
   activeColor,
   onPick,
+  isLowContrast,
 }: {
   /** Each swatch is labelled "<label> <colour name or value>". */
   label: string
@@ -48,12 +54,14 @@ export function SwatchGrid({
   colors: readonly (string | { name: string; color: string })[]
   activeColor: string | null
   onPick: (color: string) => void
+  isLowContrast?: (color: string) => boolean
 }) {
   return (
     <div className="grid grid-cols-5 gap-1.5" role="group" aria-label={groupLabel}>
       {colors.map((entry) => {
         const { name, color } = typeof entry === 'string' ? { name: entry, color: entry } : entry
         const active = activeColor === color
+        const low = isLowContrast?.(color) ?? false
         return (
           <button
             key={color}
@@ -61,9 +69,14 @@ export function SwatchGrid({
             role="menuitemradio"
             aria-checked={active}
             aria-label={`${label} ${name}`}
-            title={name}
+            title={low ? `${name}: ${LOW_CONTRAST_TITLE}` : name}
+            data-low-contrast={low || undefined}
             onClick={() => onPick(color)}
-            className={'h-6 w-6 rounded-full border-2' + (active ? ' ring-2 ring-offset-1 ring-blue-500' : '')}
+            className={
+              'h-6 w-6 rounded-full border-2' +
+              (active ? ' ring-2 ring-offset-1 ring-blue-500' : '') +
+              (low ? ' opacity-40' : '')
+            }
             // A light swatch (White) would vanish against the menu without a visible edge.
             style={{ backgroundColor: color, borderColor: color === '#ffffff' ? '#d1d5db' : color }}
           />
@@ -78,13 +91,16 @@ export function CustomColorInput({
   label,
   value,
   onPick,
+  note,
 }: {
   label: string
   value: string
   onPick: (color: string) => void
+  note?: ReactNode
 }) {
   return (
-    <label className="flex items-center gap-1.5 rounded px-1 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
+    <div className="flex flex-col">
+      <label className="flex items-center gap-1.5 rounded px-1 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
         <input
           type="color"
           aria-label={label}
@@ -94,6 +110,8 @@ export function CustomColorInput({
         />
         Custom…
       </label>
+      {note}
+    </div>
   )
 }
 
@@ -106,6 +124,8 @@ export function ColorPickerMenu({
   onPick,
   onClear,
   onClose,
+  suggested,
+  lowContrast,
 }: {
   x: number
   y: number
@@ -115,10 +135,15 @@ export function ColorPickerMenu({
   onPick: (color: string) => void
   onClear?: () => void
   onClose: () => void
+  /** Colours that read well on the page's background, shown first as "Suggested" (issue #12). */
+  suggested?: readonly string[]
+  /** Marks colours that are hard to read on the page's background: dimmed, still selectable. */
+  lowContrast?: (color: string) => boolean
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
   useMenuKeyboardNav(ref)
   useDismiss(ref, onClose)
+  const [custom, setCustom] = useState<string | null>(null)
 
   const pickAndClose = (color: string) => {
     onPick(color)
@@ -134,17 +159,34 @@ export function ColorPickerMenu({
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
+      {suggested && suggested.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="px-0.5 text-[10px] font-medium text-gray-500 uppercase dark:text-gray-400">Suggested</span>
+          <SwatchGrid label={`${label} suggested`} colors={suggested} activeColor={activeColor} onPick={pickAndClose} />
+        </div>
+      )}
       <SwatchGrid
         label={label}
         groupLabel={`${label} swatches`}
         colors={colors}
         activeColor={activeColor}
         onPick={pickAndClose}
+        isLowContrast={lowContrast}
       />
       <CustomColorInput
         label={`Custom ${label.toLowerCase()}`}
         value={activeColor}
-        onPick={onPick}
+        onPick={(color) => {
+          setCustom(color)
+          onPick(color)
+        }}
+        note={
+          custom && lowContrast?.(custom) ? (
+            <p role="status" className="px-1 text-[11px] text-amber-700 dark:text-amber-400">
+              {LOW_CONTRAST_TITLE}
+            </p>
+          ) : null
+        }
       />
       {onClear && (
         <button

@@ -3,8 +3,9 @@
 // theme (themeStore.ts) and default font (fontStore.ts); a page's own colour
 // is saved with the page (notebookStore's `FileEntry.background`) and syncs.
 // Effective colour = page colour ?? default ?? none (the pane stays white).
-// Any colour is allowed; the editor's text following the background (so
-// dark colours stay readable) is issue #12.
+//
+// Any colour is allowed: the editor's text follows the background (issue
+// #12, `editorInk` in lib/textColors.ts), so dark colours stay readable.
 import { create } from 'zustand'
 import { useNotebookStore } from './notebookStore'
 
