@@ -5,6 +5,7 @@ import { EditorPane } from './EditorPane'
 import { PageList } from './PageList'
 import { useCanvasStore } from '../store/canvasStore'
 import { DEFAULT_MAX_FOLDER_DEPTH, useNotebookStore } from '../store/notebookStore'
+import { useEditorBackgroundStore } from '../store/editorBackgroundStore'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -99,5 +100,30 @@ describe('EditorPane mode switch (DESIGN.md §4.3)', () => {
 
     expect(useCanvasStore.getState().segments[segId]).toBeDefined()
     expect(useCanvasStore.getState().segments[segId]?.x).toBe(10)
+  })
+})
+
+describe('EditorPane background (issue #11)', () => {
+  it('has no background when none is chosen', () => {
+    seedSelectedFile()
+    useEditorBackgroundStore.setState({ defaultBackground: null })
+    render(<EditorPane />)
+    const pane = screen.getByTestId('editor-pane')
+    expect(pane).not.toHaveAttribute('data-editor-bg')
+    expect(pane.style.getPropertyValue('--editor-bg')).toBe('')
+  })
+
+  it('uses the page colour over the default', () => {
+    const id = seedSelectedFile()
+    useEditorBackgroundStore.setState({ defaultBackground: '#ecfdf5' })
+    const { rerender } = render(<EditorPane />)
+    const pane = screen.getByTestId('editor-pane')
+    expect(pane).toHaveAttribute('data-editor-bg', '#ecfdf5')
+    expect(pane.style.getPropertyValue('--editor-bg')).toBe('#ecfdf5')
+
+    useNotebookStore.getState().setFileBackground(id, '#1e3a8a')
+    rerender(<EditorPane />)
+    expect(pane.style.getPropertyValue('--editor-bg')).toBe('#1e3a8a')
+    useEditorBackgroundStore.setState({ defaultBackground: null })
   })
 })

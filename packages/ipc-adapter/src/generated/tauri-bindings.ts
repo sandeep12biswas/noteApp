@@ -141,6 +141,14 @@ async setPageMode(pageId: string, mode: string) : Promise<Result<null, string>> 
     else return { status: "error", error: e  as any };
 }
 },
+async setPageBackground(pageId: string, background: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_page_background", { pageId, background }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async saveInkLayer(pageId: string, dataUrl: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("save_ink_layer", { pageId, dataUrl }) };
@@ -346,7 +354,7 @@ export type AttachmentWithPathDto = { id: string; fileName: string; mimeType: st
 export type FolderDto = { id: string; name: string; parentId: string | null; icon: string | null; expanded: boolean }
 export type FolderInput = { id: string; name: string; parentId: string | null; icon: string | null; expanded: boolean }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
-export type PageDto = { id: string; notebookId: string; title: string; mode: string; createdAt: number; updatedAt: number }
+export type PageDto = { id: string; notebookId: string; title: string; mode: string; createdAt: number; updatedAt: number; background: string | null }
 export type PageInput = { id: string; folderId: string; title: string }
 export type SearchResultDto = { pageId: string; segmentId: string; snippet: string }
 export type SegmentDto = { id: string; pageId: string; x: number; y: number; w: number; h: number; zIndex: number; borderColor: string | null; fillColor: string | null; content: JsonValue }

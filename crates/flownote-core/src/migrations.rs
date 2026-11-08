@@ -60,6 +60,11 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/V9__sync_outbox_triggers.sql"),
     },
     Migration { version: 10, name: "sync_engine", sql: include_str!("../migrations/V10__sync_engine.sql") },
+    Migration {
+        version: 11,
+        name: "page_background",
+        sql: include_str!("../migrations/V11__page_background.sql"),
+    },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -133,7 +138,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 10);
+        assert_eq!(applied, 11);
     }
 
     #[test]

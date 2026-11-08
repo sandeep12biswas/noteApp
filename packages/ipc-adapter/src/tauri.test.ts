@@ -31,6 +31,7 @@ describe('TauriIPCAdapter.getPage', () => {
         mode: 'canvas',
         createdAt: 0,
         updatedAt: 0,
+        background: '#f8f1e3',
       },
     })
 
@@ -42,6 +43,7 @@ describe('TauriIPCAdapter.getPage', () => {
       mode: 'canvas',
       createdAt: 0,
       updatedAt: 0,
+      background: '#f8f1e3',
     })
   })
 
@@ -71,6 +73,7 @@ describe('TauriIPCAdapter.getPage', () => {
         mode: 'freeform' as 'canvas',
         createdAt: 0,
         updatedAt: 0,
+        background: null,
       },
     })
 
@@ -93,6 +96,8 @@ describe('TauriIPCAdapter: store-backed methods forward args and unwrap results'
     ['openAttachment', ['att-1'], null],
     ['search', ['quarterly', 'nb-1'], [{ pageId: 'page-1', segmentId: 'seg-1', snippet: 'quarterly…' }]],
     ['setPageMode', ['page-1', 'linear'], null],
+    ['setPageBackground', ['page-1', '#f8f1e3'], null],
+    ['setPageBackground', ['page-1', null], null],
     ['installPlugin', ['{"id":"p"}'], { id: 'p', enabled: true }],
     ['uninstallPlugin', ['p'], null],
     ['setPluginEnabled', ['p', false], null],

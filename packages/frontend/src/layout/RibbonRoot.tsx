@@ -21,6 +21,7 @@ import { useFontStore } from '../store/fontStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
 import { AiSettingsDialog } from './AiSettingsDialog'
 import { ColorPickerMenu } from './ColorPickerMenu'
+import { PageColorButton } from './PageColorMenu'
 
 // Format Painter — DESIGN-parity with Word/OneNote's paintbrush: click to
 // capture the current selection's formatting and arm a single application
@@ -485,8 +486,18 @@ function DrawToolsPanel() {
 // DESIGN.md §5.3 View row: "Ruler · Dot-grid overlay · Zoom in/out" — only
 // Zoom is built here (Phase 6); Ruler/Dot-grid are pure visual overlays
 // with no functional dependency on anything else and are deferred rather
-// than rushed.
+// than rushed. Page colour (issue #11) sits next to Zoom.
 function ViewToolsPanel() {
+  return (
+    <div className="flex items-center gap-1">
+      <ZoomControls />
+      <Divider />
+      <PageColorButton />
+    </div>
+  )
+}
+
+function ZoomControls() {
   const zoom = useUIStore((s) => s.zoom)
   const zoomIn = useUIStore((s) => s.zoomIn)
   const zoomOut = useUIStore((s) => s.zoomOut)

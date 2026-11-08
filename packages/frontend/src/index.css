@@ -290,3 +290,13 @@
 .ProseMirror span[style*='color:'] mark[data-color] {
   color: inherit;
 }
+
+/* Editor background (issue #11), light mode only — the dark theme keeps its
+   own background, and the chosen colour comes back on switching to light
+   (themeStore's `.dark` class, "system" included). EditorPane sets
+   `--editor-bg` and `data-editor-bg` only when a page colour or default is
+   chosen; with none, the pane stays as before. Nothing inside the pane
+   (title header, canvas, linear view) paints a background of its own. */
+:root:not(.dark) [data-editor-bg] {
+  background-color: var(--editor-bg);
+}

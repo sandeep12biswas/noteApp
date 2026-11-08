@@ -48,6 +48,10 @@ pub struct PageDto {
     pub mode: String,
     pub created_at: i64,
     pub updated_at: i64,
+    // The page's own editor background (`#rrggbb`), or `None` to use the
+    // app-wide default. (A `//` comment: specta would copy a doc comment
+    // into the generated TypeScript type.)
+    pub background: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
@@ -208,6 +212,10 @@ fn delete_attachment_impl(conn: &Connection, id: &str) -> Result<(), String> {
 
 fn set_page_mode_impl(conn: &Connection, page_id: &str, mode: &str) -> Result<(), String> {
     store::set_page_mode(conn, &json!({ "pageId": page_id, "mode": mode }))
+}
+
+fn set_page_background_impl(conn: &Connection, page_id: &str, background: Option<&str>) -> Result<(), String> {
+    store::set_page_background(conn, &json!({ "pageId": page_id, "background": background }))
 }
 
 fn save_ink_layer_impl(conn: &Connection, page_id: &str, data_url: &str) -> Result<(), String> {
@@ -382,6 +390,12 @@ pub fn open_attachment(state: State<AppState>, id: String) -> Result<(), String>
 #[specta::specta]
 pub fn set_page_mode(state: State<AppState>, page_id: String, mode: String) -> Result<(), String> {
     with_conn(&state, |c| set_page_mode_impl(c, &page_id, &mode))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_page_background(state: State<AppState>, page_id: String, background: Option<String>) -> Result<(), String> {
+    with_conn(&state, |c| set_page_background_impl(c, &page_id, background.as_deref()))
 }
 
 #[tauri::command]
@@ -612,6 +626,7 @@ mod tests {
                 mode: "canvas".into(),
                 created_at: 0,
                 updated_at: 0,
+                background: None,
             }
         );
     }
@@ -966,6 +981,18 @@ mod tests {
         assert_eq!(get_page_impl(&conn, "page-1").unwrap().mode, "linear");
         assert!(set_page_mode_impl(&conn, "page-1", "sideways").unwrap_err().contains("invalid mode"));
         assert!(set_page_mode_impl(&conn, "missing", "canvas").unwrap_err().contains("no such page"));
+    }
+
+    #[test]
+    fn set_page_background_round_trips_and_rejects_bad_input() {
+        let conn = conn_with_page("page-1");
+        assert_eq!(get_page_impl(&conn, "page-1").unwrap().background, None);
+        set_page_background_impl(&conn, "page-1", Some("#ecfdf5")).unwrap();
+        assert_eq!(get_page_impl(&conn, "page-1").unwrap().background.as_deref(), Some("#ecfdf5"));
+        set_page_background_impl(&conn, "page-1", None).unwrap();
+        assert_eq!(get_page_impl(&conn, "page-1").unwrap().background, None);
+        assert!(set_page_background_impl(&conn, "page-1", Some("red")).unwrap_err().contains("invalid colour"));
+        assert!(set_page_background_impl(&conn, "missing", None).unwrap_err().contains("no such page"));
     }
 
     #[test]

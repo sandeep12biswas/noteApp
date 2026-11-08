@@ -144,6 +144,12 @@ export const appRouter = t.router({
     .input((input: unknown): { pageId: string; mode: 'canvas' | 'linear' } => input as never)
     .mutation(({ ctx, input }) => ctx.sidecar.request('set_page_mode', { pageId: input.pageId, mode: input.mode })),
 
+  setPageBackground: t.procedure
+    .input((input: unknown): { pageId: string; background: string | null } => input as never)
+    .mutation(({ ctx, input }) =>
+      ctx.sidecar.request('set_page_background', { pageId: input.pageId, background: input.background }),
+    ),
+
   search: t.procedure
     .input((input: unknown): { query: string; notebookId: string } => input as never)
     .query(({ ctx, input }) => ctx.sidecar.request('search', { query: input.query, notebookId: input.notebookId })),

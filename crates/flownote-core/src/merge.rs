@@ -41,7 +41,7 @@ use crate::store::{self, in_transaction, now_ms};
 /// Field order per collection — the same order `crdt`'s row readers use, so
 /// a document record and a row compare field by field (checked by a test).
 const FOLDER_FIELDS: &[&str] = &["name", "parentId", "icon"];
-const PAGE_FIELDS: &[&str] = &["folderId", "title", "mode"];
+const PAGE_FIELDS: &[&str] = &["folderId", "title", "mode", "background"];
 const SEGMENT_FIELDS: &[&str] = &["x", "y", "w", "h", "zIndex", "borderColor", "fillColor", "content"];
 const ATTACHMENT_FIELDS: &[&str] = &["segmentId", "fileName", "mimeType", "size", "sha256"];
 
@@ -489,12 +489,19 @@ fn materialize_notebook(conn: &Connection, doc: &AutoCommit) -> Result<Vec<Strin
             new_pages.push(id.clone());
         }
         conn.execute(
-            "INSERT INTO pages (id, notebook_id, folder_id, title, mode, created_at, updated_at)
-             VALUES (?1, 'nb-1', ?2, ?3, ?4, ?5, ?5)
+            "INSERT INTO pages (id, notebook_id, folder_id, title, mode, background, created_at, updated_at)
+             VALUES (?1, 'nb-1', ?2, ?3, ?4, ?5, ?6, ?6)
              ON CONFLICT(id) DO UPDATE SET
                folder_id = excluded.folder_id, title = excluded.title, mode = excluded.mode,
-               updated_at = excluded.updated_at",
-            rusqlite::params![id, text(fields, "folderId"), text(fields, "title"), text(fields, "mode"), now],
+               background = excluded.background, updated_at = excluded.updated_at",
+            rusqlite::params![
+                id,
+                text(fields, "folderId"),
+                text(fields, "title"),
+                text(fields, "mode"),
+                text(fields, "background"),
+                now
+            ],
         )
         .map_err(crdt::err)?;
     }
@@ -647,7 +654,7 @@ pub(crate) mod tests {
         };
         json!({
             "folders": query("SELECT id, name, parent_id, icon FROM folders ORDER BY id"),
-            "pages": query("SELECT id, folder_id, title, mode, ink_layer FROM pages ORDER BY id"),
+            "pages": query("SELECT id, folder_id, title, mode, background, ink_layer FROM pages ORDER BY id"),
             "segments": query("SELECT id, page_id, x, y, w, h, z_index, border_color, fill_color, content FROM segments ORDER BY id"),
             "attachments": query("SELECT id, segment_id, file_name, mime_type, size, sha256 FROM attachments ORDER BY id"),
             "dictionary": query("SELECT word FROM dictionary_words ORDER BY word"),
@@ -748,6 +755,32 @@ pub(crate) mod tests {
             let s1 = segment(conn, "s1").unwrap();
             assert_eq!(s1["x"], json!(99.0));
             assert_eq!(store::flatten_tiptap_text(&s1["content"]), "hello world");
+        }
+        assert_eq!(dump(&a), dump(&b));
+    }
+
+    #[test]
+    fn a_page_colour_reaches_the_other_device() {
+        let (a, b) = pair();
+        store::set_page_background(&a, &json!({ "pageId": "p1", "background": "#f8f1e3" })).unwrap();
+        send(&a, &b);
+        assert_eq!(store::get_page(&b, "p1").unwrap().unwrap()["background"], "#f8f1e3");
+        store::set_page_background(&b, &json!({ "pageId": "p1", "background": null })).unwrap();
+        send(&b, &a);
+        assert_eq!(store::get_page(&a, "p1").unwrap().unwrap()["background"], Value::Null);
+        assert_eq!(dump(&a), dump(&b));
+    }
+
+    #[test]
+    fn concurrent_mode_and_colour_changes_both_survive() {
+        let (a, b) = pair();
+        store::set_page_mode(&a, &json!({ "pageId": "p1", "mode": "linear" })).unwrap();
+        store::set_page_background(&b, &json!({ "pageId": "p1", "background": "#ecfdf5" })).unwrap();
+        sync(&a, &b);
+        for conn in [&a, &b] {
+            let page = store::get_page(conn, "p1").unwrap().unwrap();
+            assert_eq!(page["mode"], "linear");
+            assert_eq!(page["background"], "#ecfdf5");
         }
         assert_eq!(dump(&a), dump(&b));
     }

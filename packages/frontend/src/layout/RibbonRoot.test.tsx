@@ -7,6 +7,7 @@ import { useCanvasStore } from '../store/canvasStore'
 import { useInkStore } from '../store/inkStore'
 import { setIPCAdapter } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
+import { useThemeStore } from '../store/themeStore'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -151,6 +152,16 @@ describe('RibbonRoot Home tab formatting (Phase 6 "keyboard shortcut audit")', (
     render(<RibbonRoot />)
     useCanvasStore.setState({ getActiveEditor: () => null })
     await expect(user.click(screen.getByRole('button', { name: 'Bold' }))).resolves.not.toThrow()
+  })
+})
+
+describe('RibbonRoot View tab page colour (issue #11)', () => {
+  it('sits on the View tab', async () => {
+    useThemeStore.setState({ isDark: false })
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'View' }))
+    expect(screen.getByRole('button', { name: 'Page colour' })).toBeEnabled()
   })
 })
 

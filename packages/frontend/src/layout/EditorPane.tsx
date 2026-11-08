@@ -2,8 +2,9 @@
 // infinite segment canvas) and §2.3 (the canvas editor itself). Mounts
 // `CanvasRoot` (DESIGN.md §4.1, §8.1) for the selected page/file once one is
 // selected; otherwise shows the placeholder chrome.
-import { type KeyboardEvent, useEffect, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useState } from 'react'
 import { useNotebookStore } from '../store/notebookStore'
+import { useEffectiveBackground } from '../store/editorBackgroundStore'
 import { useUIStore } from '../store/uiStore'
 import { CanvasRoot } from '../canvas/CanvasRoot'
 import { InkLayer } from '../canvas/InkLayer'
@@ -76,9 +77,20 @@ export function EditorPane() {
   // the Draw ribbon tab, which is also where its Pen/Marker/Eraser tools
   // live (RibbonRoot).
   const drawMode = useUIStore((s) => s.activeRibbonTab === 'Draw')
+  // Page colour ?? app default (issue #11). index.css applies it in light
+  // mode only, so the dark theme keeps its own background and the choice
+  // comes back in light.
+  const background = useEffectiveBackground()
+  const style = useMemo(() => (background ? ({ '--editor-bg': background } as CSSProperties) : undefined), [background])
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden" data-testid="editor-pane" aria-label="Editor">
+    <main
+      className="flex flex-1 flex-col overflow-hidden"
+      data-testid="editor-pane"
+      aria-label="Editor"
+      data-editor-bg={background ?? undefined}
+      style={style}
+    >
       <div className="border-b border-gray-100 px-6 pt-4 pb-2 dark:border-gray-900">
         {file ? (
           <PageTitle key={file.id} fileId={file.id} name={file.name} />
