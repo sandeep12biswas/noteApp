@@ -135,11 +135,11 @@ describe('SyncSettingsDialog', () => {
       accountLabel: 'me@example.com',
       connected: true,
       lastSyncAt: Date.now() - 5 * 60_000,
-      peers: [{ deviceId: 'd2', name: 'Desktop', lastSeenAt: null }],
+      peers: [{ deviceId: 'd2', name: 'Desktop', lastSeenAt: Date.now() - 2 * 3_600_000 }],
       waiting: 2,
     })
     expect(screen.getByRole('status')).toHaveTextContent('Up to date · last synced 5 minutes ago')
-    expect(screen.getByText(/Other devices:/).parentElement).toHaveTextContent('Desktop')
+    expect(screen.getByText(/Other devices:/).parentElement).toHaveTextContent('Desktop (2 hours ago)')
     expect(screen.getByText(/2 changes from other devices are still on the way/)).toBeInTheDocument()
     expect(screen.getByText(/Syncing to OneDrive \(me@example.com\)/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sync now' }))
