@@ -79,18 +79,22 @@ export interface SearchResult {
 
 // ---- Sync (flownote_core::sync::service, step S5) ----
 
-/** Where this device syncs to. OneDrive and Google Drive arrive in a later step. */
-export type SyncTarget = 'none' | 'folder'
+/** Where this device syncs to: nowhere, a folder on this computer, or a cloud drive. */
+export type SyncTarget = 'none' | 'folder' | 'onedrive' | 'gdrive'
+
+/** The targets that need a sign-in (`signInSync`). */
+export type SyncCloudTarget = 'onedrive' | 'gdrive'
 
 /**
  * - `off`: no target chosen;
+ * - `needsSignIn`: a cloud drive is chosen but not signed in (or the sign-in expired or was revoked);
  * - `needsPassphrase`: a target is chosen but this device hasn't joined its vault;
  * - `syncing`: a cycle is running;
  * - `heldBack`: another device's changes would delete a lot, waiting for `confirmSyncMassDelete()`;
  * - `error`: the last cycle failed (`lastError`); automatic cycles retry after a minute;
  * - `idle`: up to date as of `lastSyncAt`.
  */
-export type SyncState = 'off' | 'needsPassphrase' | 'syncing' | 'heldBack' | 'error' | 'idle'
+export type SyncState = 'off' | 'needsSignIn' | 'needsPassphrase' | 'syncing' | 'heldBack' | 'error' | 'idle'
 
 /** Sync settings and state. The passphrase key and any tokens are never included. */
 export interface SyncStatus {
@@ -98,6 +102,10 @@ export interface SyncStatus {
   target: SyncTarget
   /** The sync folder, when `target` is `folder`. */
   folderPath: string | null
+  /** The signed-in account (e-mail), when `target` is a cloud drive. */
+  accountLabel: string | null
+  /** A sign-in is waiting in the browser. */
+  signingIn: boolean
   deviceId: string
   deviceName: string
   /** Joined the target's vault, and sync is on. */
@@ -121,7 +129,7 @@ export interface SyncStatus {
   peers: Array<{ deviceId: string; name: string | null; lastSeenAt: number | null }>
 }
 
-/** Choosing a different target forgets the passphrase key, so `connectSync()` is needed again. */
+/** Choosing a different target forgets the sign-in and the passphrase key, so `signInSync()` (cloud) and `connectSync()` are needed again. */
 export interface SyncConfigInput {
   target?: SyncTarget
   /** Required with `target: 'folder'`: an existing folder's full path. */
@@ -135,12 +143,15 @@ export interface SyncConfigInput {
  * - `docsChanged` after another device's changes were applied: the pages
  *   whose segments/ink/attachments changed, and whether folders, the page
  *   list or the dictionary did (`folders`);
- * - `conflict` when concurrent edits to one segment were kept as conflict copies.
+ * - `conflict` when concurrent edits to one segment were kept as conflict copies;
+ * - `signIn` when a cloud sign-in is waiting in the browser at `url` (to show
+ *   as a link in case the browser didn't open).
  */
 export type SyncEvent =
   | { type: 'status'; status: SyncStatus }
   | { type: 'docsChanged'; pageIds: string[]; folders: boolean }
   | { type: 'conflict'; segmentIds: string[] }
+  | { type: 'signIn'; url: string }
 
 // Matches `flownote-plugin.json` (DESIGN.md §9.3) plus the two columns
 // `plugins` (Rust) tracks itself (`enabled`, `installedAt`) — both
@@ -220,6 +231,14 @@ export interface IPCAdapter {
   // Sync (step S5). Each settings call resolves to the new status.
   getSyncStatus(): Promise<SyncStatus>
   configureSync(input: SyncConfigInput): Promise<SyncStatus>
+  /**
+   * Signs in to a cloud drive in the system browser and makes it the target.
+   * Resolves when the browser comes back; rejects if declined, cancelled
+   * (`cancelSyncSignIn`) or timed out. Then `connectSync()` — unless it was
+   * the same account again, which carries on syncing.
+   */
+  signInSync(target: SyncCloudTarget): Promise<SyncStatus>
+  cancelSyncSignIn(): Promise<SyncStatus>
   /** Joins the target's vault (creating it on the first device). Rejects with a message starting "Wrong passphrase" if it doesn't match. */
   connectSync(passphrase: string): Promise<SyncStatus>
   syncNow(): Promise<SyncStatus>

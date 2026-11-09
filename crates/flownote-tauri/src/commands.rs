@@ -600,6 +600,20 @@ pub async fn sync_connect(state: State<'_, AppState>, passphrase: String) -> Res
     on_sync(state, move |s| s.connect(&passphrase)).await
 }
 
+/// Signs in to `target` (`"onedrive"` / `"gdrive"`) in the system browser;
+/// resolves once the browser comes back (or the sign-in is cancelled).
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_sign_in(state: State<'_, AppState>, target: String) -> Result<Value, String> {
+    on_sync(state, move |s| s.sign_in(&target, &|url| open::that_detached(url).map_err(|e| e.to_string()))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_cancel_sign_in(state: State<'_, AppState>) -> Result<Value, String> {
+    on_sync(state, |s| s.cancel_sign_in()).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_now(state: State<'_, AppState>) -> Result<Value, String> {

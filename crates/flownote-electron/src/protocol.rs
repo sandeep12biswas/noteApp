@@ -63,6 +63,12 @@ pub fn dispatch_sync(sync: &SyncService, req: &Request) -> Option<Response> {
             Some(passphrase) => sync.connect(passphrase),
             None => Err("sync_connect requires a string `passphrase` param".into()),
         },
+        // Blocks until the browser sign-in finishes (its own thread; see main.rs).
+        "sync_sign_in" => match req.params.get("target").and_then(Value::as_str) {
+            Some(target) => sync.sign_in(target, &open_browser),
+            None => Err("sync_sign_in requires a string `target` param".into()),
+        },
+        "sync_cancel_sign_in" => sync.cancel_sign_in(),
         "sync_now" => sync.sync_now(),
         "sync_confirm_mass_delete" => sync.confirm_mass_delete(),
         "sync_disconnect" => sync.disconnect(),
@@ -72,6 +78,11 @@ pub fn dispatch_sync(sync: &SyncService, req: &Request) -> Option<Response> {
         Ok(status) => Response::ok(req.id, status),
         Err(e) => Response::err(req.id, e),
     })
+}
+
+/// Opens a cloud sign-in page in the system browser.
+fn open_browser(url: &str) -> Result<(), String> {
+    open::that_detached(url).map_err(|e| e.to_string())
 }
 
 /// Handles one request against the given connection. Every branch is
@@ -1375,6 +1386,11 @@ mod tests {
 
         let res = dispatch_sync(&sync, &req(4, "sync_disconnect", Value::Null)).unwrap();
         assert_eq!(res.result.unwrap()["state"], "off");
+
+        let res = dispatch_sync(&sync, &req(6, "sync_sign_in", json!({ "target": "dropbox" }))).unwrap();
+        assert!(res.error.unwrap().contains("isn't available"));
+        let res = dispatch_sync(&sync, &req(7, "sync_cancel_sign_in", Value::Null)).unwrap();
+        assert_eq!(res.result.unwrap()["signingIn"], false);
 
         assert!(dispatch_sync(&sync, &req(5, "list_folders", Value::Null)).is_none(), "not a sync method");
         drop(sync);

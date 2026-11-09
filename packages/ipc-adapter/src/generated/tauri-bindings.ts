@@ -376,6 +376,26 @@ async syncDisconnect() : Promise<Result<JsonValue, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Signs in to `target` (`"onedrive"` / `"gdrive"`) in the system browser;
+ * resolves once the browser comes back (or the sign-in is cancelled).
+ */
+async syncSignIn(target: string) : Promise<Result<JsonValue, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_sign_in", { target }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncCancelSignIn() : Promise<Result<JsonValue, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_cancel_sign_in") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 

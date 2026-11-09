@@ -168,6 +168,8 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.getSyncStatus()).rejects.toThrow()
     await expect(adapter.configureSync({ target: 'folder', folderPath: '/tmp' })).rejects.toThrow()
     await expect(adapter.connectSync('passphrase')).rejects.toThrow()
+    await expect(adapter.signInSync('onedrive')).rejects.toThrow()
+    await expect(adapter.cancelSyncSignIn()).rejects.toThrow()
     await expect(adapter.syncNow()).rejects.toThrow()
     await expect(adapter.confirmSyncMassDelete()).rejects.toThrow()
     await expect(adapter.disconnectSync()).rejects.toThrow()

@@ -205,6 +205,10 @@ describe('TauriIPCAdapter sync', () => {
     await expect(new TauriIPCAdapter().configureSync({ target: 'folder', folderPath: '/x' })).resolves.toEqual({ state: 'needsPassphrase' })
     expect(commands.syncConfigure).toHaveBeenCalledWith({ target: 'folder', folderPath: '/x' })
 
+    vi.mocked(commands.syncSignIn).mockResolvedValue({ status: 'ok', data: { state: 'needsPassphrase', accountLabel: 'me@example.com' } })
+    await expect(new TauriIPCAdapter().signInSync('gdrive')).resolves.toEqual({ state: 'needsPassphrase', accountLabel: 'me@example.com' })
+    expect(commands.syncSignIn).toHaveBeenCalledWith('gdrive')
+
     vi.mocked(commands.syncConnect).mockResolvedValue({ status: 'error', error: 'Wrong passphrase: …' })
     await expect(new TauriIPCAdapter().connectSync('nope')).rejects.toThrow('Wrong passphrase')
   })
