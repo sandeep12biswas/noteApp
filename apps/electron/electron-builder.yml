@@ -46,3 +46,6 @@ linux:
 deb:
   # Replaces an install of an older FlowNote build cleanly on upgrade.
   packageName: flownote
+  # Always make chrome-sandbox setuid root, or the app aborts at launch on
+  # Ubuntu 24.04+ (AppArmor blocks user namespaces). See the script's header.
+  afterInstall: build/linux/after-install.tpl
