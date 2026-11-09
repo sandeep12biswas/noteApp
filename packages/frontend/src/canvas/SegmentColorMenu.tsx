@@ -1,11 +1,22 @@
-// Right-click colour picker — DESIGN.md §4.2. 9 border swatches, each
-// carrying its matching 8%-opacity fill (`fillForBorder`, so there's only
-// ever one choice to make, not two lists to keep in sync); a ring marks the
-// segment's current colour; "None" clears both. Closes on outside
+// Right-click colour picker — DESIGN.md §4.2. Every choice is a border
+// colour carrying its matching 8%-opacity fill (`fillForBorder`, so there's
+// only ever one choice to make, not two lists to keep in sync); a ring marks
+// the segment's current colour; "None" clears both. Closes on outside
 // click/Escape like any other transient popover.
-import { useEffect, useRef } from 'react'
-import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
+//
+// Same palette as the Page colour menu (layout/ColorPalette.tsx): the 9
+// original colours as quick picks, a shade grid, recent colours and the
+// colour wheel. The shade grid stops at the "light" row: the two palest rows
+// would make a border you can't see on a white page.
+import { useRef } from 'react'
+import { darkestShades } from '../lib/colorShades'
+import { useRecentSegmentColors } from '../lib/recentColors'
 import { SEGMENT_BORDER_COLORS, fillForBorder } from '../lib/segmentColors'
+import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
+import { MENU_TEXT_BUTTON_CLASSNAME, POPOVER_CLASSNAME, useClampToViewport, useDismiss } from '../layout/ColorPickerMenu'
+import { ColorPalette } from '../layout/ColorPalette'
+
+const SEGMENT_SHADES = darkestShades(8)
 
 export function SegmentColorMenu({
   x,
@@ -24,63 +35,54 @@ export function SegmentColorMenu({
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
   useMenuKeyboardNav(ref)
+  useDismiss(ref, onClose)
+  useClampToViewport(ref, x, y)
+  const recentColors = useRecentSegmentColors((s) => s.colors)
+  const addRecentColor = useRecentSegmentColors((s) => s.add)
 
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [onClose])
+  const pickAndClose = (border: string) => {
+    onPick(border, fillForBorder(border))
+    onClose()
+  }
 
   return (
     <div
       ref={ref}
       role="menu"
       aria-label="Segment colour"
-      className="fixed z-50 flex flex-col gap-2 rounded border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-      style={{ left: x, top: y }}
+      className={POPOVER_CLASSNAME + ' w-64 overflow-y-auto'}
+      style={{ left: x, top: y, maxHeight: 'calc(100vh - 16px)' }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Colour swatches">
-        {SEGMENT_BORDER_COLORS.map((border) => {
-          const active = activeColor === border
-          return (
-            <button
-              key={border}
-              type="button"
-              role="menuitemradio"
-              aria-checked={active}
-              aria-label={`Colour ${border}`}
-              onClick={() => {
-                onPick(border, fillForBorder(border))
-                onClose()
-              }}
-              className={'h-6 w-6 rounded-full border-2 ' + (active ? 'ring-2 ring-offset-1 ring-blue-500' : '')}
-              style={{ backgroundColor: border, borderColor: border }}
-            />
-          )
-        })}
-      </div>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          onClear()
-          onClose()
+      <ColorPalette
+        label="Colour"
+        presetsHeading="Quick picks"
+        presets={SEGMENT_BORDER_COLORS}
+        hues={SEGMENT_SHADES.hues}
+        shadeNames={SEGMENT_SHADES.names}
+        recent={recentColors}
+        activeColor={activeColor}
+        wheelInitialColor="#2563eb"
+        onPick={pickAndClose}
+        onWheelPick={(color) => {
+          addRecentColor(color)
+          pickAndClose(color)
         }}
-        className="rounded px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-      >
-        None
-      </button>
+        footer={
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onClear()
+              onClose()
+            }}
+            className={MENU_TEXT_BUTTON_CLASSNAME}
+          >
+            None
+          </button>
+        }
+      />
     </div>
   )
 }
