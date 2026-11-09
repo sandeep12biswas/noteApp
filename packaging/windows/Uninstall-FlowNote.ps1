@@ -248,11 +248,34 @@ if ($entries.Count -eq 0) {
   }
 }
 
+# FlowNote's WebView2 helper processes (msedgewebview2.exe, started with
+# --user-data-dir=<data dir>\EBWebView) outlive FlowNote.exe by a moment and
+# keep files in that folder open, so deleting it straight after closing the
+# app can fail with "Access to the path ... is denied". Wait for them to
+# exit (stopping any that hang), then delete, retrying briefly.
+function Remove-DataDir([string]$dir) {
+  $helpers = { @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($dir, [StringComparison]::OrdinalIgnoreCase) -ge 0 }) }
+  $deadline = (Get-Date).AddSeconds(10)
+  while ((& $helpers).Count -gt 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+  foreach ($p in (& $helpers)) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+
+  for ($attempt = 1; ; $attempt++) {
+    try {
+      Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop
+      return
+    } catch {
+      if ($attempt -ge 10) { throw }
+      Start-Sleep -Seconds 1
+    }
+  }
+}
+
 if ($RemoveData) {
   foreach ($dir in $DataDirs) {
     if (Test-Path $dir) {
       Write-Host "Deleting data: $dir"
-      Remove-Item -LiteralPath $dir -Recurse -Force
+      Remove-DataDir $dir
     }
   }
   $dataNote = ''
