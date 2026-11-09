@@ -428,6 +428,9 @@ fn change_file_names_parse_back() {
     assert_eq!(parse_changes_path(&changes_path("dev-1", 42)), Some(("dev-1".to_string(), 42)));
     assert_eq!(parse_changes_path("devices/dev-1/info.json.enc"), None);
     assert_eq!(parse_changes_path("devices/a/b/changes/1.bundle.enc"), None);
+    assert_eq!(parse_snapshot_path(&snapshot_path("dev-1", 7)), Some(("dev-1".to_string(), 7)));
+    assert_eq!(parse_changes_path(&snapshot_path("dev-1", 7)), None, "a snapshot isn't a change file");
+    assert_eq!(parse_snapshot_path("devices/dev-1/info.json.enc"), None);
 }
 
 #[test]
@@ -480,4 +483,271 @@ fn joining_a_new_vault_uploads_everything_including_other_devices_notes() {
     assert_eq!(texts(&c.conn, "p1"), ["hello"]);
     assert_eq!(texts(&c.conn, "p2"), ["written on b"], "B's page reached C through A's log");
     assert_eq!(dump(&a.conn), dump(&c.conn));
+}
+
+// ------------------------------------------------------------ compaction (S8)
+
+/// Compaction rules for tests: a snapshot after `files` change files, every
+/// ack counted, deletion retried every cycle.
+fn rules(files: usize) -> CompactRules {
+    CompactRules { after_files: files, after_bytes: u64::MAX, stale_ack_ms: i64::MAX, retry_ms: 0 }
+}
+
+fn compacting(files: usize) -> SyncOptions {
+    SyncOptions { compact: Some(rules(files)), ..Default::default() }
+}
+
+/// Upload numbers of `device`'s change files in the cloud.
+fn change_files(cloud: &dyn SyncTarget, device: &Device) -> Vec<u64> {
+    let me = crdt::device_id(&device.conn).unwrap();
+    cloud.list(&format!("devices/{me}/changes/")).unwrap().iter().filter_map(|f| parse_changes_path(&f.path)).map(|(_, s)| s).collect()
+}
+
+fn snapshots(cloud: &dyn SyncTarget, device: &Device) -> Vec<u64> {
+    let me = crdt::device_id(&device.conn).unwrap();
+    cloud.list(&format!("devices/{me}/")).unwrap().iter().filter_map(|f| parse_snapshot_path(&f.path)).map(|(_, s)| s).collect()
+}
+
+/// `n` more edits on `device`, each uploaded as its own change file.
+fn edits(device: &Device, cloud: &dyn SyncTarget, from: usize, n: usize) {
+    for i in from..from + n {
+        save_seg(&device.conn, &format!("e{i}"), "p1", &format!("edit {i}"));
+        assert!(device.sync(cloud).uploaded.is_some());
+    }
+}
+
+#[test]
+fn a_grown_log_is_compacted_once_everyone_has_applied_it() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    edits(&a, &cloud, 0, 3);
+    assert_eq!(change_files(&cloud, &a), [1, 2, 3, 4]);
+    b.sync(&cloud); // applies 1..4 and acks it
+
+    let report = a.sync_with(&cloud, compacting(3));
+    assert_eq!(report.snapshot, Some(4));
+    assert_eq!(report.compacted, 4);
+    assert!(change_files(&cloud, &a).is_empty());
+    assert_eq!(snapshots(&cloud, &a), [4]);
+
+    // Later edits go on as change files after the snapshot, and b keeps up.
+    edits(&a, &cloud, 3, 1);
+    assert_eq!(change_files(&cloud, &a), [5]);
+    b.sync(&cloud);
+    assert_eq!(dump(&a.conn), dump(&b.conn));
+
+    // Below the threshold again: no new snapshot, nothing deleted.
+    let report = a.sync_with(&cloud, compacting(3));
+    assert_eq!((report.snapshot, report.compacted), (None, 0));
+}
+
+#[test]
+fn a_new_device_joins_from_the_snapshot() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    edits(&a, &cloud, 0, 4);
+    b.sync(&cloud);
+    a.sync_with(&cloud, compacting(3));
+    edits(&a, &cloud, 4, 1); // one file after the snapshot
+    assert_eq!(change_files(&cloud, &a), [6]);
+
+    let mut c = Device::new("c");
+    c.connect(&cloud);
+    let report = c.sync(&cloud);
+    let a_id = crdt::device_id(&a.conn).unwrap();
+    assert_eq!(report.snapshots_applied, std::slice::from_ref(&a_id));
+    assert_eq!(report.applied.iter().map(|(_, s)| *s).collect::<Vec<_>>(), [5, 6], "snapshot (5), then file 6");
+    assert_eq!(dump(&c.conn), dump(&a.conn));
+}
+
+#[test]
+fn a_device_back_after_a_long_time_catches_up_from_the_snapshot() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    b.sync(&cloud); // applied a's 1, then goes away
+    edits(&a, &cloud, 0, 5);
+
+    // While b's ack is recent it holds deletion back at what b applied…
+    let report = a.sync_with(&cloud, compacting(3));
+    assert_eq!(report.snapshot, Some(6));
+    assert_eq!(change_files(&cloud, &a), [2, 3, 4, 5, 6], "only file 1, which b applied, is gone");
+
+    // …once it's stale (a lost device), it doesn't.
+    let stale = SyncOptions { compact: Some(CompactRules { stale_ack_ms: -1, ..rules(3) }), ..Default::default() };
+    assert_eq!(a.sync_with(&cloud, stale).compacted, 5);
+    assert!(change_files(&cloud, &a).is_empty());
+
+    // b returns: the files it needs are gone, the snapshot covers them.
+    let report = b.sync(&cloud);
+    assert_eq!(report.snapshots_applied.len(), 1);
+    assert_eq!(dump(&b.conn), dump(&a.conn));
+}
+
+#[test]
+fn a_held_back_deletion_is_retried_later_not_every_cycle() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    b.sync(&cloud); // acks 1
+    edits(&a, &cloud, 0, 3);
+    let patient = SyncOptions { compact: Some(CompactRules { retry_ms: i64::MAX, ..rules(3) }), ..Default::default() };
+    assert_eq!(a.sync_with(&cloud, patient.clone()).compacted, 1, "the snapshot's own cycle deletes what it can");
+    b.sync(&cloud); // now acks 4
+    assert_eq!(a.sync_with(&cloud, patient).compacted, 0, "not retried before retry_ms");
+    assert_eq!(a.sync_with(&cloud, compacting(3)).compacted, 3, "retried once due");
+}
+
+/// Stores garbage instead of any snapshot written to it.
+struct BreaksSnapshots(MemoryTarget);
+
+impl SyncTarget for BreaksSnapshots {
+    fn list(&self, prefix: &str) -> Result<Vec<RemoteFile>, String> {
+        self.0.list(prefix)
+    }
+    fn get(&self, path: &str) -> Result<Option<Vec<u8>>, String> {
+        self.0.get(path)
+    }
+    fn put(&self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        if parse_snapshot_path(path).is_some() { self.0.put(path, b"FNE1 not really") } else { self.0.put(path, bytes) }
+    }
+    fn delete(&self, path: &str) -> Result<(), String> {
+        self.0.delete(path)
+    }
+}
+
+#[test]
+fn a_snapshot_that_does_not_read_back_deletes_nothing() {
+    let cloud = BreaksSnapshots(MemoryTarget::default());
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    edits(&a, &cloud, 0, 3);
+    b.sync(&cloud);
+    let e = sync_once(&a.conn, &cloud, a.key.as_ref().unwrap(), &compacting(3)).unwrap_err();
+    assert!(e.contains("snapshot doesn't read back"), "{e}");
+    assert_eq!(change_files(&cloud, &a), [1, 2, 3, 4], "nothing deleted");
+
+    // And a reader treats a broken snapshot like a broken change file.
+    let mut c = Device::new("c");
+    c.connect(&cloud);
+    let report = c.sync(&cloud);
+    assert_eq!(report.quarantined.len(), 1, "{report:?}");
+    assert!(report.quarantined[0].contains("snapshot-"));
+    assert!(texts(&c.conn, "p1").is_empty(), "nothing half-applied; a's files wait");
+}
+
+#[test]
+fn a_mass_delete_inside_a_snapshot_still_waits_for_confirmation() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    store::save_folder(&a.conn, &json!({ "id": "f1", "name": "Notes" })).unwrap();
+    for i in 0..10 {
+        store::save_page(&a.conn, &json!({ "id": format!("p{i}"), "folderId": "f1", "title": format!("Page {i}") })).unwrap();
+    }
+    a.connect(&cloud);
+    b.connect(&cloud);
+    settle(&[&a, &b], &cloud);
+    for i in 0..8 {
+        store::delete_page(&a.conn, &format!("p{i}")).unwrap();
+        a.sync(&cloud);
+    }
+    let stale = SyncOptions { compact: Some(CompactRules { stale_ack_ms: -1, ..rules(3) }), ..Default::default() };
+    a.sync_with(&cloud, stale);
+    assert!(change_files(&cloud, &a).is_empty());
+
+    let report = b.sync(&cloud);
+    let held = report.held_back.expect("held back");
+    assert_eq!((held.pages_deleted, held.pages_total), (8, 10));
+    assert_eq!(dump(&b.conn)["pages"].as_array().unwrap().len(), 10, "nothing deleted yet");
+    b.sync_with(&cloud, SyncOptions { allow_mass_delete: true, ..Default::default() });
+    assert_eq!(dump(&b.conn), dump(&a.conn));
+}
+
+#[test]
+fn three_devices_converge_with_two_of_them_compacting() {
+    let cloud_dir = temp_dir("cloud");
+    let cloud = LocalFolderTarget::new(&cloud_dir);
+    let (mut a, mut b, mut c) = (Device::new("a"), Device::new("b"), Device::new("c"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    c.connect(&cloud);
+    settle(&[&a, &b, &c], &cloud);
+    for round in 0..4 {
+        save_seg(&a.conn, &format!("a{round}"), "p1", &format!("a {round}"));
+        save_seg(&b.conn, &format!("b{round}"), "p1", &format!("b {round}"));
+        save_seg(&c.conn, "s1", "p1", &format!("hello from c, round {round}"));
+        a.sync_with(&cloud, compacting(2));
+        b.sync_with(&cloud, compacting(2));
+        c.sync(&cloud);
+    }
+    for _ in 0..3 {
+        a.sync_with(&cloud, compacting(2));
+        b.sync_with(&cloud, compacting(2));
+        c.sync(&cloud);
+    }
+    assert!(!snapshots(&cloud, &a).is_empty() && !snapshots(&cloud, &b).is_empty());
+    assert_eq!(dump(&a.conn), dump(&b.conn));
+    assert_eq!(dump(&a.conn), dump(&c.conn));
+
+    // A fourth device joining now gets the same notes from snapshots + files.
+    let mut d = Device::new("d");
+    d.connect(&cloud);
+    settle(&[&d], &cloud);
+    assert_eq!(dump(&d.conn), dump(&a.conn));
+    std::fs::remove_dir_all(&cloud_dir).ok();
+}
+
+// ------------------------------------------------- device info (S8)
+
+#[test]
+fn a_device_that_only_reads_still_shows_up_and_renames_reach_the_others() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    let announce = || SyncOptions { announce: true, ..Default::default() };
+    assert_eq!(b.sync_with(&cloud, announce()).uploaded, None, "b has nothing of its own to upload");
+    a.sync(&cloud);
+    let peer = |d: &Device| -> (Option<String>, Option<i64>) {
+        d.conn.query_row("SELECT name, last_seen_at FROM sync_peers", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+    };
+    let (name, seen) = peer(&a);
+    assert_eq!(name.as_deref(), Some("b"), "b announced itself without uploading anything");
+    assert!(seen.is_some());
+
+    // Renamed while idle: a sees it on its next announce cycle…
+    b.name = "b renamed".into();
+    b.sync_with(&cloud, announce());
+    a.sync(&cloud);
+    assert_eq!(peer(&a).0.as_deref(), Some("b"), "an ordinary cycle doesn't re-read an idle device");
+    a.sync_with(&cloud, announce());
+    assert_eq!(peer(&a).0.as_deref(), Some("b renamed"));
+
+    // …and right away once the renamed device uploads something.
+    b.name = "b again".into();
+    save_seg(&b.conn, "s2", "p1", "from b");
+    b.sync(&cloud);
+    a.sync(&cloud);
+    assert_eq!(peer(&a).0.as_deref(), Some("b again"));
 }
