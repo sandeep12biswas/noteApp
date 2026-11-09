@@ -6,9 +6,10 @@
 //
 // Same palette as the Page colour menu (layout/ColorPalette.tsx): the 9
 // original colours as quick picks, a shade grid, recent colours and the
-// colour wheel. The shade grid stops at the "light" row: the two palest rows
+// colour wheel, and "Delete segment" (issue #29). The shade grid stops at the "light" row: the two palest rows
 // would make a border you can't see on a white page.
 import { useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { darkestShades } from '../lib/colorShades'
 import { useRecentSegmentColors } from '../lib/recentColors'
 import { SEGMENT_BORDER_COLORS, fillForBorder } from '../lib/segmentColors'
@@ -18,12 +19,21 @@ import { ColorPalette } from '../layout/ColorPalette'
 
 const SEGMENT_SHADES = darkestShades(8)
 
+function TrashIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.75 6.5v4.5M9.25 6.5v4.5" />
+    </svg>
+  )
+}
+
 export function SegmentColorMenu({
   x,
   y,
   activeColor,
   onPick,
   onClear,
+  onDelete,
   onClose,
 }: {
   x: number
@@ -31,6 +41,8 @@ export function SegmentColorMenu({
   activeColor: string | null
   onPick: (border: string, fill: string) => void
   onClear: () => void
+  /** "Delete segment" (issue #29): the host removes the segment, which also unmounts this menu. */
+  onDelete: () => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
@@ -45,7 +57,10 @@ export function SegmentColorMenu({
     onClose()
   }
 
-  return (
+  // Portalled to <body>: rendered inside the segment, the menu would share its
+  // stacking context (each segment has its own z-index), so any segment
+  // placed later — e.g. just below — painted over the menu's lower half.
+  return createPortal(
     <div
       ref={ref}
       role="menu"
@@ -70,19 +85,32 @@ export function SegmentColorMenu({
           pickAndClose(color)
         }}
         footer={
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onClear()
-              onClose()
-            }}
-            className={MENU_TEXT_BUTTON_CLASSNAME}
-          >
-            None
-          </button>
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onClear()
+                onClose()
+              }}
+              className={MENU_TEXT_BUTTON_CLASSNAME}
+            >
+              None
+            </button>
+            <div role="separator" className="my-1 border-t border-gray-200 dark:border-gray-700" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onDelete}
+              className="flex items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+            >
+              <TrashIcon />
+              Delete segment
+            </button>
+          </>
         }
       />
-    </div>
+    </div>,
+    document.body,
   )
 }

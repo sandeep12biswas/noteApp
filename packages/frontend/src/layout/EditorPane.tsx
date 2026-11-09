@@ -7,6 +7,7 @@ import { useNotebookStore } from '../store/notebookStore'
 import { useEffectiveBackground } from '../store/editorBackgroundStore'
 import { editorInk } from '../lib/textColors'
 import { ContrastNotice } from './ContrastNotice'
+import { UndoDeleteToast } from '../canvas/UndoDeleteToast'
 import { useUIStore } from '../store/uiStore'
 import { CanvasRoot } from '../canvas/CanvasRoot'
 import { InkLayer } from '../canvas/InkLayer'
@@ -115,6 +116,7 @@ export function EditorPane() {
         </p>
       </div>
       {file && background && <ContrastNotice pageId={file.id} background={background} />}
+      <UndoDeleteToast />
       <div className="relative flex-1 overflow-auto">
         {selectedFileId && file ? (
           file.mode === 'linear' ? (

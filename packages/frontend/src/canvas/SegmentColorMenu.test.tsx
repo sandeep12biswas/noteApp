@@ -15,9 +15,12 @@ beforeEach(() => {
 function renderMenu(activeColor: string | null = null) {
   const onPick = vi.fn()
   const onClear = vi.fn()
+  const onDelete = vi.fn()
   const onClose = vi.fn()
-  const view = render(<SegmentColorMenu x={10} y={10} activeColor={activeColor} onPick={onPick} onClear={onClear} onClose={onClose} />)
-  return { onPick, onClear, onClose, menu: screen.getByRole('menu', { name: 'Segment colour' }), ...view }
+  const view = render(
+    <SegmentColorMenu x={10} y={10} activeColor={activeColor} onPick={onPick} onClear={onClear} onDelete={onDelete} onClose={onClose} />,
+  )
+  return { onPick, onClear, onDelete, onClose, menu: screen.getByRole('menu', { name: 'Segment colour' }), ...view }
 }
 
 describe('SegmentColorMenu', () => {
@@ -64,5 +67,15 @@ describe('SegmentColorMenu', () => {
     await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'None' }))
     expect(onClear).toHaveBeenCalled()
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('offers "Delete segment" last, after a separator', async () => {
+    const { menu, onDelete, onClose } = renderMenu('#dc2626')
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items[items.length - 1]).toHaveAccessibleName('Delete segment')
+    expect(within(menu).getByRole('separator')).toBeInTheDocument()
+    await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Delete segment' }))
+    expect(onDelete).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled() // the host unmounts the menu along with the segment
   })
 })
