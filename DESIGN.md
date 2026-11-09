@@ -61,7 +61,7 @@ The app has **four sections** in total: one horizontal panel across the full wid
 ### 2.4 Planned feature areas (from the brief, elaborated in later sections)
 
 - **Menu options** — a full app menu (File, Edit, Tool, View, Format, Window, Help, …); all editor features are designed and developed **as plugins** (see §9).
-- **Backup & Sync** — see §3.4 (offline-first CRDT sync).
+- **Backup & Sync** — see §3.4 and §4.5 (offline-first sync through the user's own cloud drive, end-to-end encrypted).
 - **AI integration** — chat-style integration with major LLMs (Claude, Gemini, ChatGPT, GitHub Copilot). See §9 for the local-AI-first design actually adopted (Ollama, with a cloud fallback).
 - **Plug-ins** — spreadsheets, import/export (Markdown, PDF, Doc), print, table formatting, YouTube embedding, calendar integration (Google Calendar, Apple Calendar). These map directly onto the plugin system's `registerBlockType` extension point (§9.2).
 
@@ -138,7 +138,22 @@ async function resolveIPCAdapter(): Promise<IPCAdapter> {
 
 ### 3.4 Automerge: WASM eliminated
 
-Automerge runs only in the Rust backend, on all platforms, via the native `automerge` Rust crate. The frontend never touches an Automerge document directly — it applies `SyncEvent` IPC messages to Zustand state optimistically.
+Automerge runs only in the Rust backend, on all platforms, via the native `automerge` Rust crate. The frontend never touches an Automerge document directly. It reloads what a `SyncEvent` (`docsChanged`) names from SQLite, which stays the source of truth for the UI and search.
+
+**How sync works (bring-your-own-cloud, no server).** `flownote_core::sync`:
+- **Documents:** every write queues the Automerge document it touched: `notebook` for folders, pages and the dictionary, `page:<id>` for a page's segments, ink and attachments. A sync cycle turns the changed rows into Automerge changes.
+- **Where they go:** the target is the user's OneDrive (app folder `Apps/FlowNote`), Google Drive (a `FlowNote` folder, `drive.file` scope) or a local folder another program syncs. Sign-in is OAuth with PKCE in the system browser (`docs/sync-cloud-setup.md`).
+- **One writer per file:** each device writes only its own files under `devices/<id>/`: numbered, encrypted change files, a name file, an ack file (how far it has applied every other device) and, once its log grows, a snapshot of its documents. Other devices read and merge them, so a plain cloud drive needs no locking and two devices never overwrite each other.
+- **Compaction:** a device writes a snapshot, verifies it reads back, then deletes its own change files that the snapshot covers and every recently active device has acked. New or lagging devices start from the snapshot.
+- **Encryption:** everything but `vault.json` is encrypted on the device: Argon2id from the user's passphrase, XChaCha20-Poly1305, each file bound to its path.
+- **No data loss:**
+  - concurrent edits to one segment keep both texts (a conflict copy);
+  - an edit beats a concurrent delete;
+  - a bundle that would delete a lot waits for confirmation;
+  - unreadable files are quarantined, never treated as empty;
+  - the database is backed up daily;
+  - a replaced or missing cloud folder stops sync.
+- **When it runs:** the background `SyncService` in both shells syncs on start, a few seconds after an edit, every minute, on window focus and on "Sync now".
 
 ---
 
@@ -150,7 +165,7 @@ Automerge runs only in the Rust backend, on all platforms, via the native `autom
 | 4.2 Segment colour coding | Right-click context menu assigns a persistent border colour and background fill (9 border colours, 9 matching 8%-opacity fills). Coloured segments never auto-delete when empty. |
 | 4.3 Dual mode: canvas and linear | Segmented canvas (default) and linear document modes, switchable without data loss. In linear mode, "Remove boundary" permanently merges adjacent segments' block arrays. |
 | 4.4 Slash command block insertion | `/` at the start of an empty line opens a block-type picker. Plugins can register additional slash commands via the SDK. |
-| 4.5 Offline-first with CRDT sync | SQLite-first local storage. Automerge (Rust crate) for CRDT sync over an Axum WebSocket relay. No server-side document storage. |
+| 4.5 Offline-first with CRDT sync | SQLite-first local storage. Automerge (Rust crate) change logs synced through the user's own cloud drive (OneDrive, Google Drive or a synced folder), end-to-end encrypted, one log per device. No FlowNote server at all (§3.4). |
 | 4.6 Non-overlapping segment collision system | Solid spatial objects with an enforced 8px gap. Four pure TypeScript functions — `overlaps()`, `resolvePosition()`, `findFreePosition()`, `clampResizeWidth()` — called synchronously on every `mousemove` and `ResizeObserver` tick. |
 
 ---
@@ -220,8 +235,8 @@ An HTML5 Canvas overlay, `pointer-events: none` at rest, switched to `pointer-ev
 |---|---|
 | rusqlite + r2d2 + refinery | Primary storage. WAL mode. FTS5. Spatial index. Plugin storage namespace table. |
 | automerge (Rust crate) | Native Rust CRDT — no WASM |
-| tokio | Async runtime; single write-queue task |
-| axum | WebSocket relay for CRDT sync |
+| reqwest (blocking) | Cloud drive APIs (Microsoft Graph, Google Drive v3) and OAuth for sync; AI providers |
+| argon2 + chacha20poly1305 | Sync encryption (passphrase key, sealed files) |
 | ollama-rs | Local AI, with ROCm acceleration on Linux AMD iGPU |
 
 ### 6.4 Rust crate workspace
@@ -232,7 +247,6 @@ members = [
   "crates/flownote-core",     # Storage + CRDT + collision + AI + plugin storage
   "crates/flownote-electron", # Sidecar binary (Linux)
   "crates/flownote-tauri",    # Tauri command handlers (Win/macOS)
-  "crates/flownote-sync",     # Automerge WebSocket relay
 ]
 ```
 
@@ -353,7 +367,7 @@ CREATE TABLE attachments (
 | Ribbon dispatch *(shared)* | All commands → `getActiveEditor()` via `editorRefs`. Plugin ribbon buttons follow the same pattern. | *(shared)* |
 | Collision layer *(shared)* | `overlaps()`, `resolvePosition()`, `findFreePosition()`, `clampResizeWidth()`, `onHeightChange()`. Pure TypeScript. | *(shared)* |
 | Rust core *(shared binary)* | `flownote-electron` sidecar. | `flownote-tauri` embedded. |
-| Storage + sync + AI *(shared)* | SQLite WAL + FTS5 · Automerge Rust · Axum relay · ollama-rs · `plugin_storage` table · attachment files on disk (§2.5/§7.2, Linux only — `flownote-attachment://` streams them, same mechanism as `flownote-plugin://`). | *(shared, attachments excepted — Linux-only for now)* |
+| Storage + sync + AI *(shared)* | SQLite WAL + FTS5 · Automerge Rust · sync through the user's cloud drive (§3.4) · AI providers · `plugin_storage` table · attachment files on disk (§2.5/§7.2, Linux only — `flownote-attachment://` streams them, same mechanism as `flownote-plugin://`). | *(shared, attachments excepted — Linux-only for now)* |
 
 ### 8.2 IPC command surface
 
@@ -636,8 +650,8 @@ npm run pack    # creates my-spreadsheet-plugin-1.0.0.fnp (signed zip)
 | `refinery` | All | Rust SQLite migrations |
 | `r2d2-sqlite` | All | SQLite connection pool |
 | `serde` + `serde_json` | All | Rust serialisation |
-| `tokio` | All | Async runtime; write-queue task |
-| `axum` | All | WebSocket relay server |
+| `reqwest` | All | Cloud drive + OAuth HTTP for sync; AI provider requests |
+| `argon2`, `chacha20poly1305` | All | Sync end-to-end encryption |
 | `ollama-rs` | All | Local LLM client |
 | `uuid` (Rust + npm) | All | UUID v4 on both sides of IPC |
 | `@flownote/sdk` | Plugin devs only | Plugin SDK — `FlowNotePlugin` class, six extension points, storage API |

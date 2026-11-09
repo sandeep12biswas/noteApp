@@ -7,6 +7,7 @@
 //! devices/<device id>/changes/<seq>.bundle.enc  that device's changes, numbered 1, 2, 3…
 //! devices/<device id>/info.json.enc           its name and when it last synced
 //! devices/<device id>/ack.json.enc            how far it has applied every other device
+//! devices/<device id>/snapshot-<seq>.enc      its documents in full, as of its upload <seq> (S8)
 //! blobs/<sha256>.enc                          attachment files, by content
 //! ```
 //!
@@ -27,7 +28,11 @@
 //!    change file. A device's log on its own is always enough to apply: a
 //!    bundle carries everything the device learned since its last upload.
 //!    Changes it only received from others aren't re-uploaded — they're in
-//!    their authors' logs.
+//!    their authors' logs;
+//! 6. **compacts** its own log once it has grown (S8): writes a snapshot of
+//!    its documents, checks it reads back, and deletes its own change files
+//!    that the snapshot covers and every recently active device has applied.
+//!    A device that is behind, or new, starts from the snapshot instead.
 
 #[cfg(test)]
 mod fake_clouds;
@@ -77,6 +82,26 @@ fn ack_path(device: &str) -> String {
     format!("devices/{device}/ack.json.enc")
 }
 
+/// The upload number is in the name, so a listing shows what a snapshot
+/// covers without downloading it.
+fn snapshot_path(device: &str, seq: u64) -> String {
+    format!("devices/{device}/snapshot-{seq:010}.enc")
+}
+
+/// `devices/<id>/snapshot-<seq>.enc` → `(id, seq)`.
+fn parse_snapshot_path(path: &str) -> Option<(String, u64)> {
+    let rest = path.strip_prefix("devices/")?;
+    let (device, file) = rest.split_once('/')?;
+    let seq = file.strip_prefix("snapshot-")?.strip_suffix(".enc")?.parse().ok()?;
+    (!device.is_empty()).then(|| (device.to_string(), seq))
+}
+
+/// `devices/<id>/<file>` → `id`, for the per-device files other than change files.
+fn device_of(path: &str, file: &str) -> Option<String> {
+    let device = path.strip_prefix("devices/")?.strip_suffix(file)?.strip_suffix('/')?;
+    (!device.contains('/') && !device.is_empty()).then(|| device.to_string())
+}
+
 fn blob_path(sha256: &str) -> String {
     format!("blobs/{sha256}.enc")
 }
@@ -112,7 +137,7 @@ impl From<String> for ConnectError {
     }
 }
 
-fn read_vault(target: &dyn SyncTarget) -> Result<Option<Value>, String> {
+pub(crate) fn read_vault(target: &dyn SyncTarget) -> Result<Option<Value>, String> {
     match target.get(VAULT_PATH)? {
         Some(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| format!("vault.json is not valid: {e}")),
         None => Ok(None),
@@ -173,7 +198,7 @@ pub fn connect_vault(conn: &Connection, target: &dyn SyncTarget, passphrase: &st
 /// vault, which its own log must now carry. Local notes are untouched.
 fn reset_for_new_vault(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
-        "UPDATE sync_settings SET upload_seq = 0, last_sync_at = NULL WHERE id = 1;
+        "UPDATE sync_settings SET upload_seq = 0, last_sync_at = NULL, snapshot_seq = 0, compacted_at = NULL WHERE id = 1;
          DELETE FROM sync_peers;
          DELETE FROM sync_quarantine;
          UPDATE crdt_docs SET synced_heads = '[]';",
@@ -227,6 +252,37 @@ pub struct SyncOptions {
     pub allow_mass_delete: bool,
     /// Shown to the user's other devices.
     pub device_name: String,
+    /// Write this device's info file (name, last sync) even with nothing to
+    /// upload, and re-read every other device's: so a device that only
+    /// reads still shows up, and renames reach the others.
+    pub announce: bool,
+    /// When to compact this device's own log; `None` never does.
+    pub compact: Option<CompactRules>,
+}
+
+/// When a device compacts its log (S8).
+#[derive(Debug, Clone)]
+pub struct CompactRules {
+    /// A new snapshot once this many change files were uploaded since the last one…
+    pub after_files: usize,
+    /// …or this many bytes of them.
+    pub after_bytes: u64,
+    /// A device whose ack is older than this doesn't hold deletion back (a
+    /// lost or retired device). It can still catch up from the snapshot.
+    pub stale_ack_ms: i64,
+    /// How soon a deletion that a lagging device held back is tried again.
+    pub retry_ms: i64,
+}
+
+impl Default for CompactRules {
+    fn default() -> Self {
+        CompactRules {
+            after_files: 50,
+            after_bytes: 8 * 1024 * 1024,
+            stale_ack_ms: 90 * 24 * 60 * 60 * 1000,
+            retry_ms: 24 * 60 * 60 * 1000,
+        }
+    }
 }
 
 /// A bundle held back because it would delete a lot at once.
@@ -257,6 +313,12 @@ pub struct SyncReport {
     /// device's changes they build on are missing).
     pub waiting: Vec<String>,
     pub held_back: Option<MassDelete>,
+    /// Upload number this cycle's new snapshot covers, if it wrote one.
+    pub snapshot: Option<u64>,
+    /// This device's own change files deleted by compaction.
+    pub compacted: usize,
+    /// Other devices whose snapshot was applied (they had compacted).
+    pub snapshots_applied: Vec<String>,
 }
 
 // ------------------------------------------------------------------ cycle
@@ -296,8 +358,14 @@ fn run_cycle(conn: &Connection, target: &dyn SyncTarget, key: &VaultKey, options
     pull(conn, target, key, &me, &device_files, options, &mut report)?;
     sync_blobs(conn, target, key, &mut report)?;
     push(conn, target, key, &me, &device_files, options, &mut report)?;
+    if report.uploaded.is_none() && options.announce {
+        write_info(target, key, &me, &options.device_name)?;
+    }
     if !report.applied.is_empty() {
         write_ack(conn, target, key, &me)?;
+    }
+    if let Some(rules) = &options.compact {
+        compact(conn, target, key, &me, rules, &mut report)?;
     }
     Ok(report)
 }
@@ -318,23 +386,37 @@ fn release_quarantine(conn: &Connection, path: &str) -> Result<(), String> {
 }
 
 /// Downloads, decrypts and decodes one change file.
-fn fetch_bundle(target: &dyn SyncTarget, key: &VaultKey, path: &str, device: &str, seq: u64) -> Result<Vec<(String, Vec<u8>)>, String> {
+type Docs = Vec<(String, Vec<u8>)>;
+
+/// Reads a change file or snapshot of `device`: its upload number and documents.
+fn fetch_sealed(target: &dyn SyncTarget, key: &VaultKey, path: &str, device: &str) -> Result<(u64, Docs), String> {
     let sealed = target.get(path)?.ok_or_else(|| format!("{path} disappeared"))?;
     let plain = crypto::open(key, path, &sealed)?;
     let bundle: Value = serde_json::from_slice(&plain).map_err(|e| format!("{path}: {e}"))?;
     if bundle["format"].as_u64() != Some(BUNDLE_FORMAT) {
         return Err(format!("{path}: unsupported bundle format (made by a newer FlowNote?)"));
     }
-    if bundle["device"].as_str() != Some(device) || bundle["seq"].as_u64() != Some(seq) {
+    if bundle["device"].as_str() != Some(device) {
         return Err(format!("{path}: contents don't match the file name"));
     }
+    let seq = bundle["seq"].as_u64().ok_or_else(|| format!("{path}: no upload number"))?;
     let docs = bundle["docs"].as_object().ok_or_else(|| format!("{path}: no docs"))?;
-    docs.iter()
+    let docs = docs
+        .iter()
         .map(|(doc_id, bytes)| {
             let bytes = bytes.as_str().and_then(|s| b64().decode(s).ok()).ok_or_else(|| format!("{path}: bad data for {doc_id}"))?;
             Ok((doc_id.clone(), bytes))
         })
-        .collect()
+        .collect::<Result<_, String>>()?;
+    Ok((seq, docs))
+}
+
+fn fetch_bundle(target: &dyn SyncTarget, key: &VaultKey, path: &str, device: &str, seq: u64) -> Result<Docs, String> {
+    let (found, docs) = fetch_sealed(target, key, path, device)?;
+    if found != seq {
+        return Err(format!("{path}: contents don't match the file name"));
+    }
+    Ok(docs)
 }
 
 enum ApplyFailure {
@@ -416,17 +498,78 @@ fn pull(
             queues.entry(device).or_default().push((seq, file.path.clone()));
         }
     }
+    // Devices that announced themselves without uploading anything yet.
+    for file in device_files {
+        if let Some(device) = device_of(&file.path, "info.json.enc")
+            && device != me
+            && !queues.contains_key(&device)
+        {
+            remember_peer(conn, target, key, &device, options.announce)?;
+        }
+    }
+    // Each device's newest snapshot (normally its only one).
+    let mut snapshots: BTreeMap<String, u64> = BTreeMap::new();
+    for (device, seq) in device_files.iter().filter_map(|f| parse_snapshot_path(&f.path)) {
+        if device != me {
+            let newest = snapshots.entry(device.clone()).or_insert(seq);
+            *newest = (*newest).max(seq);
+            queues.entry(device).or_default(); // even if all its change files were compacted away
+        }
+    }
+    let mut blocked: BTreeSet<String> = BTreeSet::new();
     for (device, queue) in queues.iter_mut() {
         let applied = applied_seq(conn, device)?;
         queue.retain(|(seq, _)| *seq > applied);
         queue.sort();
-        remember_peer_name(conn, target, key, device)?;
+
+        // Start from the device's snapshot when it covers something not yet
+        // applied and either this device has applied nothing of it (faster
+        // than every file) or the next file it needs was compacted away
+        // (the only way on).
+        let next_missing = queue.first().map(|(seq, _)| *seq) != Some(applied + 1);
+        let use_snapshot = snapshots.get(device).filter(|seq| **seq > applied && (applied == 0 || next_missing)).copied();
+        remember_peer(conn, target, key, device, options.announce || !queue.is_empty() || use_snapshot.is_some())?;
+        if let Some(snapshot_seq) = use_snapshot {
+            let path = snapshot_path(device, snapshot_seq);
+            match fetch_sealed(target, key, &path, device) {
+                Ok((seq, docs)) if seq == snapshot_seq => {
+                    release_quarantine(conn, &path)?;
+                    match apply_change_file(conn, device, seq, &docs, options) {
+                        Ok(outcome) => {
+                            // Counts as applied (and is acked) like a change file.
+                            report.applied.push((device.clone(), seq));
+                            report.snapshots_applied.push(device.clone());
+                            merge_outcome(report, outcome);
+                            queue.retain(|(s, _)| *s > seq);
+                        }
+                        Err(ApplyFailure::MassDelete(held)) => {
+                            report.held_back = Some(held);
+                            blocked.insert(device.clone());
+                        }
+                        Err(ApplyFailure::MissingDependencies) => {
+                            blocked.insert(device.clone()); // can't happen for full saves; wait, don't fail
+                        }
+                        Err(ApplyFailure::Other(e)) => return Err(e),
+                    }
+                }
+                Ok(_) => {
+                    let e = format!("{path}: contents don't match the file name");
+                    quarantine(conn, &path, &e)?;
+                    report.quarantined.push(path);
+                    blocked.insert(device.clone());
+                }
+                Err(e) => {
+                    quarantine(conn, &path, &e)?;
+                    report.quarantined.push(path);
+                    blocked.insert(device.clone());
+                }
+            }
+        }
     }
 
     // Round-robin over devices, so a bundle that builds on another device's
     // changes waits until those are applied.
-    let mut fetched: HashMap<String, Vec<(String, Vec<u8>)>> = HashMap::new();
-    let mut blocked: BTreeSet<String> = BTreeSet::new();
+    let mut fetched: HashMap<String, Docs> = HashMap::new();
     loop {
         let mut progress = false;
         for (device, queue) in queues.iter_mut() {
@@ -455,13 +598,7 @@ fn pull(
                 match apply_change_file(conn, device, seq, &fetched[&path], options) {
                     Ok(outcome) => {
                         report.applied.push((device.clone(), seq));
-                        for doc in outcome.changed_docs {
-                            if !report.changed_docs.contains(&doc) {
-                                report.changed_docs.push(doc);
-                            }
-                        }
-                        report.restored.extend(outcome.restored);
-                        report.conflict_copies.extend(outcome.conflict_copies);
+                        merge_outcome(report, outcome);
                         queue.remove(0);
                         progress = true;
                     }
@@ -483,26 +620,49 @@ fn pull(
     Ok(())
 }
 
-/// Records another device's name from its info file, the first time it's seen.
-fn remember_peer_name(conn: &Connection, target: &dyn SyncTarget, key: &VaultKey, device: &str) -> Result<(), String> {
+fn merge_outcome(report: &mut SyncReport, outcome: merge::ApplyOutcome) {
+    for doc in outcome.changed_docs {
+        if !report.changed_docs.contains(&doc) {
+            report.changed_docs.push(doc);
+        }
+    }
+    report.restored.extend(outcome.restored);
+    report.conflict_copies.extend(outcome.conflict_copies);
+}
+
+/// Records another device's name and last sync from its info file: the
+/// first time it's seen, and again when `refresh` (it uploaded something
+/// new, or this is an announce cycle) — so renames reach this device.
+fn remember_peer(conn: &Connection, target: &dyn SyncTarget, key: &VaultKey, device: &str, refresh: bool) -> Result<(), String> {
     let known: bool = conn
         .query_row("SELECT name IS NOT NULL FROM sync_peers WHERE device_id = ?1", [device], |r| r.get(0))
         .optional()
         .map_err(err)?
         .unwrap_or(false);
-    if known {
+    if known && !refresh {
         return Ok(());
     }
     let path = info_path(device);
     let Some(sealed) = target.get(&path)? else { return Ok(()) };
     let Ok(plain) = crypto::open(key, &path, &sealed) else { return Ok(()) };
-    let name = serde_json::from_slice::<Value>(&plain).ok().and_then(|v| v["name"].as_str().map(str::to_string));
+    let info = serde_json::from_slice::<Value>(&plain).unwrap_or(Value::Null);
+    let name = info["name"].as_str().map(str::to_string);
+    let seen = info["lastSyncAt"].as_i64();
     conn.execute(
-        "INSERT INTO sync_peers (device_id, name) VALUES (?1, ?2) ON CONFLICT(device_id) DO UPDATE SET name = excluded.name",
-        rusqlite::params![device, name],
+        "INSERT INTO sync_peers (device_id, name, last_seen_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(device_id) DO UPDATE SET name = COALESCE(excluded.name, name),
+           last_seen_at = MAX(COALESCE(excluded.last_seen_at, 0), COALESCE(last_seen_at, 0))",
+        rusqlite::params![device, name, seen],
     )
     .map_err(err)?;
     Ok(())
+}
+
+/// This device's name and when it last synced, for its other devices.
+fn write_info(target: &dyn SyncTarget, key: &VaultKey, me: &str, name: &str) -> Result<(), String> {
+    let path = info_path(me);
+    let info = json!({ "name": name, "lastSyncAt": now_ms() });
+    target.put(&path, &crypto::seal(key, &path, info.to_string().as_bytes())?)
 }
 
 fn parse_heads(text: &str) -> Vec<ChangeHash> {
@@ -579,9 +739,7 @@ fn push(
         })?;
         report.uploaded = Some(seq);
 
-        let info_path = info_path(me);
-        let info = json!({ "name": options.device_name, "lastSyncAt": now_ms() });
-        target.put(&info_path, &crypto::seal(key, &info_path, info.to_string().as_bytes())?)?;
+        write_info(target, key, me, &options.device_name)?;
     }
     for (doc_id, heads) in caught_up {
         conn.execute("UPDATE crdt_docs SET synced_heads = ?1 WHERE doc_id = ?2", rusqlite::params![heads_json(&heads), doc_id])
@@ -599,7 +757,110 @@ fn write_ack(conn: &Connection, target: &dyn SyncTarget, key: &VaultKey, me: &st
         .collect::<Result<_, _>>()
         .map_err(err)?;
     let path = ack_path(me);
-    target.put(&path, &crypto::seal(key, &path, json!({ "applied": applied }).to_string().as_bytes())?)
+    let ack = json!({ "applied": applied, "at": now_ms() });
+    target.put(&path, &crypto::seal(key, &path, ack.to_string().as_bytes())?)
+}
+
+// ------------------------------------------------------------- compaction
+
+/// Compacts this device's own log when it has grown (see [`CompactRules`]).
+/// Writes the snapshot and checks it reads back before deleting anything,
+/// and deletes only change files the snapshot covers that every recently
+/// active device has applied — others still find what they need, in the
+/// remaining files or the snapshot.
+fn compact(conn: &Connection, target: &dyn SyncTarget, key: &VaultKey, me: &str, rules: &CompactRules, report: &mut SyncReport) -> Result<(), String> {
+    let (upload_seq, snapshot_seq, compacted_at): (i64, i64, Option<i64>) = conn
+        .query_row("SELECT upload_seq, snapshot_seq, compacted_at FROM sync_settings WHERE id = 1", [], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .map_err(err)?;
+    let (upload_seq, mut snapshot_seq) = (upload_seq as u64, snapshot_seq as u64);
+    // Listed again: this cycle's own upload is in it.
+    let files = target.list(&format!("devices/{me}/"))?;
+    let own: Vec<(u64, u64, String)> = files
+        .iter()
+        .filter_map(|f| parse_changes_path(&f.path).filter(|(d, _)| d == me).map(|(_, seq)| (seq, f.size, f.path.clone())))
+        .collect();
+
+    let since: Vec<&(u64, u64, String)> = own.iter().filter(|(seq, _, _)| *seq > snapshot_seq).collect();
+    let bytes_since: u64 = since.iter().map(|(_, size, _)| size).sum();
+    let mut wrote = false;
+    if upload_seq > snapshot_seq && (since.len() >= rules.after_files || bytes_since >= rules.after_bytes) {
+        write_snapshot(conn, target, key, me, upload_seq)?;
+        conn.execute("UPDATE sync_settings SET snapshot_seq = ?1 WHERE id = 1", [upload_seq as i64]).map_err(err)?;
+        // The new one reads back, so older ones are no longer needed.
+        for (device, seq) in files.iter().filter_map(|f| parse_snapshot_path(&f.path)) {
+            if device == me && seq < upload_seq {
+                target.delete(&snapshot_path(me, seq))?;
+            }
+        }
+        snapshot_seq = upload_seq;
+        report.snapshot = Some(upload_seq);
+        wrote = true;
+    }
+
+    let covered: Vec<&(u64, u64, String)> = own.iter().filter(|(seq, _, _)| *seq <= snapshot_seq).collect();
+    let retry_due = compacted_at.is_none_or(|at| now_ms() - at >= rules.retry_ms);
+    if covered.is_empty() || !(wrote || retry_due) {
+        return Ok(());
+    }
+    let bound = applied_by_everyone(target, key, me, &files_of_peers(target)?, rules)?.min(snapshot_seq);
+    for (seq, _, path) in covered {
+        if *seq <= bound {
+            target.delete(path)?;
+            report.compacted += 1;
+        }
+    }
+    conn.execute("UPDATE sync_settings SET compacted_at = ?1 WHERE id = 1", [now_ms()]).map_err(err)?;
+    Ok(())
+}
+
+fn files_of_peers(target: &dyn SyncTarget) -> Result<Vec<RemoteFile>, String> {
+    target.list("devices/")
+}
+
+/// Writes `devices/<me>/snapshot.enc` — every document in full, as of
+/// upload `seq` — and reads it back: a snapshot that doesn't decrypt or
+/// load is an error, and nothing gets deleted.
+fn write_snapshot(conn: &Connection, target: &dyn SyncTarget, key: &VaultKey, me: &str, seq: u64) -> Result<(), String> {
+    let docs: Vec<(String, Vec<u8>)> = conn
+        .prepare("SELECT doc_id, bytes FROM crdt_docs ORDER BY doc_id")
+        .map_err(err)?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(err)?
+        .collect::<Result<_, _>>()
+        .map_err(err)?;
+    let map: serde_json::Map<String, Value> = docs.iter().map(|(id, bytes)| (id.clone(), Value::from(b64().encode(bytes)))).collect();
+    let snapshot = json!({ "format": BUNDLE_FORMAT, "kind": "snapshot", "device": me, "seq": seq, "docs": map });
+    let path = snapshot_path(me, seq);
+    target.put(&path, &crypto::seal(key, &path, snapshot.to_string().as_bytes())?)?;
+
+    let (found, read) = fetch_sealed(target, key, &path, me).map_err(|e| format!("the new snapshot doesn't read back: {e}"))?;
+    if found != seq || read.len() != docs.len() {
+        return Err("the new snapshot doesn't read back as written".into());
+    }
+    for (id, bytes) in &read {
+        automerge::AutoCommit::load(bytes).map_err(|e| format!("the new snapshot's {id} doesn't load: {e}"))?;
+    }
+    Ok(())
+}
+
+/// The highest of this device's upload numbers that every recently active
+/// device has applied (from their ack files). An ack older than
+/// `stale_ack_ms`, or one that can't be read, doesn't count.
+fn applied_by_everyone(target: &dyn SyncTarget, key: &VaultKey, me: &str, files: &[RemoteFile], rules: &CompactRules) -> Result<u64, String> {
+    let mut bound = u64::MAX;
+    for device in files.iter().filter_map(|f| device_of(&f.path, "ack.json.enc")).filter(|d| d != me) {
+        let path = ack_path(&device);
+        let Some(sealed) = target.get(&path)? else { continue };
+        let Ok(plain) = crypto::open(key, &path, &sealed) else { continue };
+        let Ok(ack) = serde_json::from_slice::<Value>(&plain) else { continue };
+        if ack["at"].as_i64().is_some_and(|at| now_ms() - at > rules.stale_ack_ms) {
+            continue;
+        }
+        bound = bound.min(ack["applied"][me].as_u64().unwrap_or(0));
+    }
+    Ok(bound)
 }
 
 // ------------------------------------------------------------ attachments

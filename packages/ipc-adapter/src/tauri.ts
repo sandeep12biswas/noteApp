@@ -165,6 +165,11 @@ export class TauriIPCAdapter implements IPCAdapter {
     return unwrap(await commands.syncConnect(passphrase)) as unknown as SyncStatus
   }
 
+  /** No dialog plugin in the Tauri shell yet; the UI then asks for a typed path. */
+  async pickFolder(): Promise<string | null> {
+    throw new Error('TauriIPCAdapter.pickFolder not available')
+  }
+
   async signInSync(target: SyncCloudTarget): Promise<SyncStatus> {
     return unwrap(await commands.syncSignIn(target)) as unknown as SyncStatus
   }

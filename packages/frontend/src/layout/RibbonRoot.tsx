@@ -512,11 +512,16 @@ function DrawToolsPanel() {
 // with no functional dependency on anything else and are deferred rather
 // than rushed. Page colour (issue #11) sits next to Zoom.
 function ViewToolsPanel() {
+  const openSync = useUIStore((s) => s.setSyncSettingsOpen)
   return (
     <div className="flex items-center gap-1">
       <ZoomControls />
       <Divider />
       <PageColorButton />
+      <Divider />
+      <RibbonButton label="Sync settings" onClick={() => openSync(true)}>
+        Sync…
+      </RibbonButton>
     </div>
   )
 }

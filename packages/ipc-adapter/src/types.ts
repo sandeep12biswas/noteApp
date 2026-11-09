@@ -127,6 +127,8 @@ export interface SyncStatus {
   waiting: number
   /** The other devices seen in the sync folder. */
   peers: Array<{ deviceId: string; name: string | null; lastSeenAt: number | null }>
+  /** While `needsPassphrase`: whether the target already has a vault (join it) or not (this device creates it). `null` if unknown. */
+  vaultExists: boolean | null
 }
 
 /** Choosing a different target forgets the sign-in and the passphrase key, so `signInSync()` (cloud) and `connectSync()` are needed again. */
@@ -245,6 +247,8 @@ export interface IPCAdapter {
   confirmSyncMassDelete(): Promise<SyncStatus>
   /** Stops syncing; notes stay on this device and in the sync folder. */
   disconnectSync(): Promise<SyncStatus>
+  /** The OS "choose a folder" dialog; `null` if cancelled. Rejects where there's none (Tauri, for now) — type the path instead. */
+  pickFolder(): Promise<string | null>
   /** Subscribes to sync events; returns the unsubscribe function. */
   onSyncEvent(handler: (event: SyncEvent) => void): () => void
   /**

@@ -34,11 +34,11 @@ impl App {
     }
 
     fn with_timing(name: &str, timing: Timing) -> App {
-        Self::with_config(name, Config { timing, kdf: FAST_KDF, cloud: Cloud::from_env() })
+        Self::with_config(name, Config { timing, kdf: FAST_KDF, cloud: Cloud::from_env(), compact: CompactRules::default() })
     }
 
     fn with_cloud(name: &str, cloud: Cloud) -> App {
-        Self::with_config(name, Config { timing: fast(), kdf: FAST_KDF, cloud })
+        Self::with_config(name, Config { timing: fast(), kdf: FAST_KDF, cloud, compact: CompactRules::default() })
     }
 
     fn with_config(name: &str, config: Config) -> App {
@@ -409,4 +409,48 @@ fn a_build_without_app_registrations_says_how_to_add_them() {
     let e = app.sync().sign_in(TARGET_ONEDRIVE, &browser).unwrap_err();
     assert!(e.contains("FLOWNOTE_ONEDRIVE_CLIENT_ID") && e.contains("docs/sync-cloud-setup.md"), "{e}");
     assert!(app.sync().configure(&json!({ "target": "gdrive" })).unwrap_err().contains("FLOWNOTE_GOOGLE_CLIENT_ID"));
+}
+
+#[test]
+fn the_passphrase_step_knows_whether_it_creates_or_joins_the_vault() {
+    let cloud = temp_dir("cloud");
+    let (a, b) = (App::new("a"), App::new("b"));
+    assert_eq!(a.sync().status().unwrap()["vaultExists"], Value::Null, "nothing chosen yet");
+    let s = a.sync().configure(&json!({ "target": "folder", "folderPath": cloud.to_str().unwrap() })).unwrap();
+    assert_eq!(s["vaultExists"], false, "first device: creates it");
+    a.sync().connect(PASS).unwrap();
+    a.wait_idle();
+    assert_eq!(a.sync().status().unwrap()["vaultExists"], Value::Null, "not looked up once connected");
+    let s = b.sync().configure(&json!({ "target": "folder", "folderPath": cloud.to_str().unwrap() })).unwrap();
+    assert_eq!(s["vaultExists"], true, "second device: joins it");
+    std::fs::remove_dir_all(&cloud).ok();
+}
+
+#[test]
+fn a_device_that_joins_without_notes_shows_up_and_its_rename_follows() {
+    let cloud = temp_dir("cloud");
+    let (a, b) = (App::new("a"), App::new("b"));
+    write_note(&a.conn(), "p1", "s1", "hello");
+    a.sync().configure(&json!({ "deviceName": "Laptop" })).unwrap();
+    a.join(&cloud);
+    a.wait_idle();
+    b.sync().configure(&json!({ "deviceName": "Phone" })).unwrap();
+    b.join(&cloud); // nothing of its own to upload
+    b.wait_for("B to have A's note", |b| texts(&b.conn(), "p1") == ["hello"]);
+    b.wait_idle();
+
+    let peer_names = |app: &App| -> Vec<String> {
+        app.sync().status().unwrap()["peers"].as_array().unwrap().iter().filter_map(|p| p["name"].as_str().map(str::to_string)).collect()
+    };
+    a.sync().sync_now().unwrap();
+    a.wait_for("A to list B", |a| peer_names(a) == ["Phone"]);
+    assert!(a.sync().status().unwrap()["peers"][0]["lastSeenAt"].is_i64());
+
+    b.sync().configure(&json!({ "deviceName": "Work phone" })).unwrap();
+    write_note(&b.conn(), "p1", "s2", "from the phone"); // uploads by itself, with the new name
+    a.wait_for("the rename on A", |a| {
+        let _ = a.sync().sync_now();
+        peer_names(a) == ["Work phone"]
+    });
+    std::fs::remove_dir_all(&cloud).ok();
 }

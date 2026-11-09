@@ -4,7 +4,6 @@ members = [
   "crates/flownote-core",
   "crates/flownote-electron",
   "crates/flownote-tauri",
-  "crates/flownote-sync",
   "apps/tauri/src-tauri",
 ]
 

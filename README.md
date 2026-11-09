@@ -17,7 +17,6 @@ plugins/                 First-party example plugin(s)
 crates/flownote-core/    Storage/CRDT/collision/plugin-storage — shared by both native backends
 crates/flownote-electron/  Sidecar binary spawned by the Electron shell
 crates/flownote-tauri/   #[tauri::command] handlers used by apps/tauri/src-tauri
-crates/flownote-sync/    Automerge WebSocket relay
 scripts/linux/           Linux install/uninstall scripts (see below)
 scripts/windows/         Windows install/uninstall scripts (see below)
 ```

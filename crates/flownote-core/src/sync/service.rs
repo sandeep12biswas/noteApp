@@ -38,7 +38,7 @@ use super::gdrive::{self, GoogleDriveTarget};
 use super::http::{Http, Retry};
 use super::oauth::{self, Provider, TokenSource, Tokens, SIGN_IN_AGAIN};
 use super::onedrive::{self, OneDriveTarget};
-use super::{connect_vault, stored_vault_key, sync_once, ConnectError, LocalFolderTarget, MassDelete, SyncOptions, SyncTarget};
+use super::{connect_vault, stored_vault_key, sync_once, CompactRules, ConnectError, LocalFolderTarget, MassDelete, SyncOptions, SyncTarget};
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::crypto::KdfParams;
 use crate::crdt;
@@ -179,13 +179,17 @@ pub struct Config {
     pub timing: Timing,
     pub kdf: KdfParams,
     pub cloud: Cloud,
+    pub compact: CompactRules,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { timing: Timing::default(), kdf: KdfParams::default(), cloud: Cloud::from_env() }
+        Config { timing: Timing::default(), kdf: KdfParams::default(), cloud: Cloud::from_env(), compact: CompactRules::default() }
     }
 }
+
+/// How often a device re-announces itself (info file) with nothing else to upload.
+const ANNOUNCE_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Default)]
 struct Runtime {
@@ -200,6 +204,10 @@ struct Runtime {
     waiting: usize,
     /// Set to stop the sign-in waiting in the browser, if any.
     sign_in_cancel: Option<Arc<AtomicBool>>,
+    /// The next cycle writes this device's info file even with nothing to
+    /// upload, and re-reads the others' (just joined, renamed, or started).
+    announce_requested: bool,
+    last_announced: Option<Instant>,
 }
 
 struct Shared {
@@ -208,6 +216,7 @@ struct Shared {
     timing: Timing,
     kdf: KdfParams,
     cloud: Cloud,
+    compact: CompactRules,
     runtime: Mutex<Runtime>,
     wake: Condvar,
     /// Held for a whole cycle and while (dis)connecting, so settings never
@@ -283,7 +292,7 @@ impl SyncService {
     /// [`start`](Self::start) with other timings, key-derivation cost or
     /// cloud endpoints (tests).
     pub fn start_with(pool: Pool<SqliteConnectionManager>, emit: Emit, config: Config) -> Result<SyncService, String> {
-        let Config { timing, kdf, cloud } = config;
+        let Config { timing, kdf, cloud, compact } = config;
         {
             let conn = pool.get().map_err(err)?;
             let settings = read_settings(&conn)?;
@@ -297,7 +306,9 @@ impl SyncService {
             timing,
             kdf,
             cloud,
-            runtime: Mutex::new(Runtime { requested: true, ..Runtime::default() }), // sync on start
+            compact,
+            // Sync, and announce this device, on start.
+            runtime: Mutex::new(Runtime { requested: true, announce_requested: true, ..Runtime::default() }),
             wake: Condvar::new(),
             cycle: Mutex::new(()),
         });
@@ -330,7 +341,10 @@ impl SyncService {
             if name.is_empty() {
                 return Err("The device name can't be empty.".into());
             }
-            conn.execute("UPDATE sync_settings SET device_name = ?1 WHERE id = 1", [name]).map_err(err)?;
+            if name != current.device_name {
+                conn.execute("UPDATE sync_settings SET device_name = ?1 WHERE id = 1", [name]).map_err(err)?;
+                lock(&shared.runtime).announce_requested = true;
+            }
         }
         if let Some(target) = input.get("target").and_then(Value::as_str) {
             let label = match target {
@@ -395,6 +409,7 @@ impl SyncService {
                 Err(ConnectError::Other(e)) => return Err(e),
             }
             conn.execute("UPDATE sync_settings SET enabled = 1, last_error = NULL WHERE id = 1", []).map_err(err)?;
+            lock(&shared.runtime).announce_requested = true;
         }
         shared.request(false);
         shared.emit_status();
@@ -580,6 +595,14 @@ impl Shared {
             .map_err(err)?
             .collect::<Result<_, _>>()
             .map_err(err)?;
+        // Whether the passphrase step creates the vault (first device) or
+        // joins it — only looked up while that step is showing, since for a
+        // cloud drive it's a request. `null` when unknown (e.g. offline).
+        let vault_exists = if !s.needs_sign_in() && !connected && s.target != TARGET_NONE {
+            self.open_target(&s).ok().flatten().and_then(|t| super::read_vault(t.as_ref()).ok()).map(|v| v.is_some())
+        } else {
+            None
+        };
         let rt = lock(&self.runtime);
         let held_back = match &rt.held_back {
             Some(h) => {
@@ -628,6 +651,7 @@ impl Shared {
             "heldBack": held_back,
             "quarantined": quarantined,
             "waiting": rt.waiting,
+            "vaultExists": vault_exists,
             "peers": peers,
         }))
     }
@@ -654,10 +678,14 @@ impl Shared {
 
     fn run_cycle(&self, allow_mass_delete: bool) {
         let _cycle = lock(&self.cycle);
-        lock(&self.runtime).syncing = true;
+        let announce = {
+            let mut rt = lock(&self.runtime);
+            rt.syncing = true;
+            rt.announce_requested || rt.last_announced.is_none_or(|at| at.elapsed() >= ANNOUNCE_EVERY)
+        };
         self.emit_status();
 
-        let outcome = self.cycle_inner(allow_mass_delete);
+        let outcome = self.cycle_inner(allow_mass_delete, announce);
 
         {
             let mut rt = lock(&self.runtime);
@@ -667,6 +695,10 @@ impl Shared {
             if let Ok(Some(report)) = &outcome {
                 rt.held_back = report.held_back.clone();
                 rt.waiting = report.waiting.len();
+                if announce {
+                    rt.announce_requested = false;
+                    rt.last_announced = Some(Instant::now());
+                }
             }
         }
         match outcome {
@@ -688,7 +720,7 @@ impl Shared {
 
     /// One cycle; `Ok(None)` when sync isn't set up. Errors are also left in
     /// `sync_settings.last_error` for the status.
-    fn cycle_inner(&self, allow_mass_delete: bool) -> Result<Option<super::SyncReport>, String> {
+    fn cycle_inner(&self, allow_mass_delete: bool, announce: bool) -> Result<Option<super::SyncReport>, String> {
         let conn = self.pool.get().map_err(err)?;
         let settings = read_settings(&conn)?;
         if !settings.enabled || settings.needs_sign_in() {
@@ -707,7 +739,7 @@ impl Shared {
                 return Err(e);
             }
         };
-        let options = SyncOptions { allow_mass_delete, device_name: settings.device_name };
+        let options = SyncOptions { allow_mass_delete, device_name: settings.device_name, announce, compact: Some(self.compact.clone()) };
         let result = sync_once(&conn, target.as_ref(), &key, &options).map(Some);
         if let Err(e) = &result
             && e.contains(SIGN_IN_AGAIN)
