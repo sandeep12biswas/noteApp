@@ -12,7 +12,7 @@ afterEach(cleanup)
 beforeEach(() => {
   useCanvasStore.setState({ segments: {}, activeSegmentId: null })
   useNotebookStore.setState({
-    files: { 'page-1': { id: 'page-1', name: 'Test', folderId: 'f1', content: '', updatedAt: 0, mode: 'canvas' } },
+    files: { 'page-1': { id: 'page-1', name: 'Test', folderId: 'f1', content: '', updatedAt: 0, mode: 'canvas', background: null } },
   })
   useUIStore.setState({ zoom: 1 })
 })

@@ -29,14 +29,16 @@ function systemPrefersDark(): boolean {
 // above is purely class-driven (no automatic media-query fallback once a
 // custom variant is defined), 'system' is resolved here in JS by checking
 // matchMedia directly and applying/removing `.dark` accordingly.
-function applyThemeClass(pref: ThemePreference) {
-  if (typeof document === 'undefined') return
+function applyThemeClass(pref: ThemePreference): boolean {
   const isDark = pref === 'dark' || (pref === 'system' && systemPrefersDark())
-  document.documentElement.classList.toggle('dark', isDark)
+  if (typeof document !== 'undefined') document.documentElement.classList.toggle('dark', isDark)
+  return isDark
 }
 
 interface ThemeState {
   theme: ThemePreference
+  /** Whether the dark theme is showing — `theme` resolved, including 'system'. */
+  isDark: boolean
   setTheme: (theme: ThemePreference) => void
   cycleTheme: () => void
 }
@@ -44,14 +46,14 @@ interface ThemeState {
 const initialTheme = readStoredTheme()
 // Applied at module load, before React mounts, to avoid a flash of the
 // wrong theme on startup.
-applyThemeClass(initialTheme)
+const initialIsDark = applyThemeClass(initialTheme)
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
   theme: initialTheme,
+  isDark: initialIsDark,
   setTheme: (theme) => {
     localStorage.setItem(STORAGE_KEY, theme)
-    applyThemeClass(theme)
-    set({ theme })
+    set({ theme, isDark: applyThemeClass(theme) })
   },
   cycleTheme: () => {
     const next = THEME_ORDER[(THEME_ORDER.indexOf(get().theme) + 1) % THEME_ORDER.length]!
@@ -63,6 +65,6 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 // open (e.g. an OS-level light/dark schedule flipping mid-session).
 if (typeof window !== 'undefined' && window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (useThemeStore.getState().theme === 'system') applyThemeClass('system')
+    if (useThemeStore.getState().theme === 'system') useThemeStore.setState({ isDark: applyThemeClass('system') })
   })
 }

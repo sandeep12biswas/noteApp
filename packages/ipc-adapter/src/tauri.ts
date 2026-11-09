@@ -144,6 +144,10 @@ export class TauriIPCAdapter implements IPCAdapter {
     unwrap(await commands.setPageMode(pageId, mode))
   }
 
+  async setPageBackground(pageId: string, background: string | null): Promise<void> {
+    unwrap(await commands.setPageBackground(pageId, background))
+  }
+
 
   onSyncEvent(_handler: (event: SyncEvent) => void): () => void {
     throw new Error('TauriIPCAdapter.onSyncEvent not implemented')

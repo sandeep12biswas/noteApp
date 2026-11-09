@@ -65,6 +65,8 @@ export interface FileEntry {
   updatedAt: number
   /** Canvas vs. linear view (DESIGN.md §4.3, Phase 5 "Mode toggle") — defaults to 'canvas' for pages created client-side before a round-trip through `hydrateFromIPC`. */
   mode: 'canvas' | 'linear'
+  /** The page's own editor background (`#rrggbb`, light mode only, issue #11), or null to use the app default (store/editorBackgroundStore.ts). */
+  background: string | null
 }
 
 type Folders = Record<string, Folder>
@@ -169,6 +171,8 @@ interface NotebookState {
   updateFileContent: (id: string, content: string) => void
   /** Canvas ↔ linear toggle (DESIGN.md §4.3, Phase 5 "Mode toggle") — persists via `ipc.setPageMode()`. */
   setFileMode: (id: string, mode: 'canvas' | 'linear') => void
+  /** Sets or clears (null) a page's own editor background — persists via `ipc.setPageBackground()` and syncs like the mode. */
+  setFileBackground: (id: string, background: string | null) => void
   /** Loads every folder and its pages from IPCAdapter — called once at startup once an adapter resolves. */
   hydrateFromIPC: () => Promise<void>
 }
@@ -282,7 +286,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
 
     const id = makeId('file')
     set((state) => ({
-      files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now(), mode: 'canvas' } },
+      files: { ...state.files, [id]: { id, name, folderId, content, updatedAt: Date.now(), mode: 'canvas', background: null } },
     }))
     persist('savePage', ipc?.savePage({ id, folderId, title: name }))
     return { ok: true, id }
@@ -358,6 +362,14 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       return { files: { ...state.files, [id]: { ...file, mode, updatedAt: Date.now() } } }
     }),
 
+  setFileBackground: (id, background) =>
+    set((state) => {
+      const file = state.files[id]
+      if (!file || file.background === background) return state
+      persist('setPageBackground', ipc?.setPageBackground(id, background))
+      return { files: { ...state.files, [id]: { ...file, background, updatedAt: Date.now() } } }
+    }),
+
   hydrateFromIPC: async () => {
     if (!ipc) return
     const folders = await ipc.listFolders()
@@ -368,7 +380,7 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
     for (const folder of folders) {
       const pages = await ipc.listPages(folder.id)
       for (const p of pages) {
-        fileMap[p.id] = { id: p.id, name: p.title, folderId: folder.id, content: '', updatedAt: p.updatedAt, mode: p.mode }
+        fileMap[p.id] = { id: p.id, name: p.title, folderId: folder.id, content: '', updatedAt: p.updatedAt, mode: p.mode, background: p.background ?? null }
       }
     }
     set({ folders: folderMap, files: fileMap })

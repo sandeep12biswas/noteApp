@@ -30,7 +30,7 @@ export function LinearRoot({ pageId }: { pageId: string }) {
 
   return (
     <div data-testid="linear-root" className="mx-auto flex max-w-3xl flex-col gap-2 px-6 py-4">
-      {pageSegments.length === 0 && <div className="text-sm text-gray-400">No content yet.</div>}
+      {pageSegments.length === 0 && <div className="editor-muted text-sm text-gray-400">No content yet.</div>}
       {pageSegments.map((segment) => (
         <LinearSegmentHost key={segment.id} segment={segment} onTextChange={handleTextChange} />
       ))}

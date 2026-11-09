@@ -26,7 +26,7 @@ export function AiDraftBar({
     <div
       role="toolbar"
       aria-label="AI draft"
-      className="absolute top-full left-0 z-40 mt-1 flex items-center gap-1 rounded border border-violet-200 bg-white px-1.5 py-1 shadow-sm dark:border-violet-900 dark:bg-gray-900"
+      className="absolute top-full left-0 z-40 mt-1 flex items-center gap-1 rounded border border-violet-200 bg-white px-1.5 py-1 shadow-sm dark:border-violet-900 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
       // Keep focus (and the caret) in the editor, as the slash menu does.
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}

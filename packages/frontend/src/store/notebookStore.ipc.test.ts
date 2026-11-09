@@ -12,6 +12,7 @@ function mockAdapter(): IPCAdapter {
     listFolders: vi.fn().mockResolvedValue([]),
     savePage: vi.fn().mockResolvedValue(undefined),
     listPages: vi.fn().mockResolvedValue([]),
+    setPageBackground: vi.fn().mockResolvedValue(undefined),
   } as unknown as IPCAdapter
 }
 
@@ -61,6 +62,30 @@ describe('notebookStore IPCAdapter wiring', () => {
     }
   })
 
+  it('persists a page colour via setPageBackground, and clears it with null (issue #11)', () => {
+    const ipc = mockAdapter()
+    setIPCAdapter(ipc)
+    try {
+      const { id: folderId } = useNotebookStore.getState().createFolder(null, 'Work')
+      const { id } = useNotebookStore.getState().createFile(folderId!, 'Notes')
+      expect(useNotebookStore.getState().files[id!]?.background).toBeNull()
+
+      useNotebookStore.getState().setFileBackground(id!, '#f8f1e3')
+      expect(useNotebookStore.getState().files[id!]?.background).toBe('#f8f1e3')
+      expect(ipc.setPageBackground).toHaveBeenLastCalledWith(id, '#f8f1e3')
+
+      useNotebookStore.getState().setFileBackground(id!, null)
+      expect(useNotebookStore.getState().files[id!]?.background).toBeNull()
+      expect(ipc.setPageBackground).toHaveBeenLastCalledWith(id, null)
+
+      // No-op (and no IPC call) when nothing changes.
+      useNotebookStore.getState().setFileBackground(id!, null)
+      expect(ipc.setPageBackground).toHaveBeenCalledTimes(2)
+    } finally {
+      setIPCAdapter(null)
+    }
+  })
+
   it('does not throw when no adapter is set', () => {
     setIPCAdapter(null)
     expect(() => useNotebookStore.getState().createFolder(null, 'Work')).not.toThrow()
@@ -72,7 +97,7 @@ describe('notebookStore IPCAdapter wiring', () => {
       { id: 'folder-1', name: 'Work', parentId: null, icon: null, expanded: false },
     ])
     vi.mocked(ipc.listPages).mockResolvedValue([
-      { id: 'page-1', notebookId: 'nb-1', title: 'Notes', mode: 'canvas', createdAt: 0, updatedAt: 5 },
+      { id: 'page-1', notebookId: 'nb-1', title: 'Notes', mode: 'canvas', createdAt: 0, updatedAt: 5, background: '#f8f1e3' },
     ])
     setIPCAdapter(ipc)
     try {
@@ -81,6 +106,7 @@ describe('notebookStore IPCAdapter wiring', () => {
       expect(state.folders['folder-1']?.name).toBe('Work')
       expect(state.files['page-1']?.name).toBe('Notes')
       expect(state.files['page-1']?.folderId).toBe('folder-1')
+      expect(state.files['page-1']?.background).toBe('#f8f1e3')
     } finally {
       setIPCAdapter(null)
     }

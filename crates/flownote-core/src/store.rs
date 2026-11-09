@@ -24,7 +24,7 @@ use std::path::PathBuf;
 
 pub fn get_page(conn: &Connection, page_id: &str) -> rusqlite::Result<Option<Value>> {
     conn.query_row(
-        "SELECT id, notebook_id, title, mode, created_at, updated_at FROM pages WHERE id = ?1",
+        "SELECT id, notebook_id, title, mode, created_at, updated_at, background FROM pages WHERE id = ?1",
         [page_id],
         |row| {
             Ok(serde_json::json!({
@@ -34,6 +34,7 @@ pub fn get_page(conn: &Connection, page_id: &str) -> rusqlite::Result<Option<Val
                 "mode": row.get::<_, String>(3)?,
                 "createdAt": row.get::<_, i64>(4)?,
                 "updatedAt": row.get::<_, i64>(5)?,
+                "background": row.get::<_, Option<String>>(6)?,
             }))
         },
     )
@@ -129,7 +130,10 @@ pub fn save_page(conn: &Connection, params: &Value) -> Result<(), String> {
 
 pub fn list_pages(conn: &Connection, folder_id: &str) -> Result<Vec<Value>, String> {
     let mut stmt = conn
-        .prepare("SELECT id, notebook_id, folder_id, title, mode, created_at, updated_at FROM pages WHERE folder_id = ?1")
+        .prepare(
+            "SELECT id, notebook_id, folder_id, title, mode, created_at, updated_at, background
+             FROM pages WHERE folder_id = ?1",
+        )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([folder_id], |row| {
@@ -141,6 +145,7 @@ pub fn list_pages(conn: &Connection, folder_id: &str) -> Result<Vec<Value>, Stri
                 "mode": row.get::<_, String>(4)?,
                 "createdAt": row.get::<_, i64>(5)?,
                 "updatedAt": row.get::<_, i64>(6)?,
+                "background": row.get::<_, Option<String>>(7)?,
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -554,6 +559,34 @@ pub fn set_page_mode(conn: &Connection, params: &Value) -> Result<(), String> {
         return Err(format!("no such page: {page_id}"));
     }
     Ok(())
+}
+
+/// Sets a page's own editor background colour (`#rrggbb`), or clears it with
+/// `null` so the page follows the app-wide default (the V11 migration's
+/// `pages.background`).
+pub fn set_page_background(conn: &Connection, params: &Value) -> Result<(), String> {
+    let page_id = params.get("pageId").and_then(Value::as_str).ok_or("set_page_background requires `pageId`")?;
+    let background = match params.get("background") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(color)) if is_hex_color(color) => Some(color.to_ascii_lowercase()),
+        Some(other) => {
+            return Err(format!("set_page_background: invalid colour {other} (expected \"#rrggbb\" or null)"));
+        }
+    };
+    let changed = conn
+        .execute(
+            "UPDATE pages SET background = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![background, now_ms(), page_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("no such page: {page_id}"));
+    }
+    Ok(())
+}
+
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Persists a page's ink layer as a PNG data URL (DESIGN.md §5.5) — the V4
@@ -1169,5 +1202,51 @@ mod transaction_tests {
         let sha: String = conn.query_row("SELECT sha256 FROM attachments WHERE id = 'a1'", [], |row| row.get(0)).unwrap();
         assert_eq!(sha, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod page_background_tests {
+    use super::*;
+    use crate::db;
+    use serde_json::json;
+
+    fn conn_with_page() -> Connection {
+        let conn = db::open_in_memory().unwrap();
+        save_folder(&conn, &json!({ "id": "f1", "name": "Notes" })).unwrap();
+        save_page(&conn, &json!({ "id": "p1", "folderId": "f1", "title": "Ideas" })).unwrap();
+        conn
+    }
+
+    fn background(conn: &Connection) -> Value {
+        get_page(conn, "p1").unwrap().unwrap()["background"].clone()
+    }
+
+    #[test]
+    fn a_new_page_has_no_background() {
+        let conn = conn_with_page();
+        assert_eq!(background(&conn), Value::Null);
+        assert_eq!(list_pages(&conn, "f1").unwrap()[0]["background"], Value::Null);
+    }
+
+    #[test]
+    fn round_trips_a_colour_and_null() {
+        let conn = conn_with_page();
+        set_page_background(&conn, &json!({ "pageId": "p1", "background": "#F8F1E3" })).unwrap();
+        assert_eq!(background(&conn), "#f8f1e3");
+        assert_eq!(list_pages(&conn, "f1").unwrap()[0]["background"], "#f8f1e3");
+        set_page_background(&conn, &json!({ "pageId": "p1", "background": null })).unwrap();
+        assert_eq!(background(&conn), Value::Null);
+    }
+
+    #[test]
+    fn rejects_bad_colours_and_a_missing_page() {
+        let conn = conn_with_page();
+        for bad in [json!("red"), json!("#12"), json!("#12345g"), json!(42)] {
+            let err = set_page_background(&conn, &json!({ "pageId": "p1", "background": bad })).unwrap_err();
+            assert!(err.contains("invalid colour"), "{err}");
+        }
+        let err = set_page_background(&conn, &json!({ "pageId": "missing", "background": "#ffffff" })).unwrap_err();
+        assert!(err.contains("no such page"), "{err}");
     }
 }

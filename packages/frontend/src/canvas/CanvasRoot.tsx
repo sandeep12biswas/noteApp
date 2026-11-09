@@ -137,7 +137,7 @@ export function CanvasRoot({ pageId }: { pageId: string }) {
       }}
     >
       {pageSegments.length === 0 && (
-        <div className="pointer-events-none flex h-full items-center justify-center text-sm text-gray-400">
+        <div className="editor-muted pointer-events-none flex h-full items-center justify-center text-sm text-gray-400">
           Click anywhere to start writing
         </div>
       )}

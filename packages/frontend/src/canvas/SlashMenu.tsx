@@ -101,7 +101,7 @@ export function SlashMenu({
       ref={ref}
       role="menu"
       aria-label="Insert block"
-      className="fixed z-50 max-h-72 w-56 overflow-y-auto rounded border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="fixed z-50 max-h-72 w-56 overflow-y-auto rounded border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
       style={{ left: x, top: y }}
       // Issue #4: a mousedown on a menu item would move DOM focus off the
       // editor, and TipTap's `focus()` only restores it a frame later, so
