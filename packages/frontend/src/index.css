@@ -339,3 +339,23 @@
   outline-offset: 1px;
   border-radius: 2px;
 }
+
+/* Undo toast (canvas/UndoDeleteToast.tsx): a bar that empties over the undo window. */
+@keyframes undo-toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+.undo-toast-timer {
+  animation-name: undo-toast-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-toast-timer {
+    animation: none;
+  }
+}

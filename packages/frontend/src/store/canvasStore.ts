@@ -76,6 +76,17 @@ export function __flushHeightSavesForTests(): void {
   pendingHeightSaveIds.clear()
 }
 
+/**
+ * "Delete segment" with undo (issue #29). The segment leaves the canvas at
+ * once but its storage delete waits until the undo window closes: the
+ * backend's `deleteSegment` also removes the segment's attachment files, so
+ * deleting for real up front would leave nothing for Undo to bring back.
+ * The deletion is committed when the window times out, when another delete
+ * replaces it, when the toast is dismissed, or when the window/app closes.
+ */
+export const UNDO_DELETE_MS = 8000
+let pendingDeleteTimer: ReturnType<typeof setTimeout> | null = null
+
 function toWireSegment(s: Segment): Omit<Segment, 'createdAt' | 'updatedAt'> {
   const { id, pageId, x, y, w, h, zIndex, borderColor, fillColor, content } = s
   return { id, pageId, x, y, w, h, zIndex, borderColor, fillColor, content }
@@ -163,6 +174,14 @@ interface CanvasState {
   /** Resize commit — same direct-mutate-during-drag, commit-on-release pattern as position. */
   updateSegmentWidth: (id: string, w: number) => void
   setSegmentColor: (id: string, borderColor: string | null, fillColor: string | null) => void
+  /** The segment most recently removed by `deleteSegment`, while its deletion can still be undone (issue #29). */
+  recentlyDeleted: Segment | null
+  /** Removes a segment whatever its content or colour; `undoDeleteSegment` restores it for `UNDO_DELETE_MS`. */
+  deleteSegment: (id: string) => void
+  /** Puts the `recentlyDeleted` segment back exactly as it was. */
+  undoDeleteSegment: () => void
+  /** Ends the undo window now and deletes `recentlyDeleted` from storage. */
+  commitDeleteSegment: () => void
   /** Auto-delete rule (DESIGN.md §4.1/§4.2): empty segments vanish on blur unless coloured. */
   deleteIfEmptyAndUncolored: (id: string) => void
   registerEditor: (id: string, editor: Editor) => void
@@ -197,6 +216,7 @@ function makeSegmentId(): string {
 export const useCanvasStore = create<CanvasState>((set, get) => ({
   segments: {},
   activeSegmentId: null,
+  recentlyDeleted: null,
   editorRefs: new Map(),
   segmentEls: new Map(),
 
@@ -323,6 +343,43 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       return { segments: { ...state.segments, [id]: updated } }
     }),
 
+  deleteSegment: (id) => {
+    const seg = get().segments[id]
+    if (!seg) return
+    // Only one deletion is undoable at a time: an earlier one becomes final.
+    get().commitDeleteSegment()
+    set((state) => {
+      const rest = { ...state.segments }
+      delete rest[id]
+      return {
+        segments: rest,
+        activeSegmentId: state.activeSegmentId === id ? null : state.activeSegmentId,
+        recentlyDeleted: seg,
+      }
+    })
+    pendingDeleteTimer = setTimeout(() => get().commitDeleteSegment(), UNDO_DELETE_MS)
+  },
+
+  undoDeleteSegment: () => {
+    const seg = get().recentlyDeleted
+    if (!seg) return
+    if (pendingDeleteTimer) clearTimeout(pendingDeleteTimer)
+    pendingDeleteTimer = null
+    // Never deleted from storage, so restoring is purely local.
+    set((state) => ({ segments: { ...state.segments, [seg.id]: seg }, recentlyDeleted: null }))
+    // Something may have been placed where it was in the meantime.
+    get().cascadePushBelow(seg.id, new Set([seg.id]), 0)
+  },
+
+  commitDeleteSegment: () => {
+    if (pendingDeleteTimer) clearTimeout(pendingDeleteTimer)
+    pendingDeleteTimer = null
+    const seg = get().recentlyDeleted
+    if (!seg) return
+    set({ recentlyDeleted: null })
+    persist('deleteSegment', ipc?.deleteSegment(seg.id))
+  },
+
   deleteIfEmptyAndUncolored: (id) =>
     set((state) => {
       const seg = state.segments[id]
@@ -357,6 +414,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set((state) => {
       const kept = Object.fromEntries(Object.entries(state.segments).filter(([, s]) => s.pageId !== pageId))
       for (const s of loaded) {
+        // Still in storage only because its undo window is open.
+        if (s.id === state.recentlyDeleted?.id) continue
         kept[s.id] = { ...s, createdAt: now, updatedAt: now }
       }
       return { segments: kept }
@@ -370,6 +429,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set((state) => {
       const next = Object.fromEntries(Object.entries(state.segments).filter(([, s]) => s.pageId !== pageId))
       for (const s of loaded) {
+        if (s.id === state.recentlyDeleted?.id) continue
         const prev = state.segments[s.id]
         if (prev && deepEqual(toWireSegment(prev), s)) {
           next[s.id] = prev
@@ -387,3 +447,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     })
   },
 }))
+
+// Closing the window (or quitting) ends any open undo window: commit the
+// pending deletion rather than letting the segment reappear next launch.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => useCanvasStore.getState().commitDeleteSegment())
+}

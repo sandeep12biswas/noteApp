@@ -50,6 +50,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   const activeSegmentId = useCanvasStore((s) => s.activeSegmentId)
   const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
   const updateSegmentContent = useCanvasStore((s) => s.updateSegmentContent)
+  const deleteSegment = useCanvasStore((s) => s.deleteSegment)
   const updateSegmentHeight = useCanvasStore((s) => s.updateSegmentHeight)
   const updateSegmentPosition = useCanvasStore((s) => s.updateSegmentPosition)
   const updateSegmentWidth = useCanvasStore((s) => s.updateSegmentWidth)
@@ -683,6 +684,12 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           activeColor={segment.borderColor}
           onPick={(border, fill) => setSegmentColor(segment.id, border, fill)}
           onClear={() => setSegmentColor(segment.id, null, null)}
+          onDelete={() => {
+            // No refocusing (unlike onClose): this segment and its editor are going away.
+            colorMenuOpenRef.current = false
+            setColorMenu(null)
+            deleteSegment(segment.id)
+          }}
           onClose={() => {
             colorMenuOpenRef.current = false
             setColorMenu(null)
