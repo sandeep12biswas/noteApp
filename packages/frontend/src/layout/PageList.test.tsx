@@ -66,6 +66,24 @@ describe('PageList', () => {
     expect(screen.getByText('Roadmap')).toBeInTheDocument()
   })
 
+  it('new-page flow: a lowercase file name is kept as typed, while the folder is still capitalized (issue #31)', async () => {
+    const user = userEvent.setup()
+    render(<PageList />)
+
+    await user.click(screen.getByRole('button', { name: 'New page' }))
+    await user.click(screen.getByRole('radio', { name: 'New folder' }))
+    await user.type(screen.getByRole('textbox', { name: 'New folder name' }), 'journal')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'morning pages')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(Object.values(useNotebookStore.getState().folders)[0]?.name).toBe('Journal')
+    expect(Object.values(useNotebookStore.getState().files)[0]?.name).toBe('morning pages')
+    expect(screen.getByText('morning pages')).toBeInTheDocument()
+  })
+
   it('new-page flow: rejects an invalid file name and keeps the dialog open', async () => {
     const store = useNotebookStore.getState()
     const folder = store.createFolder(null, 'Notes')
@@ -75,10 +93,10 @@ describe('PageList', () => {
     await user.click(screen.getByRole('button', { name: 'New page' }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Existing folder' }), folder.id!)
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.type(screen.getByRole('textbox', { name: 'File name' }), 'untitled')
+    await user.type(screen.getByRole('textbox', { name: 'File name' }), '2nd try')
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(screen.getByRole('alert')).toHaveTextContent('capital letter')
+    expect(screen.getByRole('alert')).toHaveTextContent('must start with a letter')
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 

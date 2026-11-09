@@ -92,11 +92,18 @@ describe('fileCountOf', () => {
 })
 
 describe('createFile', () => {
-  it('rejects a name that does not start with a capital letter', () => {
+  it('rejects a name that does not start with a letter', () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    expect(store.createFile(folder.id!, '1st draft').ok).toBe(false)
+  })
+
+  it('keeps a lowercase name exactly as typed (issue #31)', () => {
     const store = useNotebookStore.getState()
     const folder = store.createFolder(null, 'Notes')
     const result = store.createFile(folder.id!, 'untitled')
-    expect(result.ok).toBe(false)
+    expect(result.ok).toBe(true)
+    expect(useNotebookStore.getState().files[result.id!]?.name).toBe('untitled')
   })
 
   it('enforces uniqueness within a folder but allows the same name in a different folder', () => {
@@ -131,14 +138,23 @@ describe('renameFile', () => {
     expect(useNotebookStore.getState().files[file.id!]?.name).toBe('Roadmap')
   })
 
-  it('rejects a name that does not start with a capital letter, leaving the old name in place', () => {
+  it('rejects a name that does not start with a letter, leaving the old name in place', () => {
     const store = useNotebookStore.getState()
     const folder = store.createFolder(null, 'Notes')
     const file = store.createFile(folder.id!, 'Todo')
 
-    const result = store.renameFile(file.id!, 'todo')
+    const result = store.renameFile(file.id!, '#todo')
     expect(result.ok).toBe(false)
     expect(useNotebookStore.getState().files[file.id!]?.name).toBe('Todo')
+  })
+
+  it('renames to a lowercase name (issue #31)', () => {
+    const store = useNotebookStore.getState()
+    const folder = store.createFolder(null, 'Notes')
+    const file = store.createFile(folder.id!, 'Todo')
+
+    expect(store.renameFile(file.id!, 'todo').ok).toBe(true)
+    expect(useNotebookStore.getState().files[file.id!]?.name).toBe('todo')
   })
 
   it('rejects a duplicate name within the same folder but allows renaming to itself', () => {

@@ -41,7 +41,7 @@ The app has **four sections** in total: one horizontal panel across the full wid
 ### 2.2 File panel (2nd vertical panel)
 
 - Shows the list of files for the currently selected folder, in **natural order**.
-- File names **cannot start with a number or a special character**, and must **start with a capital letter**.
+- File names **must start with a letter** (lowercase or capital) — **not a number or a special character**. Unlike folder names, they are not auto-capitalized: a file keeps the case the user typed.
 - Includes a **new-page** action: clicking it first asks the user to either create a new folder or pick an existing one, and only then prompts for the file name.
 - The **same file name may exist in different folders** (uniqueness is per-folder, not global).
 - Includes **search**, in two modes:

@@ -63,11 +63,25 @@ describe('EditorPane page title', () => {
 
     const title = screen.getByRole('textbox', { name: 'Page title' })
     await user.clear(title)
+    await user.type(title, '9 lives')
+    await user.tab()
+
+    expect(screen.getByRole('alert')).toHaveTextContent('must start with a letter')
+    expect(useNotebookStore.getState().files[fileId]?.name).toBe('Todo')
+  })
+
+  it('renames the page to a lowercase title (issue #31)', async () => {
+    const fileId = seedSelectedFile()
+    const user = userEvent.setup()
+    render(<EditorPane />)
+
+    const title = screen.getByRole('textbox', { name: 'Page title' })
+    await user.clear(title)
     await user.type(title, 'lowercase')
     await user.tab()
 
-    expect(screen.getByRole('alert')).toBeInTheDocument()
-    expect(useNotebookStore.getState().files[fileId]?.name).toBe('Todo')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(useNotebookStore.getState().files[fileId]?.name).toBe('lowercase')
   })
 
   it('shows the placeholder chrome when no page is selected', () => {
