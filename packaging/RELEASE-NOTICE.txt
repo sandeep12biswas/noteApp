@@ -1,0 +1,20 @@
+FlowNote — preview release
+==========================
+
+Thank you for trying FlowNote.
+
+This is a preview build of FlowNote, provided "as is", without warranty of
+any kind. Features may change between releases. Please keep a backup of
+anything important.
+
+  * The installers are not code-signed. Windows SmartScreen may warn on
+    first run ("More info" -> "Run anyway").
+  * Your notes are stored only on this computer, unless you turn on
+    Backup & Sync (Settings -> Sync), which keeps an end-to-end encrypted
+    copy in a cloud folder you choose.
+  * Uninstalling FlowNote keeps your notes unless you choose to delete them.
+
+Guides: see the docs folder of the download (FlowNote-Installation-Guide.pdf,
+FlowNote-User-Guide.pdf, FlowNote-Feature-Guide.pdf).
+
+Project home: https://github.com/sandeep12biswas/noteApp

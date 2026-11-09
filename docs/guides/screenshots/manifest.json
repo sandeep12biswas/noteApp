@@ -1,0 +1,129 @@
+{
+  "captured": "2026-11-09T08:27:00.469Z",
+  "results": [
+    {
+      "name": "01-first-launch",
+      "ok": true
+    },
+    {
+      "name": "02-new-page-dialog",
+      "ok": true
+    },
+    {
+      "name": "04-new-folder",
+      "ok": true
+    },
+    {
+      "name": "seed-structure",
+      "ok": true
+    },
+    {
+      "name": "seed-meeting-notes",
+      "ok": true
+    },
+    {
+      "name": "05-main-window",
+      "ok": true
+    },
+    {
+      "name": "06-folder-context-menu",
+      "ok": true
+    },
+    {
+      "name": "07-folder-icon-menu",
+      "ok": true
+    },
+    {
+      "name": "08-pages-natural-order",
+      "ok": true
+    },
+    {
+      "name": "09-segment-handles",
+      "ok": true
+    },
+    {
+      "name": "10-segment-colour-menu",
+      "ok": true
+    },
+    {
+      "name": "11-ribbon-home",
+      "ok": true
+    },
+    {
+      "name": "12-text-colour-menu",
+      "ok": true
+    },
+    {
+      "name": "seed-second-page",
+      "ok": true
+    },
+    {
+      "name": "13-slash-menu",
+      "ok": true
+    },
+    {
+      "name": "14-code-block",
+      "ok": true
+    },
+    {
+      "name": "15-embedded-image",
+      "ok": true
+    },
+    {
+      "name": "16-ribbon-insert-ai",
+      "ok": true
+    },
+    {
+      "name": "17-ai-settings",
+      "ok": true
+    },
+    {
+      "name": "18-draw-ink",
+      "ok": true
+    },
+    {
+      "name": "19-view-page-colour",
+      "ok": true
+    },
+    {
+      "name": "20-contrast-notice",
+      "ok": true
+    },
+    {
+      "name": "21-search-name",
+      "ok": true
+    },
+    {
+      "name": "22-search-contents",
+      "ok": true
+    },
+    {
+      "name": "23-linear-mode",
+      "ok": true
+    },
+    {
+      "name": "24-dark-theme",
+      "ok": true
+    },
+    {
+      "name": "25-status-bar",
+      "ok": true
+    },
+    {
+      "name": "26-plugin-manager",
+      "ok": true
+    },
+    {
+      "name": "28-spreadsheet-block",
+      "ok": true
+    },
+    {
+      "name": "29-sync-settings",
+      "ok": true
+    },
+    {
+      "name": "30-final-overview",
+      "ok": true
+    }
+  ]
+}

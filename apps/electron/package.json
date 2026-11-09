@@ -1,7 +1,7 @@
 {
   "name": "@flownote/electron",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "FlowNote — Linux desktop shell (Electron)",
   "author": {
     "name": "Sandeep Biswas",

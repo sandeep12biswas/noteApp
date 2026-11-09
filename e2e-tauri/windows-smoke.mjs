@@ -32,6 +32,7 @@ async function check(name, fn) {
   } catch (e) {
     failures++
     console.log(`FAIL  ${name}  ${e.message.split('\n')[0]}`)
+    await dumpDiagnostics(name)
   }
 }
 function expectEqual(actual, expected, what) {
@@ -65,6 +66,43 @@ async function appPage(timeoutMs = 30_000) {
 }
 let page = await appPage()
 await page.waitForSelector('[aria-label="New page"]', { timeout: 30_000 })
+
+// Diagnostics: console output, page errors and failed/erroring requests
+// from the app and its plugin iframes, printed when a check fails so a CI
+// failure says *why* (e.g. a plugin script that didn't load).
+const events = []
+function watch(p) {
+  p.on('console', (m) => events.push(`console.${m.type()} [${m.location()?.url ?? ''}] ${m.text()}`))
+  p.on('pageerror', (e) => events.push(`pageerror ${e.message}`))
+  p.on('requestfailed', (r) => events.push(`requestfailed ${r.url()} ${r.failure()?.errorText ?? ''}`))
+  p.on('response', (r) => {
+    if (r.status() >= 400) events.push(`http ${r.status()} ${r.url()}`)
+  })
+}
+watch(page)
+const ARTIFACTS = path.join(REPO, 'smoke-artifacts')
+async function dumpDiagnostics(name) {
+  console.log(`  --- diagnostics for "${name}" ---`)
+  console.log(`  frames: ${page.frames().map((f) => f.url() || '(no url)').join(' | ')}`)
+  for (const line of events.splice(0)) console.log(`  ${line}`)
+  try {
+    fs.mkdirSync(ARTIFACTS, { recursive: true })
+    const file = path.join(ARTIFACTS, `${name.replace(/[^a-z0-9]+/gi, '-').slice(0, 60)}.png`)
+    await page.screenshot({ path: file, timeout: 10_000 })
+    console.log(`  screenshot: ${file}`)
+  } catch (e) {
+    console.log(`  (no screenshot: ${e.message.split('\n')[0]})`)
+  }
+}
+
+/** Runs a UI step, naming it in the error if it fails. */
+async function step(name, fn) {
+  try {
+    return await fn()
+  } catch (e) {
+    throw new Error(`step "${name}": ${e.message.split('\n')[0]}`)
+  }
+}
 const invoke = (cmd, args) => page.evaluate(([c, a]) => window.__TAURI_INTERNALS__.invoke(c, a), [cmd, args])
 
 await check('custom-scheme prefix is the Windows form', async () => {
@@ -115,23 +153,81 @@ await check('flownote-attachment serves an image that renders', async () => {
   expectEqual(size, '4x3', 'image size')
 })
 
+// TEMPORARY probe: why does a sandboxed (opaque-origin) iframe's module
+// script load from flownote-plugin fail CORS on WebView2?
+await check('probe: plugin file fetch from the page and from iframes', async () => {
+  const r = await page.evaluate(async () => {
+    const url = 'http://flownote-plugin.localhost/plugins/com.sandeep.spreadsheet/index.js'
+    const out = {}
+    try {
+      const res = await fetch(url, { cache: 'no-store' })
+      out.page = `${res.status} acao=${res.headers.get('access-control-allow-origin')} type=${res.type}`
+    } catch (e) {
+      out.page = `threw ${e}`
+    }
+    const inFrame = (sandbox, mode) =>
+      new Promise((resolve) => {
+        const id = Math.random().toString(36).slice(2)
+        const f = document.createElement('iframe')
+        if (sandbox !== null) f.setAttribute('sandbox', sandbox)
+        const onMsg = (e) => {
+          if (e.data?.probe !== id) return
+          window.removeEventListener('message', onMsg)
+          f.remove()
+          resolve(e.data.result)
+        }
+        window.addEventListener('message', onMsg)
+        setTimeout(() => resolve('timeout'), 10_000)
+        f.srcdoc = `<script>
+          fetch(${JSON.stringify(url)}, { mode: ${JSON.stringify(mode)}, cache: 'no-store' })
+            .then((r) => 'origin=' + self.origin + ' ' + r.status + ' type=' + r.type + ' acao=' + r.headers.get('access-control-allow-origin'), (e) => 'origin=' + self.origin + ' threw ' + e)
+            .then((result) => parent.postMessage({ probe: ${JSON.stringify(id)}, result }, '*'))
+        </script>`
+        document.body.appendChild(f)
+      })
+    out.sandboxedCors = await inFrame('allow-scripts', 'cors')
+    out.sandboxedNoCors = await inFrame('allow-scripts', 'no-cors')
+    out.sameOriginCors = await inFrame('allow-scripts allow-same-origin', 'cors')
+    out.unsandboxedCors = await inFrame(null, 'cors')
+    return out
+  })
+  console.log(`  probe: ${JSON.stringify(r, null, 1)}`)
+  for (const line of events.splice(0)) console.log(`  ${line}`)
+})
+
 await check('spreadsheet plugin: loads after restart-equivalent reload, registers /sheet, grid renders', async () => {
   await invoke('install_plugin', { source: MANIFEST })
   await page.reload()
-  page = await appPage()
+  const reloaded = await appPage()
+  if (reloaded !== page) {
+    page = reloaded
+    watch(page)
+  }
   await page.waitForSelector('[aria-label="New page"]', { timeout: 30_000 })
   // Loaded on startup, without opening the Plugins panel.
-  await page.locator('iframe[sandbox="allow-scripts"]').first().waitFor({ state: 'attached', timeout: 15_000 })
+  await step('plugin iframe attached', () =>
+    page.locator('iframe[sandbox="allow-scripts"]').first().waitFor({ state: 'attached', timeout: 15_000 }),
+  )
 
-  await page.getByRole('button', { name: 'New page' }).click()
-  await page.getByRole('radio', { name: 'New folder' }).click()
-  await page.getByRole('textbox', { name: 'New folder name' }).fill('Sheets')
-  await page.getByRole('button', { name: 'Next' }).click()
-  await page.getByRole('textbox', { name: 'File name' }).fill('Grid')
-  await page.getByRole('button', { name: 'Create' }).click()
-  await page.getByTestId('canvas-root').click({ position: { x: 100, y: 100 } })
+  const t = { timeout: 15_000 }
+  await step('open New page', () => page.getByRole('button', { name: 'New page' }).click(t))
+  await step('choose New folder', () => page.getByRole('radio', { name: 'New folder' }).click(t))
+  await step('name the folder', () => page.getByRole('textbox', { name: 'New folder name' }).fill('Sheets', t))
+  await step('Next', () => page.getByRole('button', { name: 'Next' }).click(t))
+  await step('name the file', () => page.getByRole('textbox', { name: 'File name' }).fill('Grid', t))
+  await step('Create', () => page.getByRole('button', { name: 'Create' }).click(t))
+  await step('click the canvas', () => page.getByTestId('canvas-root').click({ position: { x: 100, y: 100 }, ...t }))
   await page.keyboard.type('/')
-  await page.getByRole('menu', { name: 'Insert block' }).getByRole('menuitem', { name: 'Spreadsheet' }).click()
+  const menu = page.getByRole('menu', { name: 'Insert block' })
+  await step('slash menu opens', () => menu.waitFor(t))
+  await step('Spreadsheet in the slash menu', async () => {
+    try {
+      await menu.getByRole('menuitem', { name: 'Spreadsheet' }).click(t)
+    } catch (e) {
+      const items = await menu.getByRole('menuitem').allInnerTexts().catch(() => [])
+      throw new Error(`${e.message.split('\n')[0]} — menu items: ${JSON.stringify(items)}`)
+    }
+  })
 
   // The grid iframe's own page imports the SDK via its root-relative import
   // map; a rendered <table> means grid.js (and so the SDK import) ran.

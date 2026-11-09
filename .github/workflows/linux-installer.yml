@@ -1,14 +1,15 @@
 name: Linux installer
 
-# Builds FlowNote's Linux packages from the Electron shell (apps/electron)
-# and uploads them as the `flownote-linux` artifact:
-#   - `FlowNote-<version>-amd64.deb`       — system package (/opt/FlowNote)
-#   - `FlowNote-<version>-x86_64.AppImage` — runs anywhere, no root
-#   - `install.sh` / `uninstall.sh` / README.txt (packaging/linux/) — install
-#     either one, and uninstall with or without the user's notes.
-# Then, on the runner, each install path is tested end to end: install with
-# install.sh → launch (must stay up and create its database) → uninstall
-# with uninstall.sh --remove-data → verify nothing is left behind.
+# Builds FlowNote's Linux release bundle from the Electron shell
+# (apps/electron) with scripts/linux/package.sh — the same one-command clean
+# build developers run — and uploads it as the `flownote-linux` artifact:
+#   - `FlowNote-<version>-linux-x86_64.run`    self-extracting installer
+#   - `FlowNote-<version>-linux-x86_64.tar.gz` the bundle folder: .deb,
+#     .AppImage, install.sh / uninstall.sh (packaging/linux/), README, the
+#     PDF user/feature guides, SHA256SUMS
+# Then, on the runner, each install path is tested end to end: install →
+# launch (must stay up and create its database) → uninstall → verify
+# nothing is left behind.
 #
 # Unsigned. Runs on a pushed `v*` tag, or manually (workflow_dispatch —
 # only available once this file is on the default branch).
@@ -44,9 +45,10 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
-      # The three pieces electron-builder.yml packages: frontend, Electron
-      # main process, release sidecar (same steps as scripts/linux/install.sh).
-      - name: Build
+      # Clean build + bundle: frontend, Electron main process, release
+      # sidecar, electron-builder (.deb + AppImage), then the bundle folder,
+      # tar.gz and .run under dist-release/.
+      - name: Build release bundle
         # Cloud sync app registrations (docs/sync-cloud-setup.md), compiled
         # in. Without these repository secrets the build still works; the
         # OneDrive / Google Drive options then say the build isn't registered.
@@ -54,28 +56,30 @@ jobs:
           FLOWNOTE_ONEDRIVE_CLIENT_ID: ${{ secrets.FLOWNOTE_ONEDRIVE_CLIENT_ID }}
           FLOWNOTE_GOOGLE_CLIENT_ID: ${{ secrets.FLOWNOTE_GOOGLE_CLIENT_ID }}
           FLOWNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.FLOWNOTE_GOOGLE_CLIENT_SECRET }}
-        run: |
-          pnpm --filter @flownote/frontend run build
-          pnpm --filter @flownote/electron run build
-          cargo build --release -p flownote-electron
+        run: ./scripts/linux/package.sh --skip-install
 
-      - name: Package (.deb + AppImage)
-        working-directory: apps/electron
-        run: pnpm exec electron-builder --linux --publish never
-
-      - name: Assemble package
+      - name: Locate bundle
         run: |
-          mkdir -p package
-          cp apps/electron/release/*.deb apps/electron/release/*.AppImage package/
-          cp packaging/linux/* package/
-          chmod +x package/install.sh package/uninstall.sh package/*.AppImage
-          ls -l package
+          version="$(tr -d '[:space:]' < VERSION)"
+          echo "BUNDLE=$PWD/dist-release/FlowNote-$version-linux-x86_64" >> "$GITHUB_ENV"
+          echo "RUNFILE=$PWD/dist-release/FlowNote-$version-linux-x86_64.run" >> "$GITHUB_ENV"
+          ls -l dist-release dist-release/FlowNote-$version-linux-x86_64
+
+      - name: Verify checksums and guides
+        run: |
+          (cd "$BUNDLE" && sha256sum -c SHA256SUMS)
+          test -s "$BUNDLE/docs/FlowNote-Installation-Guide.pdf"
+          test -s "$BUNDLE/docs/FlowNote-User-Guide.pdf"
+          test -s "$BUNDLE/docs/FlowNote-Feature-Guide.pdf"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: flownote-linux
-          path: package/
+          path: |
+            dist-release/*.run
+            dist-release/*.tar.gz
+            dist-release/*.sha256
           if-no-files-found: error
 
       - name: Install test tools
@@ -103,12 +107,12 @@ jobs:
       - name: "Test: .deb install -> launch -> uninstall"
         run: |
           set -euo pipefail
-          ./package/install.sh --deb
+          "$BUNDLE/install.sh" --deb
           [ "$(dpkg-query -W -f='${Status}' flownote)" = "install ok installed" ]
           command -v flownote
           "$RUNNER_TEMP/launch-check.sh" flownote
 
-          ./package/uninstall.sh --remove-data
+          "$BUNDLE/uninstall.sh" --remove-data
           if dpkg-query -W -f='${Status}' flownote 2>/dev/null | grep -q "install ok installed"; then echo "package still installed"; exit 1; fi
           if [ -e /opt/FlowNote ]; then echo "/opt/FlowNote still present"; exit 1; fi
           if [ -e "$HOME/.config/@flownote/electron" ]; then echo "app data still present after --remove-data"; exit 1; fi
@@ -120,17 +124,34 @@ jobs:
       - name: "Test: AppImage install -> launch -> uninstall"
         run: |
           set -euo pipefail
-          ./package/install.sh --appimage
+          "$BUNDLE/install.sh" --appimage
           for f in "$HOME/.local/opt/flownote/FlowNote.AppImage" "$HOME/.local/bin/flownote" "$HOME/.local/share/applications/flownote.desktop"; do
             [ -e "$f" ] || { echo "missing $f"; exit 1; }
           done
           "$RUNNER_TEMP/launch-check.sh" "$HOME/.local/bin/flownote"
 
-          ./package/uninstall.sh --keep-data
+          "$BUNDLE/uninstall.sh" --keep-data
           [ -f "$HOME/.config/@flownote/electron/flownote.sqlite3" ] || { echo "--keep-data deleted the notes"; exit 1; }
-          ./package/install.sh --appimage
-          ./package/uninstall.sh --remove-data
+          "$BUNDLE/install.sh" --appimage
+          "$BUNDLE/uninstall.sh" --remove-data
           for f in "$HOME/.local/opt/flownote" "$HOME/.local/bin/flownote" "$HOME/.local/share/applications/flownote.desktop" "$HOME/.config/@flownote/electron"; do
             if [ -e "$f" ]; then echo "$f still present"; exit 1; fi
           done
           echo "AppImage: install, launch and uninstall all OK"
+
+      # The self-extracting installer, unattended; then the uninstaller that
+      # the AppImage install carries inside itself.
+      - name: "Test: .run installer -> launch -> bundled uninstaller"
+        run: |
+          set -euo pipefail
+          "$RUNFILE" --appimage --silent
+          [ "$(cat "$HOME/.local/opt/flownote/VERSION")" = "$(tr -d '[:space:]' < VERSION)" ]
+          "$RUNFILE" --extract "$RUNNER_TEMP/extracted"
+          [ -x "$RUNNER_TEMP/extracted/install.sh" ]
+          "$RUNNER_TEMP/launch-check.sh" "$HOME/.local/bin/flownote"
+
+          "$HOME/.local/opt/flownote/uninstall.sh" --remove-data
+          for f in "$HOME/.local/opt/flownote" "$HOME/.local/bin/flownote" "$HOME/.local/share/applications/flownote.desktop" "$HOME/.config/@flownote/electron"; do
+            if [ -e "$f" ]; then echo "$f still present"; exit 1; fi
+          done
+          echo ".run: install, launch and uninstall all OK"

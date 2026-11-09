@@ -33,6 +33,40 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Sandeep Biswas",
+    "copyright": "© 2026 Sandeep Biswas",
+    "homepage": "https://github.com/sandeep12biswas/noteApp",
+    "category": "Productivity",
+    "shortDescription": "Canvas note-taking app",
+    "longDescription": "FlowNote is a note-taking app with a free-form canvas editor: click anywhere on the page and start writing.",
+    "licenseFile": "../../../packaging/RELEASE-NOTICE.txt",
+    "resources": {
+      "../../../docs/FlowNote-Installation-Guide.pdf": "docs/FlowNote-Installation-Guide.pdf",
+      "../../../docs/FlowNote-User-Guide.pdf": "docs/FlowNote-User-Guide.pdf",
+      "../../../docs/FlowNote-Feature-Guide.pdf": "docs/FlowNote-Feature-Guide.pdf"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "startMenuFolder": "FlowNote",
+        "languages": [
+          "English",
+          "German",
+          "French",
+          "Spanish"
+        ],
+        "displayLanguageSelector": true,
+        "compression": "lzma",
+        "installerHooks": "installer/hooks.nsh"
+      },
+      "wix": {
+        "bannerPath": "installer/wix-banner.bmp",
+        "dialogImagePath": "installer/wix-dialog.bmp"
+      }
+    }
   }
 }

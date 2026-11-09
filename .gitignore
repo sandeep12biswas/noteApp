@@ -14,3 +14,9 @@ apps/electron/release/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Release bundles (scripts/linux/package.sh, scripts/windows/package.ps1)
+dist-release/
+# Scratch output of docs/guides/build-pdfs.mjs
+docs/guides/.build/
+smoke-artifacts/
