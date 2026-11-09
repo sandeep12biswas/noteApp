@@ -17,6 +17,8 @@ export interface Context {
   sidecar: SidecarSupervisor
   /** `shell.openPath` (main.ts) — injected rather than importing `electron` here directly, same reasoning as `sidecar` itself. */
   openPath: (path: string) => Promise<string>
+  /** The native "choose a folder" dialog (main.ts); `null` if cancelled. */
+  pickFolder: () => Promise<string | null>
 }
 
 const t = initTRPC.context<Context>().create()
@@ -228,6 +230,8 @@ export const appRouter = t.router({
       return id
     })
     .mutation(({ ctx, input }) => ctx.sidecar.request('set_default_ai_provider', { id: input })),
+
+  pickFolder: t.procedure.mutation(({ ctx }) => ctx.pickFolder()),
 
   // ---- Sync (flownote_core::sync::service, step S5) ----
   syncStatus: t.procedure.query(({ ctx }) => ctx.sidecar.request('sync_status')),

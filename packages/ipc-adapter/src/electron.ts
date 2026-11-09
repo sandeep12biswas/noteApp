@@ -65,6 +65,7 @@ interface ElectronRouter {
   syncStatus: { query: () => Promise<SyncStatus> }
   syncConfigure: { mutate: (input: SyncConfigInput) => Promise<SyncStatus> }
   syncConnect: { mutate: (passphrase: string) => Promise<SyncStatus> }
+  pickFolder: { mutate: () => Promise<string | null> }
   syncSignIn: { mutate: (target: SyncCloudTarget) => Promise<SyncStatus> }
   syncCancelSignIn: { mutate: () => Promise<SyncStatus> }
   syncNow: { mutate: () => Promise<SyncStatus> }
@@ -210,6 +211,10 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async connectSync(passphrase: string): Promise<SyncStatus> {
     return getClient().syncConnect.mutate(passphrase)
+  }
+
+  async pickFolder(): Promise<string | null> {
+    return getClient().pickFolder.mutate()
   }
 
   async signInSync(target: SyncCloudTarget): Promise<SyncStatus> {

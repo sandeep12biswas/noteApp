@@ -3,6 +3,7 @@
 // dedicated ribbon button for it, since this is where DESIGN.md already
 // says the current mode gets displayed.
 import { useNotebookStore } from '../store/notebookStore'
+import { SyncStatusIndicator } from './SyncStatusIndicator'
 import { ThemeToggle } from './ThemeToggle'
 
 export function StatusBar() {
@@ -17,6 +18,7 @@ export function StatusBar() {
       className="flex h-6 shrink-0 items-center justify-end gap-4 border-t border-gray-200 px-3 text-[11px] text-gray-400 dark:border-gray-800"
       data-testid="status-bar"
     >
+      <SyncStatusIndicator />
       <span>0 words</span>
       <ThemeToggle />
       {selectedFileId ? (

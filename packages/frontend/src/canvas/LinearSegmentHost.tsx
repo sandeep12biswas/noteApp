@@ -18,6 +18,7 @@ import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { misspelledWordAt } from './spellcheckExtension'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 import { useRemoteContent } from './useRemoteContent'
+import { ConflictBadge } from './ConflictBadge'
 
 export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment; onTextChange: (id: string, text: string) => void }) {
   const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
@@ -78,6 +79,7 @@ export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment;
         setSpellMenu({ x: e.clientX, y: e.clientY, ...hit })
       }}
     >
+      <ConflictBadge segmentId={segment.id} floating={false} />
       <EditorContent editor={editor} />
       {spellMenu && editor && (
         <SpellingSuggestionMenu

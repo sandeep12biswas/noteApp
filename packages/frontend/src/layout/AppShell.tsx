@@ -8,16 +8,20 @@ import { useEffect } from 'react'
 import { PluginManager } from '../plugins/PluginManager'
 import { useUIStore } from '../store/uiStore'
 import { EditorPane } from './EditorPane'
+import { MassDeleteBanner } from './MassDeleteBanner'
 import { PageList } from './PageList'
 import { PanelResizeHandle } from './PanelResizeHandle'
 import { PluginManagerUI } from './PluginManagerUI'
 import { RibbonRoot } from './RibbonRoot'
 import { SectionSidebar } from './SectionSidebar'
 import { StatusBar } from './StatusBar'
+import { SyncSettingsDialog } from './SyncSettingsDialog'
 
 export function AppShell() {
   const activeView = useUIStore((s) => s.activeView)
   const reclampPanelWidths = useUIStore((s) => s.reclampPanelWidths)
+  const syncSettingsOpen = useUIStore((s) => s.syncSettingsOpen)
+  const setSyncSettingsOpen = useUIStore((s) => s.setSyncSettingsOpen)
 
   // Keep the editor's minimum width when the window gets narrower (or the
   // saved widths came from a wider screen).
@@ -35,6 +39,7 @@ export function AppShell() {
           notes, not just while the Plugin Manager itself is open. */}
       <PluginManager />
       <RibbonRoot />
+      <MassDeleteBanner />
       <div className="flex min-h-0 flex-1">
         <SectionSidebar />
         <PanelResizeHandle panel="folders" label="Resize folder panel" />
@@ -49,6 +54,7 @@ export function AppShell() {
         )}
       </div>
       <StatusBar />
+      {syncSettingsOpen && <SyncSettingsDialog onClose={() => setSyncSettingsOpen(false)} />}
     </div>
   )
 }

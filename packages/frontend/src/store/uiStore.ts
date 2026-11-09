@@ -62,6 +62,9 @@ interface UIState {
   resetPanelWidth: (panel: ResizablePanel) => void
   /** Re-clamps both widths, e.g. after the window got narrower. */
   reclampPanelWidths: () => void
+  /** The Sync settings dialog (opened from the ribbon, the status bar and the mass-delete banner; rendered once in AppShell). */
+  syncSettingsOpen: boolean
+  setSyncSettingsOpen: (open: boolean) => void
 }
 
 /** The other side panel's on-screen width — the pages panel isn't shown while the Plugin Manager is open. */
@@ -83,6 +86,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   resetZoom: () => set({ zoom: 1 }),
   activeView: 'notebook',
   setActiveView: (view) => set({ activeView: view }),
+  syncSettingsOpen: false,
+  setSyncSettingsOpen: (open) => set({ syncSettingsOpen: open }),
   formatPainter: { armed: false, sticky: false, format: null },
   armFormatPainter: (format, sticky) => set({ formatPainter: { armed: true, sticky, format } }),
   disarmFormatPainter: () => set({ formatPainter: { armed: false, sticky: false, format: null } }),

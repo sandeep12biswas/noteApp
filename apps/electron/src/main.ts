@@ -3,7 +3,7 @@
 // supervisor, wires it into an electron-trpc router, and opens a window
 // whose preload script exposes that router to the renderer.
 import { createIPCHandler } from 'electron-trpc/main'
-import { app, BrowserWindow, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -98,7 +98,14 @@ function createWindow(sidecar: SidecarSupervisor): void {
     // `openPath` is injected rather than router.ts importing `electron`
     // itself, the same way `sidecar` is — keeps the trpc layer's only
     // dependency on real OS/process facilities at this one boundary.
-    createContext: async (): Promise<Context> => ({ sidecar, openPath: shell.openPath }),
+    createContext: async (): Promise<Context> => ({
+      sidecar,
+      openPath: shell.openPath,
+      pickFolder: async () => {
+        const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+        return result.canceled ? null : (result.filePaths[0] ?? null)
+      },
+    }),
   })
 
   if (isDev) {
