@@ -250,11 +250,26 @@ install_appimage() {
   fi
 
   # The `flownote` command: a small launcher, not a symlink, so it can carry
-  # the FUSE fallback above.
+  # the FUSE fallback above and the sandbox fallback below.
+  #
+  # Chromium's sandbox needs unprivileged user namespaces, or else a
+  # setuid-root chrome-sandbox helper. An AppImage can't ship a setuid
+  # helper, so where user namespaces are blocked — Ubuntu 24.04+ (AppArmor's
+  # kernel.apparmor_restrict_unprivileged_userns), or kernels with them
+  # turned off — Electron aborts at launch ("The SUID sandbox helper binary
+  # was found, but is not configured correctly"). There, and only there,
+  # start it with --no-sandbox. Checked on every start, so it follows the
+  # system's current setting. (The .deb doesn't need this: it installs the
+  # helper setuid root.)
   cat >"$BIN_DIR/flownote" <<EOF
 #!/bin/sh
 # FlowNote launcher — installed by FlowNote's install.sh; removed by uninstall.sh.
 ${fuse_env:+export $fuse_env}
+if [ "\$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] ||
+   [ "\$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ] ||
+   [ "\$(cat /proc/sys/user/max_user_namespaces 2>/dev/null)" = 0 ]; then
+  set -- --no-sandbox "\$@"
+fi
 exec "$INSTALL_DIR/FlowNote.AppImage" "\$@"
 EOF
   chmod 755 "$BIN_DIR/flownote"
