@@ -65,6 +65,7 @@ const MIGRATIONS: &[Migration] = &[
         name: "page_background",
         sql: include_str!("../migrations/V11__page_background.sql"),
     },
+    Migration { version: 12, name: "sync_compaction", sql: include_str!("../migrations/V12__sync_compaction.sql") },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -138,7 +139,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 11);
+        assert_eq!(applied, 12);
     }
 
     #[test]
