@@ -153,6 +153,11 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.setPageMode('page-1', 'linear')).rejects.toThrow()
   })
 
+  it('setPageBackground rejects', async () => {
+    const adapter = create()
+    await expect(adapter.setPageBackground('page-1', '#ffffff')).rejects.toThrow()
+  })
+
   it('onSyncEvent throws synchronously rather than returning an inert unsubscribe', () => {
     const adapter = create()
     expect(() => adapter.onSyncEvent(() => {})).toThrow()

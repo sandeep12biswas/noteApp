@@ -147,6 +147,10 @@ export class TauriIPCAdapter implements IPCAdapter {
     unwrap(await commands.setPageMode(pageId, mode))
   }
 
+  async setPageBackground(pageId: string, background: string | null): Promise<void> {
+    unwrap(await commands.setPageBackground(pageId, background))
+  }
+
 
   async getSyncStatus(): Promise<SyncStatus> {
     return unwrap(await commands.syncStatus()) as unknown as SyncStatus

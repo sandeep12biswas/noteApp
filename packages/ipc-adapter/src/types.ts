@@ -15,6 +15,8 @@ export interface Page {
   mode: 'canvas' | 'linear'
   createdAt: number
   updatedAt: number
+  /** The page's own editor background (`#rrggbb`, light mode only), or null to use the app-wide default. */
+  background: string | null
 }
 
 // `folderId` isn't on the shared `PageDto`/`get_page` response yet (DESIGN.md
@@ -213,6 +215,8 @@ export interface IPCAdapter {
   mergeSegments(idA: string, idB: string): Promise<void>
   search(query: string, notebookId: string): Promise<SearchResult[]>
   setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void>
+  /** Sets a page's own editor background (`#rrggbb`), or clears it with null so the page uses the app-wide default. */
+  setPageBackground(pageId: string, background: string | null): Promise<void>
   // Sync (step S5). Each settings call resolves to the new status.
   getSyncStatus(): Promise<SyncStatus>
   configureSync(input: SyncConfigInput): Promise<SyncStatus>

@@ -7,6 +7,9 @@ import { useCanvasStore } from '../store/canvasStore'
 import { useInkStore } from '../store/inkStore'
 import { setIPCAdapter } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
+import { useEditorBackgroundStore } from '../store/editorBackgroundStore'
+import { useThemeStore } from '../store/themeStore'
+import { contrastRatio } from '../lib/textColors'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -151,6 +154,49 @@ describe('RibbonRoot Home tab formatting (Phase 6 "keyboard shortcut audit")', (
     render(<RibbonRoot />)
     useCanvasStore.setState({ getActiveEditor: () => null })
     await expect(user.click(screen.getByRole('button', { name: 'Bold' }))).resolves.not.toThrow()
+  })
+})
+
+describe('RibbonRoot Text colour advice on a page colour (issue #12)', () => {
+  afterEach(() => useEditorBackgroundStore.setState({ defaultBackground: null }))
+
+  it('shows no Suggested row on a white page', async () => {
+    useThemeStore.setState({ isDark: false })
+    useEditorBackgroundStore.setState({ defaultBackground: null })
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('button', { name: 'Text colour options' }))
+    const menu = screen.getByRole('menu', { name: 'Text colour' })
+    expect(within(menu).queryByText('Suggested')).not.toBeInTheDocument()
+  })
+
+  it('suggests readable colours and dims hard-to-read swatches on a navy page', async () => {
+    useThemeStore.setState({ isDark: false })
+    useEditorBackgroundStore.setState({ defaultBackground: '#1e3a8a' })
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('button', { name: 'Text colour options' }))
+    const menu = screen.getByRole('menu', { name: 'Text colour' })
+
+    const suggested = within(within(menu).getByRole('group', { name: 'Text colour suggested' })).getAllByRole('menuitemradio')
+    expect(suggested).toHaveLength(4)
+    for (const swatch of suggested) {
+      const color = swatch.getAttribute('aria-label')!.split(' ').pop()!
+      expect(contrastRatio(color, '#1e3a8a')).toBeGreaterThanOrEqual(4.5)
+    }
+    const blue = within(menu).getByRole('menuitemradio', { name: 'Text colour #2563eb' })
+    expect(blue).toHaveAttribute('data-low-contrast', 'true')
+    expect(blue.getAttribute('title')).toContain('Hard to read on this background')
+  })
+})
+
+describe('RibbonRoot View tab page colour (issue #11)', () => {
+  it('sits on the View tab', async () => {
+    useThemeStore.setState({ isDark: false })
+    const user = userEvent.setup()
+    render(<RibbonRoot />)
+    await user.click(screen.getByRole('tab', { name: 'View' }))
+    expect(screen.getByRole('button', { name: 'Page colour' })).toBeEnabled()
   })
 })
 

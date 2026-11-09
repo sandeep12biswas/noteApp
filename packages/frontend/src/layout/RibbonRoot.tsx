@@ -6,7 +6,7 @@
 // slot, matching DESIGN.md §9.2 registerRibbonGroup's insertion point. The
 // Draw tab is the one exception: it's the ink layer's tool switcher
 // (DESIGN.md §5.5), since Draw mode itself is just "this tab is active".
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useAIStore } from '../store/aiStore'
 import { useCanvasStore } from '../store/canvasStore'
 import { useExtensionRegistry } from '../store/extensionRegistry'
@@ -16,11 +16,14 @@ import { sendRibbonAction } from '../plugins/PluginIPCBridge'
 import { AI_NO_BACKEND, AI_NO_PROVIDER, runAiStream, type AiStreamHandle } from '../lib/aiStream'
 import { captureFormat } from '../lib/formatPainter'
 import { FONT_FAMILIES, type FontFamilyOption } from '../lib/fontFamilies'
-import { HIGHLIGHT_COLORS, TEXT_COLORS } from '../lib/textColors'
+import { HIGHLIGHT_COLORS, isLowContrast, suggestTextColors, TEXT_COLORS } from '../lib/textColors'
 import { useFontStore } from '../store/fontStore'
+import { useEffectiveBackground } from '../store/editorBackgroundStore'
+import { useThemeStore } from '../store/themeStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
 import { AiSettingsDialog } from './AiSettingsDialog'
 import { ColorPickerMenu } from './ColorPickerMenu'
+import { PageColorButton } from './PageColorMenu'
 
 // Format Painter — DESIGN-parity with Word/OneNote's paintbrush: click to
 // capture the current selection's formatting and arm a single application
@@ -93,12 +96,16 @@ function ColorDropdownButton({
   colors,
   onApply,
   onClear,
+  suggested,
+  lowContrast,
 }: {
   label: string
   letter: string
   colors: readonly string[]
   onApply: (color: string) => void
   onClear?: () => void
+  suggested?: readonly string[]
+  lowContrast?: (color: string) => boolean
 }) {
   const [current, setCurrent] = useState<string>(colors[0]!)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
@@ -142,6 +149,8 @@ function ColorDropdownButton({
           }}
           onClear={onClear}
           onClose={() => setMenu(null)}
+          suggested={suggested}
+          lowContrast={lowContrast}
         />
       )}
     </div>
@@ -299,8 +308,23 @@ function FontSizeSelect() {
   )
 }
 
+/**
+ * Text colours for the page's background (issue #12): a Suggested row that
+ * reads well on it, and a check that dims hard-to-read colours. None on a
+ * white page or in the dark theme, where the palette reads as designed.
+ */
+function useTextColorAdvice(): { suggested?: string[]; lowContrast?: (color: string) => boolean } {
+  const background = useEffectiveBackground()
+  const isDark = useThemeStore((s) => s.isDark)
+  return useMemo(() => {
+    if (!background || isDark || background === '#ffffff') return {}
+    return { suggested: suggestTextColors(background), lowContrast: (color: string) => isLowContrast(color, background) }
+  }, [background, isDark])
+}
+
 function HomeToolsPanel() {
   const getActiveEditor = useCanvasStore((s) => s.getActiveEditor)
+  const textColorAdvice = useTextColorAdvice()
   const run = (fn: (chain: ReturnType<NonNullable<ReturnType<typeof getActiveEditor>>['chain']>) => void) => {
     const editor = getActiveEditor()
     if (!editor) return
@@ -357,6 +381,7 @@ function HomeToolsPanel() {
         colors={TEXT_COLORS}
         onApply={(color) => getActiveEditor()?.chain().focus().setColor(color).run()}
         onClear={() => getActiveEditor()?.chain().focus().unsetColor().run()}
+        {...textColorAdvice}
       />
       <RibbonButton label="Clear formatting" onClick={() => run((c) => c.unsetAllMarks().clearNodes().run())}>
         Clear
@@ -485,8 +510,18 @@ function DrawToolsPanel() {
 // DESIGN.md §5.3 View row: "Ruler · Dot-grid overlay · Zoom in/out" — only
 // Zoom is built here (Phase 6); Ruler/Dot-grid are pure visual overlays
 // with no functional dependency on anything else and are deferred rather
-// than rushed.
+// than rushed. Page colour (issue #11) sits next to Zoom.
 function ViewToolsPanel() {
+  return (
+    <div className="flex items-center gap-1">
+      <ZoomControls />
+      <Divider />
+      <PageColorButton />
+    </div>
+  )
+}
+
+function ZoomControls() {
   const zoom = useUIStore((s) => s.zoom)
   const zoomIn = useUIStore((s) => s.zoomIn)
   const zoomOut = useUIStore((s) => s.zoomOut)

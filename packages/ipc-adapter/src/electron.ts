@@ -49,6 +49,7 @@ interface ElectronRouter {
   addDictionaryWord: { mutate: (word: string) => Promise<void> }
   listDictionaryWords: { query: () => Promise<string[]> }
   setPageMode: { mutate: (input: { pageId: string; mode: 'canvas' | 'linear' }) => Promise<void> }
+  setPageBackground: { mutate: (input: { pageId: string; background: string | null }) => Promise<void> }
   search: { query: (input: { query: string; notebookId: string }) => Promise<SearchResult[]> }
   installPlugin: { mutate: (source: string) => Promise<PluginManifest> }
   uninstallPlugin: { mutate: (id: string) => Promise<void> }
@@ -190,6 +191,10 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void> {
     await getClient().setPageMode.mutate({ pageId, mode })
+  }
+
+  async setPageBackground(pageId: string, background: string | null): Promise<void> {
+    await getClient().setPageBackground.mutate({ pageId, background })
   }
 
   async getSyncStatus(): Promise<SyncStatus> {

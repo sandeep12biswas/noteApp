@@ -187,6 +187,11 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             Err(e) => Response::err(req.id, e.to_string()),
         },
 
+        "set_page_background" => match set_page_background(conn, &req.params) {
+            Ok(()) => Response::ok(req.id, Value::Null),
+            Err(e) => Response::err(req.id, e),
+        },
+
         "save_ink_layer" => match save_ink_layer(conn, &req.params) {
             Ok(()) => Response::ok(req.id, Value::Null),
             Err(e) => Response::err(req.id, e),
@@ -581,6 +586,27 @@ mod tests {
             Request { id: 23, method: "set_page_mode".into(), params: json!({ "pageId": "missing", "mode": "linear" }) },
         );
         assert!(res.error.unwrap().contains("no such page"));
+    }
+
+    #[test]
+    fn set_page_background_updates_the_row_and_rejects_bad_input() {
+        let conn = conn_with_page("page-1");
+        let set = |id, background: Value| {
+            dispatch(&conn, Request { id, method: "set_page_background".into(), params: json!({ "pageId": "page-1", "background": background }) })
+        };
+        assert!(set(24, json!("#f8f1e3")).error.is_none());
+        let get = dispatch(&conn, Request { id: 25, method: "get_page".into(), params: json!({ "pageId": "page-1" }) });
+        assert_eq!(get.result.unwrap()["background"], "#f8f1e3");
+        assert!(set(26, Value::Null).error.is_none());
+        let stored: Option<String> =
+            conn.query_row("SELECT background FROM pages WHERE id = 'page-1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(stored, None);
+        assert!(set(27, json!("red")).error.unwrap().contains("invalid colour"));
+        let missing = dispatch(
+            &conn,
+            Request { id: 28, method: "set_page_background".into(), params: json!({ "pageId": "missing", "background": null }) },
+        );
+        assert!(missing.error.unwrap().contains("no such page"));
     }
 
     #[test]

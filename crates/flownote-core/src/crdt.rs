@@ -130,13 +130,14 @@ pub(crate) fn notebook_state(conn: &Connection) -> Result<Vec<(&'static str, Col
             ],
         ))
     })?;
-    let pages = collect(conn, "SELECT id, folder_id, title, mode FROM pages", &[], |row| {
+    let pages = collect(conn, "SELECT id, folder_id, title, mode, background FROM pages", &[], |row| {
         Ok((
             row.get(0)?,
             vec![
                 ("folderId", opt_str(row.get(1)?)),
                 ("title", ScalarValue::from(row.get::<_, String>(2)?)),
                 ("mode", ScalarValue::from(row.get::<_, String>(3)?)),
+                ("background", opt_str(row.get(4)?)),
             ],
         ))
     })?;
@@ -227,11 +228,18 @@ pub(crate) fn put_if_changed(doc: &mut AutoCommit, obj: &ObjId, key: &str, value
 fn reconcile_collection(doc: &mut AutoCommit, name: &str, desired: &Collection) -> Result<(), String> {
     let collection = collection_obj(doc, name)?;
     for (id, fields) in desired {
-        let record = match record_obj(doc, &collection, id)? {
-            Some(record) => record,
-            None => doc.put_object(&collection, id.as_str(), ObjType::Map).map_err(err)?,
+        let (record, is_new) = match record_obj(doc, &collection, id)? {
+            Some(record) => (record, false),
+            None => (doc.put_object(&collection, id.as_str(), ObjType::Map).map_err(err)?, true),
         };
         for (key, value) in fields {
+            // A missing key reads as Null (`merge::record_fields`), so an
+            // existing record without a later-added field (e.g. a page's
+            // `background`, V11) already matches a Null row: writing it would
+            // record a change in every document that predates the field.
+            if !is_new && *value == ScalarValue::Null && scalar_at(doc, &record, key)?.is_none() {
+                continue;
+            }
             put_if_changed(doc, &record, key, value.clone())?;
         }
         put_if_changed(doc, &record, "deleted", false.into())?;
@@ -440,7 +448,7 @@ mod tests {
         );
         assert_eq!(
             live_records(&notebook, "pages").unwrap()["p1"],
-            json!({ "folderId": "f1", "title": "Ideas", "mode": "canvas" })
+            json!({ "folderId": "f1", "title": "Ideas", "mode": "canvas", "background": null })
         );
         assert!(live_records(&notebook, "dictionary").unwrap().contains_key("flownote"));
 
@@ -480,6 +488,30 @@ mod tests {
         let new_changes = page.get_changes(&heads);
         assert_eq!(new_changes.len(), 1);
         assert_eq!(new_changes[0].len(), 1, "only `content` should be rewritten");
+    }
+
+    #[test]
+    fn a_document_from_before_page_backgrounds_records_no_change() {
+        let conn = db::open_in_memory().unwrap();
+        seed(&conn);
+        bootstrap(&conn).unwrap();
+        // Remove `background` from p1's record, as in a document written
+        // before the V11 migration added the field.
+        let mut notebook = doc(&conn, NOTEBOOK_DOC);
+        let pages = collection_obj(&notebook, "pages").unwrap();
+        let p1 = record_obj(&notebook, &pages, "p1").unwrap().unwrap();
+        notebook.delete(&p1, "background").unwrap();
+        store_doc(&conn, NOTEBOOK_DOC, &mut notebook).unwrap();
+        let heads = doc(&conn, NOTEBOOK_DOC).get_heads();
+
+        store::save_page(&conn, &json!({ "id": "p1", "folderId": "f1", "title": "Ideas" })).unwrap();
+        assert!(!reconcile(&conn, NOTEBOOK_DOC).unwrap());
+        assert_eq!(doc(&conn, NOTEBOOK_DOC).get_heads(), heads);
+
+        // Setting a colour is still recorded.
+        store::set_page_background(&conn, &json!({ "pageId": "p1", "background": "#fffdf5" })).unwrap();
+        assert!(reconcile(&conn, NOTEBOOK_DOC).unwrap());
+        assert_eq!(live_records(&doc(&conn, NOTEBOOK_DOC), "pages").unwrap()["p1"]["background"], "#fffdf5");
     }
 
     #[test]
