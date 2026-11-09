@@ -346,7 +346,7 @@ function Connected({ status, busy, act }: { status: SyncStatus; busy: boolean; a
       {status.peers.length > 0 && (
         <div className="text-xs">
           <span className="text-gray-500">Other devices: </span>
-          {status.peers.map((p) => p.name ?? 'Unnamed device').join(', ')}
+          {status.peers.map((p) => `${p.name ?? 'Unnamed device'}${p.lastSeenAt !== null ? ` (${relativeTime(p.lastSeenAt)})` : ''}`).join(', ')}
         </div>
       )}
       {confirmingDisconnect ? (
