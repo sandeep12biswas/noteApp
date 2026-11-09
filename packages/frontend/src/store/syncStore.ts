@@ -6,7 +6,9 @@
 // - `docsChanged` for the open page → its segments reload in place
 //   (`canvasStore.applyRemoteSegments`), and `pageRevs` makes InkLayer
 //   reload the page's ink;
-// - `conflict` → the conflict copies' ids are kept for the UI (S7).
+// - `conflict` → the conflict copies' ids are kept for the UI (S7);
+// - `signIn` → the sign-in URL is kept while the sign-in waits, so the UI can
+//   offer it as a link if the browser didn't open.
 // The Sync settings screen and status-bar indicator (S7) read `status`.
 import type { IPCAdapter, SyncEvent, SyncStatus } from '@flownote/ipc-adapter'
 import { create } from 'zustand'
@@ -23,6 +25,8 @@ interface SyncStoreState {
   pageRevs: Record<string, number>
   /** Conflict copies created by sync this session. */
   conflictSegmentIds: string[]
+  /** The cloud sign-in page while a sign-in waits in the browser. */
+  signInUrl: string | null
   handleEvent: (event: SyncEvent) => Promise<void>
 }
 
@@ -37,11 +41,15 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
   status: null,
   pageRevs: {},
   conflictSegmentIds: [],
+  signInUrl: null,
 
   handleEvent: async (event) => {
     switch (event.type) {
       case 'status':
-        set({ status: event.status })
+        set({ status: event.status, ...(event.status.signingIn ? {} : { signInUrl: null }) })
+        return
+      case 'signIn':
+        set({ signInUrl: event.url })
         return
       case 'conflict':
         set({ conflictSegmentIds: [...new Set([...get().conflictSegmentIds, ...event.segmentIds])] })

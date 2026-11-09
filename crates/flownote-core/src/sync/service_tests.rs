@@ -34,11 +34,19 @@ impl App {
     }
 
     fn with_timing(name: &str, timing: Timing) -> App {
+        Self::with_config(name, Config { timing, kdf: FAST_KDF, cloud: Cloud::from_env() })
+    }
+
+    fn with_cloud(name: &str, cloud: Cloud) -> App {
+        Self::with_config(name, Config { timing: fast(), kdf: FAST_KDF, cloud })
+    }
+
+    fn with_config(name: &str, config: Config) -> App {
         let dir = temp_dir(name);
         let pool = crate::db::open(dir.join("flownote.sqlite3").to_str().unwrap()).unwrap();
         let events: Arc<Mutex<Vec<Value>>> = Arc::default();
         let log = events.clone();
-        let sync = SyncService::start_with(pool.clone(), Arc::new(move |e| log.lock().unwrap().push(e)), timing, FAST_KDF).unwrap();
+        let sync = SyncService::start_with(pool.clone(), Arc::new(move |e| log.lock().unwrap().push(e)), config).unwrap();
         App { dir, pool, events, sync: Some(sync) }
     }
 
@@ -128,7 +136,7 @@ fn bad_settings_are_refused() {
     let app = App::new("a");
     assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": "relative/path" })).unwrap_err().contains("full path"));
     assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": "/no/such/flownote/dir" })).unwrap_err().contains("no folder"));
-    assert!(app.sync().configure(&json!({ "target": "onedrive" })).unwrap_err().contains("isn't available"));
+    assert!(app.sync().configure(&json!({ "target": "dropbox" })).unwrap_err().contains("isn't available"));
     assert!(app.sync().configure(&json!({ "deviceName": "  " })).unwrap_err().contains("empty"));
     assert!(app.sync().connect(PASS).unwrap_err().contains("Choose where to sync"));
 }
@@ -266,4 +274,139 @@ fn stopping_the_service_ends_its_worker() {
     let started = Instant::now();
     drop(app);
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+// ------------------------------------------------------------- cloud (S6)
+
+use crate::sync::fake_clouds::{self, DriveState, GraphState};
+
+/// Where a fake cloud keeps its files, to look at in assertions.
+enum FakeCloud {
+    Graph(Arc<Mutex<GraphState>>),
+    Drive(Arc<Mutex<DriveState>>),
+}
+
+impl FakeCloud {
+    fn paths(&self) -> Vec<String> {
+        match self {
+            FakeCloud::Graph(s) => s.lock().unwrap().files.keys().cloned().collect(),
+            FakeCloud::Drive(s) => s.lock().unwrap().paths().into_iter().map(|p| p.trim_start_matches("FlowNote/").to_string()).collect(),
+        }
+    }
+}
+
+fn no_cloud() -> Cloud {
+    Cloud { onedrive: None, google: None, ..Cloud::from_env() }
+}
+
+fn fake_cloud(target: &str) -> (Cloud, FakeCloud) {
+    let mut cloud = Cloud {
+        retry: crate::sync::http::Retry { attempts: 3, base_delay: Duration::from_millis(5), max_delay: Duration::from_millis(20) },
+        sign_in_timeout: Duration::from_secs(10),
+        ..no_cloud()
+    };
+    if target == TARGET_ONEDRIVE {
+        let (base, api, state) = fake_clouds::graph();
+        cloud.onedrive = Some(fake_clouds::provider(&base, "OneDrive"));
+        cloud.graph_api = api;
+        (cloud, FakeCloud::Graph(state))
+    } else {
+        let (base, state) = fake_clouds::drive();
+        cloud.google = Some(fake_clouds::provider(&base, "Google Drive"));
+        cloud.drive_api = base;
+        (cloud, FakeCloud::Drive(state))
+    }
+}
+
+/// Stands in for the system browser: the user signs in and the provider
+/// redirects back with a code.
+fn browser(url: &str) -> Result<(), String> {
+    let params: std::collections::HashMap<String, String> =
+        crate::sync::http::parse_query(url.split_once('?').unwrap().1).into_iter().collect();
+    let back = format!("{}?code=granted&state={}", params["redirect_uri"], params["state"]);
+    std::thread::spawn(move || reqwest::blocking::get(back).unwrap());
+    Ok(())
+}
+
+fn cloud_round_trip(target: &str, account: &str) {
+    let (cloud, fake) = fake_cloud(target);
+    let (a, b) = (App::with_cloud("a", cloud.clone()), App::with_cloud("b", cloud));
+    write_note(&a.conn(), "p1", "s1", "through the cloud");
+
+    let s = a.sync().sign_in(target, &browser).unwrap();
+    assert_eq!((s["state"].as_str(), s["target"].as_str(), s["accountLabel"].as_str()), (Some("needsPassphrase"), Some(target), Some(account)));
+    assert_eq!(s["signingIn"], false);
+    let url = a.events_of("signIn")[0]["url"].as_str().unwrap().to_string();
+    assert!(url.contains("code_challenge="), "{url}");
+    let stored: String = a.conn().query_row("SELECT oauth_tokens FROM sync_settings", [], |r| r.get(0)).unwrap();
+    assert!(!s.to_string().contains(fake_clouds::TOKEN) && stored.contains(fake_clouds::TOKEN), "tokens stored, never shown");
+
+    a.sync().connect(PASS).unwrap();
+    a.wait_idle();
+    b.sync().sign_in(target, &browser).unwrap();
+    b.sync().connect(PASS).unwrap();
+    b.wait_for("A's note on B through the cloud", |b| texts(&b.conn(), "p1") == ["through the cloud"]);
+
+    let paths = fake.paths();
+    assert!(paths.contains(&"vault.json".to_string()), "{paths:?}");
+    assert!(paths.iter().any(|p| p.starts_with("devices/") && p.ends_with(".bundle.enc")), "{paths:?}");
+}
+
+#[test]
+fn two_devices_sync_through_onedrive() {
+    cloud_round_trip(TARGET_ONEDRIVE, "test@example.com");
+}
+
+#[test]
+fn two_devices_sync_through_google_drive() {
+    cloud_round_trip(TARGET_GDRIVE, "test@gmail.com");
+}
+
+#[test]
+fn a_revoked_sign_in_asks_for_a_new_one_and_signing_in_again_carries_on() {
+    for target in [TARGET_ONEDRIVE, TARGET_GDRIVE] {
+        let (cloud, _fake) = fake_cloud(target);
+        let app = App::with_cloud("a", cloud);
+        app.sync().sign_in(target, &browser).unwrap();
+        app.sync().connect(PASS).unwrap();
+        app.wait_idle();
+
+        // The provider revoked the sign-in: the token has expired and the
+        // refresh token no longer works.
+        let dead = Tokens { access_token: "expired".into(), refresh_token: Some("revoked".into()), expires_at: 0 };
+        app.conn().execute("UPDATE sync_settings SET oauth_tokens = ?1", [dead.to_json()]).unwrap();
+        app.sync().sync_now().unwrap();
+        app.wait_for("needsSignIn", |a| a.sync().status().unwrap()["state"] == "needsSignIn");
+        let s = app.sync().status().unwrap();
+        assert!(s["lastError"].as_str().unwrap().contains(SIGN_IN_AGAIN), "{s}");
+        assert!(app.sync().connect(PASS).unwrap_err().contains("Sign in first"));
+
+        // Same account again: no passphrase needed, syncing resumes.
+        let s = app.sync().sign_in(target, &browser).unwrap();
+        assert_ne!(s["state"], "needsPassphrase", "{s}");
+        app.wait_idle();
+        assert_eq!(app.sync().status().unwrap()["connected"], true);
+    }
+}
+
+#[test]
+fn a_sign_in_can_be_cancelled() {
+    let (cloud, _fake) = fake_cloud(TARGET_ONEDRIVE);
+    let app = App::with_cloud("a", cloud);
+    std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| app.sync().sign_in(TARGET_ONEDRIVE, &|_| Ok(()))); // the user never finishes
+        app.wait_for("the sign-in to start", |a| a.sync().status().unwrap()["signingIn"] == true && a.events_of("signIn").len() == 1);
+        app.sync().cancel_sign_in().unwrap();
+        assert!(waiting.join().unwrap().unwrap_err().contains("cancelled"));
+    });
+    let s = app.sync().status().unwrap();
+    assert_eq!((s["state"].as_str(), s["signingIn"].as_bool()), (Some("off"), Some(false)));
+}
+
+#[test]
+fn a_build_without_app_registrations_says_how_to_add_them() {
+    let app = App::with_cloud("a", no_cloud());
+    let e = app.sync().sign_in(TARGET_ONEDRIVE, &browser).unwrap_err();
+    assert!(e.contains("FLOWNOTE_ONEDRIVE_CLIENT_ID") && e.contains("docs/sync-cloud-setup.md"), "{e}");
+    assert!(app.sync().configure(&json!({ "target": "gdrive" })).unwrap_err().contains("FLOWNOTE_GOOGLE_CLIENT_ID"));
 }

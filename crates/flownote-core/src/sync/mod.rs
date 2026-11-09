@@ -29,6 +29,14 @@
 //!    Changes it only received from others aren't re-uploaded — they're in
 //!    their authors' logs.
 
+#[cfg(test)]
+mod fake_clouds;
+#[cfg(test)]
+mod fake_http;
+pub mod gdrive;
+pub mod http;
+pub mod oauth;
+pub mod onedrive;
 pub mod service;
 mod target;
 pub use target::{LocalFolderTarget, MemoryTarget, RemoteFile, SyncTarget};

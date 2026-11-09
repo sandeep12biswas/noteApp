@@ -51,6 +51,13 @@ jobs:
       # `tauri build` runs tauri.conf.json's beforeBuildCommand (the frontend
       # build) itself, then builds the release binary and both installers.
       - name: Build installers
+        # Cloud sync app registrations (docs/sync-cloud-setup.md), compiled
+        # in. Without these repository secrets the build still works; the
+        # OneDrive / Google Drive options then say the build isn't registered.
+        env:
+          FLOWNOTE_ONEDRIVE_CLIENT_ID: ${{ secrets.FLOWNOTE_ONEDRIVE_CLIENT_ID }}
+          FLOWNOTE_GOOGLE_CLIENT_ID: ${{ secrets.FLOWNOTE_GOOGLE_CLIENT_ID }}
+          FLOWNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.FLOWNOTE_GOOGLE_CLIENT_SECRET }}
         run: pnpm --filter @flownote/tauri tauri build --bundles nsis,msi
 
       - name: Assemble package
