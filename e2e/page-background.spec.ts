@@ -68,7 +68,9 @@ test('a default colours every page; a page colour only its own page; Use default
   await addPage(page, 'Colours', 'Second')
 
   // Default for all pages.
-  await (await openPageColour(page)).getByRole('menuitemradio', { name: 'All pages Sepia' }).click()
+  const menu = await openPageColour(page)
+  await menu.getByRole('menuitemradio', { name: 'All pages', exact: true }).click()
+  await menu.getByRole('menuitemradio', { name: 'All pages Sepia' }).click()
   await expect.poll(() => rgb(pane(page), 'backgroundColor')).toBe('rgb(248, 241, 227)')
   await page.getByRole('button', { name: 'First' }).click()
   await expect.poll(() => rgb(pane(page), 'backgroundColor')).toBe('rgb(248, 241, 227)')
@@ -99,6 +101,44 @@ test('the colour covers the title header and the writing area, in canvas and lin
   expect(await rgb(pane(page), 'backgroundColor')).toBe(lavender)
 })
 
+test('page colour swatches have a visible edge; shades and the colour wheel apply', async ({ page }) => {
+  await createFolderAndPage(page, 'Palette', 'Page')
+  const menu = await openPageColour(page)
+  // The palest paper tone still has an edge that stands out from the white menu.
+  const ivory = menu.getByRole('menuitemradio', { name: 'This page Ivory' })
+  const edge = await ivory.evaluate((el) => {
+    const ctx = document.createElement('canvas').getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, 1, 1)
+    ctx.fillStyle = getComputedStyle(el).borderTopColor
+    ctx.fillRect(0, 0, 1, 1)
+    return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)]
+  })
+  expect(Math.max(...edge)).toBeLessThan(200)
+
+  await menu.getByRole('menuitemradio', { name: 'This page Teal darker' }).click()
+  await expect.poll(() => rgb(pane(page), 'backgroundColor')).toBe('rgb(17, 94, 89)')
+
+  const again = await openPageColour(page)
+  await again.getByRole('menuitem', { name: 'More colours…' }).click()
+  const wheel = again.getByRole('slider', { name: 'Colour wheel' })
+  await expect(wheel).toBeFocused()
+  // The wheel starts from the page's dark teal; turn brightness up, then
+  // click the wheel's right edge: hue 90°, full saturation → #80ff00.
+  await again.getByRole('slider', { name: 'Brightness' }).fill('100')
+  const box = (await wheel.boundingBox())!
+  await page.mouse.click(box.x + box.width - 2, box.y + box.height / 2)
+  await expect(again.getByRole('textbox', { name: 'Hex colour' })).toHaveValue(/^#[0-9a-f]{6}$/)
+  const picked = await again.getByRole('textbox', { name: 'Hex colour' }).inputValue()
+  await again.getByRole('menuitem', { name: 'Apply' }).click()
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(picked.slice(i, i + 2), 16))
+  await expect.poll(() => rgb(pane(page), 'backgroundColor')).toBe(`rgb(${r}, ${g}, ${b})`)
+  expect(r).toBeGreaterThan(110) // chartreuse
+  expect(r).toBeLessThan(150)
+  expect(g).toBeGreaterThan(245)
+  expect(b).toBeLessThan(20)
+})
+
 test('the dark theme keeps its dark pane and disables the button; light brings the colour back', async ({ page }) => {
   await createFolderAndPage(page, 'Themes', 'Page')
   await (await openPageColour(page)).getByRole('menuitemradio', { name: 'This page Rose' }).click()
@@ -118,8 +158,9 @@ test.describe('on a navy page (issue #12)', () => {
   test.beforeEach(async ({ page }) => {
     await createFolderAndPage(page, 'Navy', 'Night')
     const menu = await openPageColour(page)
-    await menu.getByLabel('Custom colour for this page').fill(NAVY)
-    await page.keyboard.press('Escape')
+    await menu.getByRole('menuitem', { name: 'More colours…' }).click()
+    await menu.getByRole('textbox', { name: 'Hex colour' }).fill(NAVY)
+    await menu.getByRole('menuitem', { name: 'Apply' }).click()
     await expect.poll(() => rgb(pane(page), 'backgroundColor')).toBe('rgb(30, 58, 138)')
     await page.getByRole('tab', { name: 'Home' }).click()
   })

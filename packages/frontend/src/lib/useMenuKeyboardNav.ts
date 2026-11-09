@@ -11,6 +11,9 @@
 // handle.
 import { useEffect } from 'react'
 
+const OWN_ARROWS_SELECTOR =
+  '[data-own-arrows], textarea, select, input:not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="radio"])'
+
 export function useMenuKeyboardNav(
   containerRef: React.RefObject<HTMLElement | null>,
   options: { autoFocus?: boolean; itemSelector?: string } = {},
@@ -32,6 +35,10 @@ export function useMenuKeyboardNav(
     if (autoFocus) items()[0]?.focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Controls that use the arrow keys themselves keep them: text and
+      // range inputs (caret, slider value) and anything marked
+      // `data-own-arrows` (the Page colour menu's 2D shade grid and wheel).
+      if (e.target instanceof Element && e.target.closest(OWN_ARROWS_SELECTOR)) return
       const list = items()
       if (list.length === 0) return
       const currentIndex = list.indexOf(document.activeElement as HTMLElement)

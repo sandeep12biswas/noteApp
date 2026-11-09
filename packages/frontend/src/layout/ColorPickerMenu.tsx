@@ -38,6 +38,14 @@ export const POPOVER_CLASSNAME =
 export const MENU_TEXT_BUTTON_CLASSNAME =
   'rounded px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
 
+/**
+ * Every swatch gets a neutral edge, whatever its fill. Pale swatches (the
+ * paper tones, the lightest shades) otherwise vanish into the white menu, and
+ * a border matching the fill hides where one swatch ends and the next begins.
+ */
+export const SWATCH_EDGE = 'border border-black/30 dark:border-white/35'
+export const SWATCH_ACTIVE = 'ring-2 ring-blue-600 ring-offset-1 ring-offset-white dark:ring-blue-400 dark:ring-offset-gray-900'
+
 /** A grid of round colour swatches (`menuitemradio`s), shared by the ribbon colour menus and the Page colour menu. */
 export function SwatchGrid({
   label,
@@ -72,13 +80,8 @@ export function SwatchGrid({
             title={low ? `${name}: ${LOW_CONTRAST_TITLE}` : name}
             data-low-contrast={low || undefined}
             onClick={() => onPick(color)}
-            className={
-              'h-6 w-6 rounded-full border-2' +
-              (active ? ' ring-2 ring-offset-1 ring-blue-500' : '') +
-              (low ? ' opacity-40' : '')
-            }
-            // A light swatch (White) would vanish against the menu without a visible edge.
-            style={{ backgroundColor: color, borderColor: color === '#ffffff' ? '#d1d5db' : color }}
+            className={SWATCH_EDGE + ' h-6 w-6 rounded-full' + (active ? ' ' + SWATCH_ACTIVE : '') + (low ? ' opacity-40' : '')}
+            style={{ backgroundColor: color }}
           />
         )
       })}

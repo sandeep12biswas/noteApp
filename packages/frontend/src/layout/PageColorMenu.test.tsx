@@ -1,10 +1,10 @@
 // Ribbon → View → Page colour (issue #11).
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { PageColorButton, DARK_THEME_TITLE } from './PageColorMenu'
 import { DEFAULT_MAX_FOLDER_DEPTH, useNotebookStore } from '../store/notebookStore'
-import { useEditorBackgroundStore } from '../store/editorBackgroundStore'
+import { PAGE_BACKGROUND_SHADES, PAGE_SHADE_NAMES, useEditorBackgroundStore } from '../store/editorBackgroundStore'
 import { useThemeStore } from '../store/themeStore'
 
 afterEach(cleanup)
@@ -17,7 +17,7 @@ beforeEach(() => {
     selectedFileId: null,
     maxFolderDepth: DEFAULT_MAX_FOLDER_DEPTH,
   })
-  useEditorBackgroundStore.setState({ defaultBackground: null })
+  useEditorBackgroundStore.setState({ defaultBackground: null, recentBackgrounds: [] })
   useThemeStore.setState({ isDark: false })
 })
 
@@ -34,6 +34,10 @@ function seedPages() {
 async function openMenu(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Page colour' }))
   return screen.getByRole('menu', { name: 'Page colour' })
+}
+
+async function applyToAllPages(user: ReturnType<typeof userEvent.setup>, menu: HTMLElement) {
+  await user.click(within(menu).getByRole('menuitemradio', { name: 'All pages' }))
 }
 
 describe('Page colour menu', () => {
@@ -56,6 +60,7 @@ describe('Page colour menu', () => {
     const user = userEvent.setup()
     render(<PageColorButton />)
     const menu = await openMenu(user)
+    await applyToAllPages(user, menu)
     await user.click(within(menu).getByRole('menuitemradio', { name: 'All pages Mint' }))
 
     expect(useEditorBackgroundStore.getState().defaultBackground).toBe('#ecfdf5')
@@ -73,7 +78,9 @@ describe('Page colour menu', () => {
     expect(useNotebookStore.getState().files[a]?.background).toBeNull()
     expect(screen.getByTestId('page-colour-swatch')).toHaveStyle({ backgroundColor: '#eff6ff' })
 
-    await user.click(within(await openMenu(user)).getByRole('menuitem', { name: 'White' }))
+    const menu = await openMenu(user)
+    await applyToAllPages(user, menu)
+    await user.click(within(menu).getByRole('menuitem', { name: 'White' }))
     expect(useEditorBackgroundStore.getState().defaultBackground).toBeNull()
   })
 
@@ -82,25 +89,98 @@ describe('Page colour menu', () => {
     useEditorBackgroundStore.getState().setDefaultBackground('#eff6ff')
     const user = userEvent.setup()
     render(<PageColorButton />)
-    await user.click(within(await openMenu(user)).getByRole('menuitemradio', { name: 'All pages White' }))
+    const menu = await openMenu(user)
+    await applyToAllPages(user, menu)
+    await user.click(within(menu).getByRole('menuitemradio', { name: 'All pages White' }))
     expect(useEditorBackgroundStore.getState().defaultBackground).toBeNull()
   })
 
-  it('allows a dark custom colour (the text follows it, issue #12)', async () => {
+  it('offers a darkest-to-lightest shade grid for every hue', async () => {
     const { a } = seedPages()
     const user = userEvent.setup()
     render(<PageColorButton />)
     const menu = await openMenu(user)
-    const input = within(menu).getByLabelText('Custom colour for this page')
-    fireEvent.change(input, { target: { value: '#1e3a8a' } })
+    const grid = within(menu).getByRole('group', { name: 'This page shades' })
+    expect(within(grid).getAllByRole('menuitemradio')).toHaveLength(PAGE_BACKGROUND_SHADES.length * PAGE_SHADE_NAMES.length)
+    await user.click(within(grid).getByRole('menuitemradio', { name: 'This page Blue darkest' }))
     expect(useNotebookStore.getState().files[a]?.background).toBe('#1e3a8a')
+  })
+
+  it('arrow keys move through the shade grid in two dimensions', async () => {
+    seedPages()
+    const user = userEvent.setup()
+    render(<PageColorButton />)
+    const menu = await openMenu(user)
+    within(menu).getByRole('menuitemradio', { name: 'This page Red darkest' }).focus()
+    await user.keyboard('{ArrowRight}')
+    expect(within(menu).getByRole('menuitemradio', { name: 'This page Orange darkest' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    expect(within(menu).getByRole('menuitemradio', { name: 'This page Orange dark' })).toHaveFocus()
+    await user.keyboard('{ArrowLeft}{ArrowLeft}')
+    expect(within(menu).getByRole('menuitemradio', { name: 'This page Grey dark' })).toHaveFocus()
+    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}')
+    // Past the top row: leaves the grid for the last paper swatch.
+    expect(within(menu).getByRole('menuitemradio', { name: 'This page Grey' })).toHaveFocus()
+  })
+
+  it('the colour wheel applies a typed hex colour, even a dark one (issue #12), and remembers it', async () => {
+    const { a } = seedPages()
+    const user = userEvent.setup()
+    render(<PageColorButton />)
+    let menu = await openMenu(user)
+    await user.click(within(menu).getByRole('menuitem', { name: 'More colours…' }))
+    expect(within(menu).getByRole('slider', { name: 'Colour wheel' })).toHaveFocus()
+    const hex = within(menu).getByRole('textbox', { name: 'Hex colour' })
+    await user.clear(hex)
+    await user.type(hex, '#1e3a8a')
+    expect(screen.getByTestId('colour-wheel-preview')).toHaveStyle({ backgroundColor: '#1e3a8a' })
+    expect(useNotebookStore.getState().files[a]?.background).toBeNull() // nothing applies before Apply
+    await user.click(within(menu).getByRole('menuitem', { name: 'Apply' }))
+    expect(useNotebookStore.getState().files[a]?.background).toBe('#1e3a8a')
+    expect(useEditorBackgroundStore.getState().recentBackgrounds).toEqual(['#1e3a8a'])
+
+    menu = await openMenu(user)
+    expect(within(menu).getByRole('menuitemradio', { name: 'This page recent #1e3a8a' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('the colour wheel rejects an invalid hex and Cancel applies nothing', async () => {
+    const { a } = seedPages()
+    const user = userEvent.setup()
+    render(<PageColorButton />)
+    const menu = await openMenu(user)
+    await user.click(within(menu).getByRole('menuitem', { name: 'More colours…' }))
+    const hex = within(menu).getByRole('textbox', { name: 'Hex colour' })
+    await user.clear(hex)
+    await user.type(hex, '#12zz')
+    expect(hex).toHaveAttribute('aria-invalid', 'true')
+    expect(within(menu).getByRole('menuitem', { name: 'Apply' })).toBeDisabled()
+    await user.click(within(menu).getByRole('menuitem', { name: 'Cancel' }))
+    expect(within(menu).getByRole('menuitem', { name: 'More colours…' })).toBeInTheDocument()
+    expect(useNotebookStore.getState().files[a]?.background).toBeNull()
+  })
+
+  it('arrow keys on the wheel change hue and saturation', async () => {
+    seedPages()
+    const user = userEvent.setup()
+    render(<PageColorButton />)
+    const menu = await openMenu(user)
+    await user.click(within(menu).getByRole('menuitem', { name: 'More colours…' }))
+    const hex = within(menu).getByRole('textbox', { name: 'Hex colour' })
+    await user.clear(hex)
+    await user.type(hex, '#ff0000')
+    within(menu).getByRole('slider', { name: 'Colour wheel' }).focus()
+    await user.keyboard('{Shift>}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{/Shift}') // +60° → yellow
+    expect(hex).toHaveValue('#ffff00')
+    await user.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}') // saturation 100% → 70%
+    expect(hex).toHaveValue('#ffff4d')
   })
 
   it('only offers the default section when no page is selected', async () => {
     const user = userEvent.setup()
     render(<PageColorButton />)
     const menu = await openMenu(user)
-    expect(within(menu).queryByText('This page')).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('group', { name: 'Apply to' })).not.toBeInTheDocument()
+    expect(within(menu).getByRole('menuitemradio', { name: 'All pages Sepia' })).toBeInTheDocument()
     expect(within(menu).getByText('All pages (default)')).toBeInTheDocument()
   })
 
