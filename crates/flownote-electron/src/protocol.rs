@@ -18,6 +18,7 @@
 //! wire requests onto it.
 
 use flownote_core::store::*;
+use flownote_core::sync::service::SyncService;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -47,6 +48,30 @@ impl Response {
     fn err(id: u64, message: impl Into<String>) -> Self {
         Response { id, result: None, error: Some(message.into()) }
     }
+}
+
+/// The `sync_*` methods (sync step S5), answered by the background
+/// [`SyncService`] rather than a connection; `None` for any other method.
+/// Changes arrive separately, as `{"event":"sync","data":…}` lines
+/// (main.rs). `sync_connect` derives the passphrase key (deliberately slow),
+/// so main.rs runs these off the request loop.
+pub fn dispatch_sync(sync: &SyncService, req: &Request) -> Option<Response> {
+    let result = match req.method.as_str() {
+        "sync_status" => sync.status(),
+        "sync_configure" => sync.configure(&req.params),
+        "sync_connect" => match req.params.get("passphrase").and_then(Value::as_str) {
+            Some(passphrase) => sync.connect(passphrase),
+            None => Err("sync_connect requires a string `passphrase` param".into()),
+        },
+        "sync_now" => sync.sync_now(),
+        "sync_confirm_mass_delete" => sync.confirm_mass_delete(),
+        "sync_disconnect" => sync.disconnect(),
+        _ => return None,
+    };
+    Some(match result {
+        Ok(status) => Response::ok(req.id, status),
+        Err(e) => Response::err(req.id, e),
+    })
 }
 
 /// Handles one request against the given connection. Every branch is
@@ -1293,5 +1318,40 @@ mod tests {
         assert!(text.contains("\"isDefault\":true") && !text.contains("sk-hidden"), "{text}");
         let res = dispatch(&conn, Request { id: 102, method: "delete_ai_provider".into(), params: json!({ "id": "c" }) });
         assert!(res.error.is_none());
+    }
+
+    fn sync_service() -> (SyncService, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("flownote-electron-sync-{}-{}", std::process::id(), uuid_like()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pool = db::open(dir.join("db.sqlite3").to_str().unwrap()).unwrap();
+        (SyncService::start(pool, std::sync::Arc::new(|_| {})).unwrap(), dir)
+    }
+
+    fn uuid_like() -> u128 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    }
+
+    #[test]
+    fn sync_methods_go_to_the_sync_service() {
+        let (sync, dir) = sync_service();
+        let req = |id, method: &str, params| Request { id, method: method.into(), params };
+        let res = dispatch_sync(&sync, &req(1, "sync_status", Value::Null)).unwrap();
+        assert_eq!(res.id, 1);
+        assert_eq!(res.result.unwrap()["state"], "off");
+
+        let cloud = dir.join("cloud");
+        std::fs::create_dir_all(&cloud).unwrap();
+        let res = dispatch_sync(&sync, &req(2, "sync_configure", json!({ "target": "folder", "folderPath": cloud.to_str().unwrap() }))).unwrap();
+        assert_eq!(res.result.unwrap()["state"], "needsPassphrase");
+
+        let res = dispatch_sync(&sync, &req(3, "sync_connect", json!({}))).unwrap();
+        assert!(res.error.unwrap().contains("passphrase"));
+
+        let res = dispatch_sync(&sync, &req(4, "sync_disconnect", Value::Null)).unwrap();
+        assert_eq!(res.result.unwrap()["state"], "off");
+
+        assert!(dispatch_sync(&sync, &req(5, "list_folders", Value::Null)).is_none(), "not a sync method");
+        drop(sync);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

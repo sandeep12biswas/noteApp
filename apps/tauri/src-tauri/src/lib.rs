@@ -6,7 +6,7 @@
 use flownote_tauri::protocols::{self, ATTACHMENT_SCHEME, PLUGIN_SCHEME};
 use flownote_tauri::AppState;
 use tauri::http::{Response, StatusCode};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 fn db_path(app: &tauri::App) -> String {
     let dir = app
@@ -92,7 +92,17 @@ pub fn run() {
         })
         .setup(move |app| {
             let pool = flownote_core::db::open(&db_path(app)).expect("failed to open flownote db");
-            app.manage(AppState { pool });
+            // Background sync (step S5); its events reach the frontend as
+            // the `sync-event` app event (TauriIPCAdapter.onSyncEvent).
+            let handle = app.handle().clone();
+            let sync = flownote_core::sync::service::SyncService::start(
+                pool.clone(),
+                std::sync::Arc::new(move |event| {
+                    let _ = handle.emit("sync-event", event);
+                }),
+            )
+            .expect("failed to start sync");
+            app.manage(AppState { pool, sync: std::sync::Arc::new(sync) });
             create_main_window(app)?;
             Ok(())
         })

@@ -26,6 +26,20 @@ fn main() {
         std::process::exit(1);
     });
 
+    // Background sync (step S5). Its events go out as unsolicited lines:
+    // `{"event":"sync","data":…}` — no `id`, so they can't be mistaken for a
+    // response (sidecar.ts routes them to its event listeners).
+    let sync = match flownote_core::sync::service::SyncService::start(
+        pool.clone(),
+        Arc::new(|data| write_line(&serde_json::json!({ "event": "sync", "data": data }))),
+    ) {
+        Ok(sync) => Arc::new(sync),
+        Err(e) => {
+            eprintln!("flownote-electron: failed to start sync: {e}");
+            std::process::exit(1);
+        }
+    };
+
     eprintln!("flownote-electron: ready (db: {db_path})");
 
     let stdin = io::stdin();
@@ -54,6 +68,19 @@ fn main() {
                 continue;
             }
         };
+        // Sync settings: answered by the sync service on their own thread —
+        // connecting derives the passphrase key, which takes a moment, and
+        // must not hold up saves meanwhile.
+        if req.method.starts_with("sync_") {
+            let sync = sync.clone();
+            std::thread::spawn(move || {
+                let response = protocol::dispatch_sync(&sync, &req)
+                    .unwrap_or_else(|| Response { id: req.id, result: None, error: Some(format!("method not implemented: {}", req.method)) });
+                write_response(&response);
+            });
+            continue;
+        }
+
         let conn = match pool.get() {
             Ok(conn) => conn,
             Err(e) => {

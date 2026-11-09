@@ -129,3 +129,53 @@ describe('canvasStore IPCAdapter wiring', () => {
     await expect(useCanvasStore.getState().loadSegmentsForPage('page-1')).resolves.toBeUndefined()
   })
 })
+
+describe('applyRemoteSegments (sync)', () => {
+  const wire = (id: string, text: string, extra: Partial<WireSegment> = {}): WireSegment => ({
+    id,
+    pageId: 'page-1',
+    x: 0,
+    y: 0,
+    w: 200,
+    h: 40,
+    zIndex: 0,
+    borderColor: null,
+    fillColor: null,
+    content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] },
+    ...extra,
+  })
+
+  it('adds, removes and replaces segments, bumping remoteRev only when the text changed', async () => {
+    const ipc = mockAdapter()
+    setIPCAdapter(ipc)
+    try {
+      vi.mocked(ipc.listSegments).mockResolvedValueOnce([wire('keep', 'same'), wire('text', 'old'), wire('moved', 'm'), wire('gone', 'g')])
+      await useCanvasStore.getState().loadSegmentsForPage('page-1')
+      const before = useCanvasStore.getState().segments
+      useCanvasStore.setState({ segments: { ...before, other: { ...before.keep!, id: 'other', pageId: 'page-2' } } })
+      const keep = useCanvasStore.getState().segments.keep
+
+      // The backend returns keys sorted — must still count as unchanged.
+      const sortedKeys = (s: WireSegment) => Object.fromEntries(Object.entries(s).sort(([a], [b]) => a.localeCompare(b))) as unknown as WireSegment
+      vi.mocked(ipc.listSegments).mockResolvedValueOnce([
+        sortedKeys(wire('keep', 'same')),
+        wire('text', 'new'),
+        wire('moved', 'm', { x: 300 }),
+        wire('added', 'a'),
+      ])
+      await useCanvasStore.getState().applyRemoteSegments('page-1')
+      const after = useCanvasStore.getState().segments
+
+      expect(after.keep).toBe(keep)
+      expect(after.text!.remoteRev).toBe(1)
+      expect(after.moved!.x).toBe(300)
+      expect(after.moved!.remoteRev).toBeUndefined()
+      expect(after.added).toBeDefined()
+      expect(after.gone).toBeUndefined()
+      expect(after.other).toBeDefined()
+      expect(ipc.saveSegment).not.toHaveBeenCalled()
+    } finally {
+      setIPCAdapter(null)
+    }
+  })
+})

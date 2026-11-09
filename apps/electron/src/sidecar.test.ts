@@ -128,4 +128,24 @@ describe('SidecarClient.requestStream', () => {
     await expect(stream.done).rejects.toThrow('Overloaded')
     expect(chunks).toEqual(['par'])
   })
+
+  it('routes event lines to listeners without disturbing pending requests', async () => {
+    const io = fakeIO()
+    const client = new SidecarClient(io)
+    const events: Array<[string, unknown]> = []
+    const unsubscribe = client.onEvent((event, data) => events.push([event, data]))
+
+    const sent = nextWrittenRequest(io.stdin)
+    const result = client.request('ping')
+    const { id } = await sent
+    io.stdout.write(JSON.stringify({ event: 'sync', data: { type: 'status' } }) + '\n')
+    io.stdout.write(JSON.stringify({ id, result: 'pong' }) + '\n')
+    await expect(result).resolves.toBe('pong')
+    expect(events).toEqual([['sync', { type: 'status' }]])
+
+    unsubscribe()
+    io.stdout.write(JSON.stringify({ event: 'sync', data: { type: 'docsChanged' } }) + '\n')
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(events).toHaveLength(1)
+  })
 })

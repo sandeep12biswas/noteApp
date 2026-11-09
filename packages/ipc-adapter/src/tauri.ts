@@ -1,4 +1,5 @@
 import { Channel } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { commands, type AiStreamEvent, type JsonValue, type SegmentInput } from './generated/tauri-bindings'
 import { pushIterator } from './pushIterator'
 import type {
@@ -12,7 +13,9 @@ import type {
   PluginManifest,
   SearchResult,
   Segment,
+  SyncConfigInput,
   SyncEvent,
+  SyncStatus,
 } from './types'
 
 /** Unwraps a tauri-specta `Result<T, string>`, throwing the backend's error message on failure. */
@@ -25,8 +28,8 @@ function unwrap<T>(result: { status: 'ok'; data: T } | { status: 'error'; error:
 // bindings.ts) against the #[tauri::command] handlers in crates/flownote-
 // tauri, which wrap the same flownote_core::store functions the Electron
 // sidecar calls. Every method ElectronIPCAdapter implements is implemented
-// here too; the remaining throw-stubs (saveBlock, mergeSegments,
-// onSyncEvent) are unimplemented on both platforms. To add a
+// here too; the remaining throw-stubs (saveBlock, mergeSegments) are
+// unimplemented on both platforms. To add a
 // method: add the storage function to flownote_core::store, expose it from
 // both shells, regenerate the bindings (`cargo run -p flownote-tauri
 // --example export_bindings`), then call `commands.xxx()` here.
@@ -145,8 +148,53 @@ export class TauriIPCAdapter implements IPCAdapter {
   }
 
 
-  onSyncEvent(_handler: (event: SyncEvent) => void): () => void {
-    throw new Error('TauriIPCAdapter.onSyncEvent not implemented')
+  async getSyncStatus(): Promise<SyncStatus> {
+    return unwrap(await commands.syncStatus()) as unknown as SyncStatus
+  }
+
+  async configureSync(input: SyncConfigInput): Promise<SyncStatus> {
+    return unwrap(await commands.syncConfigure(input as JsonValue)) as unknown as SyncStatus
+  }
+
+  async connectSync(passphrase: string): Promise<SyncStatus> {
+    return unwrap(await commands.syncConnect(passphrase)) as unknown as SyncStatus
+  }
+
+  async syncNow(): Promise<SyncStatus> {
+    return unwrap(await commands.syncNow()) as unknown as SyncStatus
+  }
+
+  async confirmSyncMassDelete(): Promise<SyncStatus> {
+    return unwrap(await commands.syncConfirmMassDelete()) as unknown as SyncStatus
+  }
+
+  async disconnectSync(): Promise<SyncStatus> {
+    return unwrap(await commands.syncDisconnect()) as unknown as SyncStatus
+  }
+
+  /** The backend emits sync events as the `sync-event` app event (apps/tauri/src-tauri). */
+  onSyncEvent(handler: (event: SyncEvent) => void): () => void {
+    // Same as ElectronIPCAdapter outside its shell: fail now, not with an
+    // unsubscribe that silently never delivers anything.
+    if (!(globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+      throw new Error('TauriIPCAdapter.onSyncEvent: not running inside Tauri')
+    }
+    let unlisten: (() => void) | null = null
+    let stopped = false
+    listen<SyncEvent>('sync-event', (e) => handler(e.payload)).then(
+      (fn) => {
+        if (stopped) fn()
+        else unlisten = fn
+      },
+      (err: unknown) => {
+        // eslint-disable-next-line no-console -- nothing else observes a failed subscription
+        console.error('TauriIPCAdapter: sync event subscription failed', err)
+      },
+    )
+    return () => {
+      stopped = true
+      unlisten?.()
+    }
   }
 
   aiComplete(prompt: string, context: string, providerId?: string): AsyncIterableIterator<string> {

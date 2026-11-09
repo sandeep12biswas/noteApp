@@ -17,6 +17,7 @@ import { AttachmentChoiceMenu } from './AttachmentChoiceMenu'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { misspelledWordAt } from './spellcheckExtension'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
+import { useRemoteContent } from './useRemoteContent'
 
 export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment; onTextChange: (id: string, text: string) => void }) {
   const setActiveSegment = useCanvasStore((s) => s.setActiveSegment)
@@ -50,6 +51,8 @@ export function LinearSegmentHost({ segment, onTextChange }: { segment: Segment;
     onFocus: () => setActiveSegment(segment.id),
     onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
+
+  useRemoteContent(editor, segment)
 
   useEffect(() => {
     if (!editor) return

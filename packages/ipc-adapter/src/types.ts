@@ -75,11 +75,70 @@ export interface SearchResult {
   snippet: string
 }
 
-export interface SyncEvent {
-  // TODO: Automerge-derived change event shape
-  type: string
-  payload: unknown
+// ---- Sync (flownote_core::sync::service, step S5) ----
+
+/** Where this device syncs to. OneDrive and Google Drive arrive in a later step. */
+export type SyncTarget = 'none' | 'folder'
+
+/**
+ * - `off`: no target chosen;
+ * - `needsPassphrase`: a target is chosen but this device hasn't joined its vault;
+ * - `syncing`: a cycle is running;
+ * - `heldBack`: another device's changes would delete a lot, waiting for `confirmSyncMassDelete()`;
+ * - `error`: the last cycle failed (`lastError`); automatic cycles retry after a minute;
+ * - `idle`: up to date as of `lastSyncAt`.
+ */
+export type SyncState = 'off' | 'needsPassphrase' | 'syncing' | 'heldBack' | 'error' | 'idle'
+
+/** Sync settings and state. The passphrase key and any tokens are never included. */
+export interface SyncStatus {
+  state: SyncState
+  target: SyncTarget
+  /** The sync folder, when `target` is `folder`. */
+  folderPath: string | null
+  deviceId: string
+  deviceName: string
+  /** Joined the target's vault, and sync is on. */
+  connected: boolean
+  /** Epoch ms of the last successful cycle. */
+  lastSyncAt: number | null
+  lastError: string | null
+  heldBack: {
+    deviceId: string
+    deviceName: string | null
+    pagesDeleted: number
+    pagesTotal: number
+    segmentsDeleted: number
+    segmentsTotal: number
+  } | null
+  /** Cloud files that couldn't be read (that device's later changes wait behind them). */
+  quarantined: number
+  /** Change files that can't be applied yet. */
+  waiting: number
+  /** The other devices seen in the sync folder. */
+  peers: Array<{ deviceId: string; name: string | null; lastSeenAt: number | null }>
 }
+
+/** Choosing a different target forgets the passphrase key, so `connectSync()` is needed again. */
+export interface SyncConfigInput {
+  target?: SyncTarget
+  /** Required with `target: 'folder'`: an existing folder's full path. */
+  folderPath?: string
+  deviceName?: string
+}
+
+/**
+ * Pushed by the backend:
+ * - `status` on every change of `SyncStatus`;
+ * - `docsChanged` after another device's changes were applied: the pages
+ *   whose segments/ink/attachments changed, and whether folders, the page
+ *   list or the dictionary did (`folders`);
+ * - `conflict` when concurrent edits to one segment were kept as conflict copies.
+ */
+export type SyncEvent =
+  | { type: 'status'; status: SyncStatus }
+  | { type: 'docsChanged'; pageIds: string[]; folders: boolean }
+  | { type: 'conflict'; segmentIds: string[] }
 
 // Matches `flownote-plugin.json` (DESIGN.md §9.3) plus the two columns
 // `plugins` (Rust) tracks itself (`enabled`, `installedAt`) — both
@@ -154,6 +213,16 @@ export interface IPCAdapter {
   mergeSegments(idA: string, idB: string): Promise<void>
   search(query: string, notebookId: string): Promise<SearchResult[]>
   setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void>
+  // Sync (step S5). Each settings call resolves to the new status.
+  getSyncStatus(): Promise<SyncStatus>
+  configureSync(input: SyncConfigInput): Promise<SyncStatus>
+  /** Joins the target's vault (creating it on the first device). Rejects with a message starting "Wrong passphrase" if it doesn't match. */
+  connectSync(passphrase: string): Promise<SyncStatus>
+  syncNow(): Promise<SyncStatus>
+  confirmSyncMassDelete(): Promise<SyncStatus>
+  /** Stops syncing; notes stay on this device and in the sync folder. */
+  disconnectSync(): Promise<SyncStatus>
+  /** Subscribes to sync events; returns the unsubscribe function. */
   onSyncEvent(handler: (event: SyncEvent) => void): () => void
   /**
    * Streams generated text for `prompt` (with the current segment's text as

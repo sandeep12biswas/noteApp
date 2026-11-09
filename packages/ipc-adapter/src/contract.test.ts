@@ -158,6 +158,16 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     expect(() => adapter.onSyncEvent(() => {})).toThrow()
   })
 
+  it('the sync methods reject', async () => {
+    const adapter = create()
+    await expect(adapter.getSyncStatus()).rejects.toThrow()
+    await expect(adapter.configureSync({ target: 'folder', folderPath: '/tmp' })).rejects.toThrow()
+    await expect(adapter.connectSync('passphrase')).rejects.toThrow()
+    await expect(adapter.syncNow()).rejects.toThrow()
+    await expect(adapter.confirmSyncMassDelete()).rejects.toThrow()
+    await expect(adapter.disconnectSync()).rejects.toThrow()
+  })
+
   it('aiComplete rejects on first iteration without ever yielding a token', async () => {
     const adapter = create()
     const iterator = adapter.aiComplete('prompt', 'context')

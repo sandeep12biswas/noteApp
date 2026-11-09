@@ -23,6 +23,7 @@
 // effect below must explicitly clear the previous page's drawing itself;
 // there's no unmount to do it for free.
 import { useEffect, useRef } from 'react'
+import { useSyncStore } from '../store/syncStore'
 import type { IPCAdapter } from '@flownote/ipc-adapter'
 import { useInkStore, TOOL_WIDTH } from '../store/inkStore'
 
@@ -34,6 +35,8 @@ export function setIPCAdapter(adapter: IPCAdapter | null): void {
 }
 
 export function InkLayer({ pageId, active }: { pageId: string; active: boolean }) {
+  // Bumped when another device changed this page (sync) — reloads its ink.
+  const remoteRev = useSyncStore((s) => s.pageRevs[pageId] ?? 0)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawingRef = useRef(false)
   const tool = useInkStore((s) => s.tool)
@@ -94,9 +97,10 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
   }, [])
 
   // Load (or clear) this page's persisted ink layer whenever `pageId`
-  // changes. Guarded by `cancelled` against a stale response landing after
-  // the user has already switched to a *different* page (two `getInkLayer`
-  // calls racing, e.g. a slow first response overtaken by a fast second).
+  // changes, or another device changed it (`remoteRev`). Guarded by
+  // `cancelled` against a stale response landing after the user has already
+  // switched to a *different* page (two `getInkLayer` calls racing, e.g. a
+  // slow first response overtaken by a fast second).
   useEffect(() => {
     if (!ipc) return
     let cancelled = false
@@ -135,7 +139,7 @@ export function InkLayer({ pageId, active }: { pageId: string; active: boolean }
     return () => {
       cancelled = true
     }
-  }, [pageId])
+  }, [pageId, remoteRev])
 
   const persist = () => {
     const canvas = canvasRef.current

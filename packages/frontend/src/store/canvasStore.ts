@@ -12,6 +12,7 @@ import type { Editor } from '@tiptap/react'
 import { create } from 'zustand'
 import { type AABB, MIN_GAP, overlaps } from '../lib/collision'
 import { makeId } from '../lib/ids'
+import { deepEqual } from '../lib/deepEqual'
 
 /** Guard against runaway recursion (DESIGN.md §10 "ResizeObserver cascade loops"). */
 const MAX_CASCADE_DEPTH = 20
@@ -94,6 +95,8 @@ export interface Segment {
   content: Record<string, unknown>
   createdAt: number
   updatedAt: number
+  /** Bumped each time another device's change to this segment is loaded (sync, `applyRemoteSegments`) — mounted editors reload their content on it. */
+  remoteRev?: number
 }
 
 // Fallback used only when the caller can't measure anything better (e.g.
@@ -167,6 +170,13 @@ interface CanvasState {
   getActiveEditor: () => Editor | null
   /** Loads a page's persisted segments from IPCAdapter, replacing any in-memory ones for that page. */
   loadSegmentsForPage: (pageId: string) => Promise<void>
+  /**
+   * Reloads an open page after another device changed it (sync): adds and
+   * removes segments, and replaces changed ones — bumping `remoteRev` when
+   * the text changed so open editors pick it up. Unchanged segments keep
+   * their object, so nothing re-renders for them.
+   */
+  applyRemoteSegments: (pageId: string) => Promise<void>
   /**
    * Pushes segments overlapping `id` downward just enough to clear it, then
    * recurses onto whatever they in turn now overlap (DESIGN.md §10
@@ -350,6 +360,30 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         kept[s.id] = { ...s, createdAt: now, updatedAt: now }
       }
       return { segments: kept }
+    })
+  },
+
+  applyRemoteSegments: async (pageId) => {
+    if (!ipc) return
+    const loaded = await ipc.listSegments(pageId)
+    const now = Date.now()
+    set((state) => {
+      const next = Object.fromEntries(Object.entries(state.segments).filter(([, s]) => s.pageId !== pageId))
+      for (const s of loaded) {
+        const prev = state.segments[s.id]
+        if (prev && deepEqual(toWireSegment(prev), s)) {
+          next[s.id] = prev
+          continue
+        }
+        const textChanged = prev !== undefined && !deepEqual(prev.content, s.content)
+        next[s.id] = {
+          ...s,
+          createdAt: prev?.createdAt ?? now,
+          updatedAt: now,
+          remoteRev: textChanged ? (prev.remoteRev ?? 0) + 1 : prev?.remoteRev,
+        }
+      }
+      return { segments: next }
     })
   },
 }))

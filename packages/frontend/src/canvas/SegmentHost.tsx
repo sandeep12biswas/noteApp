@@ -27,6 +27,7 @@ import { segmentEditorExtensions } from './segmentEditorExtensions'
 import { misspelledWordAt } from './spellcheckExtension'
 import { SlashMenu, slashMenuItems } from './SlashMenu'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
+import { useRemoteContent } from './useRemoteContent'
 
 const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
 
@@ -258,6 +259,8 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     },
     onCreate: ({ editor }) => applyDefaultFontIfNew(editor, segment),
   })
+
+  useRemoteContent(editor, segment)
 
   useEffect(() => {
     if (!editor) return
