@@ -58,42 +58,56 @@ The `run-electron` and `run` skills in `.claude/skills/` automate driving the El
 
 ## Building & installing FlowNote
 
-Prebuilt packages come from CI (Linux: below; Windows: the `Windows installer` workflow). Otherwise, building an installer means building it from this source tree on the target OS. `scripts/` wraps that into one command per OS. Each script builds the frontend, builds the native shell, produces a real platform installer (`.deb`/`.AppImage` on Linux, `.msi`/NSIS `.exe` on Windows), and installs it; the matching uninstaller removes it again.
+Every release is one versioned bundle per OS, built from a clean slate by one command. The version comes from the root `VERSION` file; `node scripts/sync-version.mjs` (run by both bundle scripts) copies it into `apps/electron/package.json`, `tauri.conf.json` and the `Cargo.toml`s, so Linux and Windows always ship the same number.
+
+| | Linux | Windows |
+|---|---|---|
+| Build the bundle | `./scripts/linux/package.sh` | `.\scripts\windows\package.ps1` |
+| Output (`dist-release/`) | `FlowNote-<ver>-linux-x86_64.run` (self-extracting installer), `.tar.gz` (bundle folder) | `FlowNote-<ver>-windows-x64.zip` |
+| Bundle contents | `.deb`, `.AppImage`, `install.sh`, `uninstall.sh`, `lib/ui.sh`, README, PDF guides, `SHA256SUMS` | NSIS `setup.exe`, `.msi`, `Uninstall FlowNote.cmd` + `Uninstall-FlowNote.ps1`, README, PDF guides, `SHA256SUMS.txt` |
+| CI | `Linux installer` workflow | `Windows installer` workflow |
+
+Both bundle scripts delete every previous build output first (`--no-clean` / `-NoClean` for a faster incremental build), and both CI workflows run them and then test install → launch → uninstall on a fresh runner. Prebuilt bundles are the workflows' `flownote-linux` / `flownote-windows` artifacts (on `v*` tags, or run by hand).
 
 ### Linux
 
-**Prebuilt (no build tools needed):** the `Linux installer` workflow (`.github/workflows/linux-installer.yml`, on `v*` tags or run by hand) builds the `flownote-linux` artifact — `FlowNote-<version>-amd64.deb`, `FlowNote-<version>-x86_64.AppImage`, and `packaging/linux/`'s `install.sh`, `uninstall.sh` and `README.txt`. Unzip it and:
-
 ```bash
-./install.sh                    # the .deb on Debian/Ubuntu (sudo), otherwise the AppImage for your user only
-./install.sh --appimage         # the AppImage under ~/.local, no root
-./uninstall.sh                  # removes either install; asks whether to delete your notes too
-./uninstall.sh --remove-data    # ...and deletes them (--keep-data to keep them without asking)
+./FlowNote-<ver>-linux-x86_64.run         # double-click it, or run it: guided install (graphical with zenity/kdialog, else in the terminal)
+./install.sh                              # same, from the unpacked bundle; asks system (.deb) vs just-me (AppImage)
+./install.sh --appimage --silent          # no questions: AppImage under ~/.local, no root
+./install.sh --deb --silent               # no questions: the .deb system package (sudo)
+./uninstall.sh                            # asks, including whether to delete your notes
+./uninstall.sh --remove-data              # ...or decide up front (--keep-data to keep them)
+~/.local/opt/flownote/uninstall.sh        # the AppImage install carries its own uninstaller
 ```
 
-Notes live in `~/.config/@flownote/electron/` and survive an uninstall unless you ask for them to be deleted. Where an AppImage can't be mounted (no FUSE 2), `install.sh` sets FlowNote up to unpack itself on start instead.
+`packaging/linux/install.sh` offers upgrade/repair when FlowNote is already installed, logs to `~/.cache/flownote-install.log`, and keeps working without FUSE 2 (the AppImage then unpacks itself on start). Notes live in `~/.config/@flownote/electron/` and survive an uninstall unless you ask for them to be deleted. Given its answers as flags (`--deb`/`--appimage`, `--remove-data`/`--keep-data`) and no terminal, a script never opens dialogs.
 
-**From source:**
-
-```bash
-./scripts/linux/install.sh      # builds + installs FlowNote (prefers a .deb via apt/dpkg, falls back to an AppImage under ~/.local)
-./scripts/linux/uninstall.sh    # removes it again, whichever install path was used (same flags as above)
-```
-
-Requires `pnpm`, `node`, and `cargo` on `PATH`; `sudo` is used only for the `.deb` path (installing a system package and registering a desktop entry). Run `./scripts/linux/install.sh --help` for flags (e.g. `--appimage` to force the AppImage path even when `apt`/`dpkg` are available).
-
-The script builds all three pieces `apps/electron/electron-builder.yml` packages (frontend, Electron main process, Rust sidecar) in the right order, then installs the result with `packaging/linux/install.sh` — the same installer shipped with the prebuilt packages; `scripts/linux/uninstall.sh` likewise runs `packaging/linux/uninstall.sh`.
+**Build and install from source in one go:** `./scripts/linux/install.sh [installer flags]` runs `package.sh`, then the bundle's `install.sh`; `./scripts/linux/uninstall.sh` runs `packaging/linux/uninstall.sh`. Requires `pnpm`, `node` and `cargo` on `PATH`.
 
 ### Windows 11
 
-Run from a **PowerShell** prompt (elevated if you don't already have Node/Rust/pnpm on `PATH` for all users):
+From a **PowerShell** prompt:
 
 ```powershell
-.\scripts\windows\install.ps1      # builds + runs the generated .msi installer
-.\scripts\windows\uninstall.ps1    # finds FlowNote's registered uninstaller and runs it
+.\scripts\windows\package.ps1      # clean build of the bundle (needs the Tauri prerequisites)
+.\scripts\windows\install.ps1      # package.ps1, then runs the setup wizard (-Silent: setup.exe /S; -Msi: the .msi)
+.\scripts\windows\uninstall.ps1    # Uninstall-FlowNote.ps1: -RemoveData, -KeepData, -Silent
 ```
 
-Requires `pnpm`, `node`, and `cargo`/`rustup` on `PATH`, plus the [Tauri Windows prerequisites](https://tauri.app/start/prerequisites/) (Microsoft Visual Studio C++ Build Tools + WebView2, which ships with Windows 11 by default). `install.ps1 -Silent` runs the `.msi` unattended (`/qn`); omit it to see the normal installer UI. `uninstall.ps1` reads the registered uninstall command from the Windows registry (the same one Settings → Apps uses), so it works regardless of whether the last install was silent.
+The setup wizard is Tauri's NSIS installer customised in `tauri.conf.json` → `bundle.windows` (branded header/sidebar from `apps/tauri/src-tauri/installer/`, release-notice page, language selector, Start Menu folder) plus `installer/hooks.nsh`, which adds Start Menu entries for the PDF guides and the uninstaller. Per-user install, no admin needed. Requires `pnpm`, `node`, `cargo`/`rustup` and the [Tauri Windows prerequisites](https://tauri.app/start/prerequisites/) (Visual Studio C++ Build Tools + WebView2).
+
+Installer artwork (the Linux icon set and the NSIS/MSI images) is generated from the app icon by `python3 scripts/assets/make-installer-art.py`.
+
+### User Guide and Feature Guide (PDF)
+
+`docs/FlowNote-Installation-Guide.pdf`, `docs/FlowNote-User-Guide.pdf` and `docs/FlowNote-Feature-Guide.pdf` ship in both bundles (and in the Windows install). Their sources are `docs/guides/*.html`. To regenerate after a UI change (Linux, with the app built and a display available):
+
+```bash
+pnpm docs:screenshots   # drives the real Electron app with a throwaway profile -> docs/guides/screenshots/*.png
+pnpm docs:pdf           # headless Chrome -> docs/*.pdf (set CHROME_PATH if Chrome/Chromium isn't found)
+pnpm docs               # both
+```
 
 ### macOS
 

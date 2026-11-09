@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowNote User Guide</title>
+<meta name="flownote-doc-title" content="FlowNote User Guide">
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+
+<section class="cover">
+  <img class="logo" src="../../apps/electron/build/icons/512x512.png" alt="">
+  <p class="kicker">User Guide</p>
+  <h1>FlowNote</h1>
+  <p class="subtitle">Install FlowNote on Linux or Windows, and learn the everyday tasks: folders, pages, writing on the canvas, drawing, search, and keeping your notes safe.</p>
+  <img class="shot" src="screenshots/30-final-overview.png" alt="FlowNote main window">
+  <div class="meta"><span>Version <span data-version>0.1.0</span></span><span>Linux · Windows</span></div>
+</section>
+
+<nav class="toc" data-toc><div class="toc-title">Contents</div></nav>
+
+<main>
+
+<!-- ================================================================== -->
+<section class="chapter" id="welcome">
+<h2>Welcome to FlowNote</h2>
+<p class="lead">FlowNote is a note-taking app with a free-form canvas. Click anywhere on a page and start writing: there are no fixed lines or boxes to fight with.</p>
+<p>Notes are organised the way you'd organise a binder:</p>
+<ul>
+  <li><strong>Folders</strong> (left panel) hold related pages, and can contain sub-folders.</li>
+  <li><strong>Pages</strong> (middle panel) are the notes inside the selected folder.</li>
+  <li><strong>The editor</strong> (right) is the page itself: a canvas where every click on an empty spot starts a new block of text called a <em>segment</em>.</li>
+</ul>
+<p>Everything is saved automatically as you type. There is no Save button.</p>
+
+<h3>What's in this guide</h3>
+<ul>
+  <li><strong>Installing and uninstalling</strong> on Linux and Windows.</li>
+  <li><strong>A tour of the window</strong>, then step-by-step instructions for folders, pages, writing, formatting, drawing, attachments and search.</li>
+  <li><strong>Keeping your notes safe</strong>: where they're stored, and encrypted Backup &amp; Sync.</li>
+  <li><strong>Keyboard shortcuts, troubleshooting and an FAQ.</strong></li>
+</ul>
+<p>The companion <em>FlowNote Installation Guide</em> has detailed step-by-step installation instructions and troubleshooting, and the <em>FlowNote Feature Guide</em> describes every feature in more depth.</p>
+
+<h3>System requirements</h3>
+<table>
+  <thead><tr><th></th><th>Linux</th><th>Windows</th></tr></thead>
+  <tbody>
+    <tr><td>Operating system</td><td>64-bit (x86_64) Linux. The system package needs a Debian/Ubuntu-based distribution; the per-user install works on any distribution.</td><td>Windows 10 or 11, 64-bit</td></tr>
+    <tr><td>Disk space</td><td>About 280 MB (system package) or 110 MB (just for me), plus your notes</td><td>Less than 100 MB, plus your notes</td></tr>
+    <tr><td>Other</td><td>A desktop environment. Graphical installer dialogs use <code>zenity</code> or <code>kdialog</code> if present.</td><td>Microsoft Edge WebView2 (included with Windows 11; the installer adds it on Windows 10 if needed)</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="install-linux">
+<h2>Installing on Linux</h2>
+<p>Download <code>FlowNote-&lt;version&gt;-linux-x86_64.run</code> (the one-file installer), or the <code>.tar.gz</code> bundle that contains the same installer plus the individual packages.</p>
+
+<h3>The easy way: the one-file installer</h3>
+<ol class="steps">
+  <li>In your file manager, right-click the <code>.run</code> file and choose <strong>Properties → Permissions → Allow executing file as program</strong>. In a terminal you can run <code>chmod +x FlowNote-*.run</code> instead.</li>
+  <li>Double-click the file. (Or run <code>./FlowNote-*.run</code> in a terminal for a text-based installer with the same steps.)</li>
+  <li>Read the welcome and release notice, then click <strong>Continue</strong>.</li>
+  <li>Choose how to install:
+    <ul>
+      <li><strong>For everyone on this computer</strong> installs a system package (Debian, Ubuntu, Linux Mint, Pop!_OS and similar). You'll be asked for your password.</li>
+      <li><strong>Just for me</strong> needs no password and works on any distribution. FlowNote goes into your home folder.</li>
+    </ul>
+  </li>
+  <li>Wait a few seconds while FlowNote is copied, then choose whether to start it straight away.</li>
+</ol>
+<p>FlowNote is now in your application menu (under <em>Office</em>), and you can also start it by typing <code>flownote</code> in a terminal.</p>
+<div class="tip"><p>If FlowNote is already installed, the installer offers to <strong>upgrade</strong> it (newer version) or <strong>repair</strong> it (same version). Your notes are never touched by an upgrade.</p></div>
+
+<h3>From the bundle folder (terminal)</h3>
+<p>Unpack the bundle and run its installer. Every question can also be answered with an option:</p>
+<pre><code>tar xzf FlowNote-&lt;version&gt;-linux-x86_64.tar.gz
+cd FlowNote-&lt;version&gt;-linux-x86_64
+./install.sh                 # guided install
+./install.sh --appimage      # just for me, no password
+./install.sh --deb           # for everyone (system package)
+./install.sh --silent        # no questions; picks the best option for this system
+./install.sh --help          # all options</code></pre>
+<p>Check that the download is intact with <code>sha256sum -c SHA256SUMS</code> in the bundle folder.</p>
+
+<h3>What gets installed where</h3>
+<table>
+  <thead><tr><th>Install type</th><th>Program</th><th>Command</th><th>Menu entry</th></tr></thead>
+  <tbody>
+    <tr><td>For everyone (.deb)</td><td><code>/opt/FlowNote</code></td><td><code>/usr/bin/flownote</code></td><td>System-wide</td></tr>
+    <tr><td>Just for me (AppImage)</td><td><code>~/.local/opt/flownote</code></td><td><code>~/.local/bin/flownote</code></td><td><code>~/.local/share/applications</code></td></tr>
+  </tbody>
+</table>
+<div class="note"><p>The "just for me" install is an AppImage, which normally needs the FUSE 2 library to start quickly. If your system doesn't have it, the installer sets FlowNote up to unpack itself on each start instead. That works fine but takes a few seconds longer. For faster starts, run <code>sudo apt install libfuse2t64</code> (Ubuntu 24.04 and later; <code>libfuse2</code> on older releases), then run the installer again.</p></div>
+<p>Every install is logged to <code>~/.cache/flownote-install.log</code>.</p>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="install-windows">
+<h2>Installing on Windows</h2>
+<p>Download <code>FlowNote-&lt;version&gt;-windows-x64.zip</code> and unzip it (right-click → <strong>Extract All…</strong>).</p>
+
+<h3>Using the setup wizard (recommended)</h3>
+<ol class="steps">
+  <li>Double-click <code>FlowNote_&lt;version&gt;_x64-setup.exe</code>.</li>
+  <li>Because the preview installers aren't code-signed yet, Windows may show <em>"Windows protected your PC"</em>. Click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+  <li>Pick a language, then follow the wizard: <strong>Welcome</strong> → <strong>release notice</strong> (click <em>I Agree</em>) → <strong>install folder</strong> → <strong>Start Menu folder</strong>.</li>
+  <li>On the last page, tick <strong>Create desktop shortcut</strong> if you want one, and leave <strong>Run FlowNote</strong> ticked to start it now.</li>
+</ol>
+<p>The setup wizard installs for your user account only and does not need administrator rights. You'll find FlowNote in the Start Menu, together with <strong>FlowNote User Guide</strong>, <strong>FlowNote Feature Guide</strong> and <strong>Uninstall FlowNote</strong>.</p>
+
+<h3>Using the MSI package</h3>
+<p>If your organisation prefers Windows Installer packages, double-click <code>FlowNote_&lt;version&gt;_x64_en-US.msi</code> instead. It installs for all users and needs administrator rights.</p>
+
+<h3>Unattended installs</h3>
+<pre><code>FlowNote_&lt;version&gt;_x64-setup.exe /S
+msiexec /i FlowNote_&lt;version&gt;_x64_en-US.msi /qn</code></pre>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="uninstall">
+<h2>Uninstalling FlowNote</h2>
+<div class="warn"><p>Uninstalling FlowNote <strong>keeps your notes</strong> unless you choose to delete them. If you reinstall later, your notes are picked up again automatically.</p></div>
+
+<h3>On Linux</h3>
+<ul>
+  <li>Run <code>uninstall.sh</code> from the bundle folder (double-click it, or run it in a terminal). It asks you to confirm, then asks whether to <strong>also delete your notes</strong>.</li>
+  <li>The "just for me" install keeps its own copy of the uninstaller, so you don't need the download: <code>~/.local/opt/flownote/uninstall.sh</code>.</li>
+  <li>For the system package you can also use <code>sudo apt remove flownote</code> or your software centre.</li>
+</ul>
+<pre><code>./uninstall.sh                 # asks before removing, and about your notes
+./uninstall.sh --keep-data     # removes FlowNote, keeps your notes
+./uninstall.sh --remove-data   # removes FlowNote and your notes</code></pre>
+
+<h3>On Windows</h3>
+<p>Use any one of these:</p>
+<ul>
+  <li><strong>Start Menu → FlowNote → Uninstall FlowNote.</strong> On the confirmation page you can tick <em>Delete the application data</em> to remove your notes too.</li>
+  <li><strong>Settings → Apps → Installed apps → FlowNote → Uninstall.</strong></li>
+  <li>Double-click <strong>Uninstall FlowNote.cmd</strong> in the download folder. It finds either kind of install (setup wizard or MSI) and shows a small window with an <em>Also delete my notes</em> option.</li>
+</ul>
+<p>From PowerShell:</p>
+<pre><code>powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1
+powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -RemoveData
+powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -Silent -KeepData</code></pre>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="tour">
+<h2>A tour of the window</h2>
+<p>When you start FlowNote for the first time the window is empty. You'll create your first folder and page in the next chapter.</p>
+<figure class="wide"><img src="screenshots/01-first-launch.png" alt=""><figcaption>FlowNote on first launch</figcaption></figure>
+<p>Once you have some notes, the window looks like this:</p>
+<figure class="wide"><img src="screenshots/05-main-window.png" alt=""><figcaption>The main window</figcaption></figure>
+<table>
+  <thead><tr><th>Area</th><th>What it's for</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Ribbon</strong> (top)</td><td>Tabs of tools: <em>Home</em> (text formatting), <em>Insert</em> (AI), <em>Draw</em> (ink), <em>View</em> (zoom, page colour, sync).</td></tr>
+    <tr><td><strong>Folders panel</strong> (left)</td><td>Your folders and sub-folders, each with a count of its pages. <em>Plugins</em> at the bottom opens the Plugin Manager.</td></tr>
+    <tr><td><strong>Pages panel</strong> (middle)</td><td>The pages in the selected folder, a <strong>+</strong> button for a new page, and search.</td></tr>
+    <tr><td><strong>Editor</strong> (right)</td><td>The page title and date, and the canvas you write on.</td></tr>
+    <tr><td><strong>Status bar</strong> (bottom)</td><td>Sync status, the theme switch (System / Light / Dark), and the editing mode (Canvas / Linear).</td></tr>
+  </tbody>
+</table>
+<p>Drag the thin borders between the panels to make them wider or narrower.</p>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="folders-pages">
+<h2>Folders and pages</h2>
+
+<h3>Creating your first page</h3>
+<ol class="steps">
+  <li>Click <strong>+</strong> next to <em>Pages</em> (or right-click an empty part of a panel and choose <strong>New page</strong>).</li>
+  <li>Choose <strong>New folder</strong> and type a folder name, or choose <strong>Existing folder</strong> and pick one. Click <strong>Next</strong>.</li>
+  <li>Type the page name and click <strong>Create</strong>.</li>
+</ol>
+<div class="two-col">
+  <figure><img src="screenshots/02-new-page-dialog.png" alt=""><figcaption>Step 2: choose or create a folder</figcaption></figure>
+  <figure><img src="screenshots/03-new-page-name.png" alt=""><figcaption>Step 3: name the page</figcaption></figure>
+</div>
+<div class="note"><p>Page names must start with a capital letter (not a number or symbol). Folder names are capitalised for you as you type: <em>work</em> becomes <em>Work</em>. The same page name can be used in different folders.</p></div>
+
+<h3>Adding folders and sub-folders</h3>
+<ul>
+  <li><strong>New folder:</strong> click <strong>+</strong> next to <em>Folders</em>, type a name, press <kbd>Enter</kbd>.</li>
+  <li><strong>Sub-folder:</strong> hover over a folder and click its small <strong>+</strong>, or right-click the folder and choose <strong>New subfolder</strong>. Folders can be nested up to 7 levels deep.</li>
+  <li><strong>Move a folder:</strong> drag it onto another folder, or onto empty space to make it a top-level folder.</li>
+</ul>
+<div class="two-col">
+  <figure><img src="screenshots/04-new-folder.png" alt=""><figcaption>Typing a new folder name</figcaption></figure>
+  <figure><img src="screenshots/06-folder-context-menu.png" alt=""><figcaption>Right-click a folder for more actions</figcaption></figure>
+</div>
+
+<h3>Renaming, deleting and changing icons</h3>
+<ul>
+  <li><strong>Rename</strong> a folder from its right-click menu. To rename a page, edit its title at the top of the editor.</li>
+  <li><strong>Delete</strong> a folder or page from its right-click menu. You're asked to confirm. Deleting a folder deletes the pages inside it.</li>
+  <li><strong>Change a folder's icon:</strong> click the folder icon and pick a new one.</li>
+</ul>
+<figure class="small"><img src="screenshots/07-folder-icon-menu.png" alt=""><figcaption>Choosing a folder icon</figcaption></figure>
+
+<h3>Natural sort order</h3>
+<p>Folders and pages are listed in "natural" order, so <em>Ideas 2</em> comes before <em>Ideas 10</em>.</p>
+<figure class="tiny"><img src="screenshots/08-pages-natural-order.png" alt=""><figcaption>Pages sorted naturally</figcaption></figure>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="writing">
+<h2>Writing on the canvas</h2>
+
+<h3>Click anywhere and type</h3>
+<p>Click any empty spot on a page. A <strong>segment</strong> (a block of text) appears exactly there. Click inside it and start typing. Click somewhere else on the page to start another segment. Arrange segments side by side, in columns, or wherever suits your notes.</p>
+<figure class="wide"><img src="screenshots/09-segment-handles.png" alt=""><figcaption>Segments placed freely on a page; the selected one shows its border and handles</figcaption></figure>
+
+<h3>Moving, resizing and colouring segments</h3>
+<ul>
+  <li><strong>Move:</strong> drag the small circle at the segment's top-left corner.</li>
+  <li><strong>Resize:</strong> drag the small bar on the segment's right edge.</li>
+  <li><strong>Colour:</strong> right-click the segment (not on a misspelled word) and pick a colour. Its border and a soft background tint are coloured. Choose <strong>None</strong> to remove the colour.</li>
+  <li><strong>Delete:</strong> delete all of a segment's text and click elsewhere. Empty segments disappear by themselves, unless they have a colour.</li>
+</ul>
+<figure class="small"><img src="screenshots/10-segment-colour-menu.png" alt=""><figcaption>Right-click a segment to colour it</figcaption></figure>
+
+<h3>Formatting text</h3>
+<p>Select some text and use the <strong>Home</strong> tab of the ribbon:</p>
+<figure class="wide"><img src="screenshots/11-ribbon-home.png" alt=""><figcaption>The Home tab</figcaption></figure>
+<table>
+  <thead><tr><th>Group</th><th>Buttons</th></tr></thead>
+  <tbody>
+    <tr><td>History</td><td>Undo, Redo</td></tr>
+    <tr><td>Font</td><td>Font family (Default, Sans Serif, Serif, Monospace…), font size</td></tr>
+    <tr><td>Text style</td><td><strong>B</strong>old, <em>I</em>talic, <u>U</u>nderline, <s>S</s>trikethrough, subscript, superscript, Highlight (with colour choices), Text colour (with colour choices), Clear formatting, Format Painter</td></tr>
+    <tr><td>Lists</td><td>Bulleted list, Numbered list, Checklist, Indent, Outdent</td></tr>
+    <tr><td>Alignment</td><td>Left, Centre, Right, Justify</td></tr>
+    <tr><td>Blocks</td><td>Heading 1, Heading 2, Heading 3, Quote, Code</td></tr>
+  </tbody>
+</table>
+<p><strong>Format Painter:</strong> select text whose look you like, click the brush, then select the text you want to look the same. Double-click the brush to keep painting until you click it again.</p>
+
+<h3>The "/" menu</h3>
+<p>Type <kbd>/</kbd> at the start of a line (or after a space) to insert a block without reaching for the ribbon. Use the arrow keys and <kbd>Enter</kbd>, or click. The list includes text, headings, lists, a checklist, a quote, a code block, any plugin blocks you've installed, and <em>Ask AI</em>.</p>
+<figure class="small"><img src="screenshots/13-slash-menu.png" alt=""><figcaption>The "/" menu</figcaption></figure>
+
+<h3>Code blocks</h3>
+<p>Insert a <strong>Code block</strong> from the "/" menu or the ribbon, then pick its language in the top-right corner for syntax highlighting.</p>
+<figure class="small"><img src="screenshots/14-code-block.png" alt=""><figcaption>A code block with Python highlighting</figcaption></figure>
+
+<h3>Spell check</h3>
+<p>Misspelled words get a wavy red underline. Right-click one to see suggestions, or to add it to your dictionary.</p>
+
+<h3>Canvas and Linear mode</h3>
+<p>Each page has two ways to be viewed. <strong>Canvas</strong> mode (the default) is free placement. <strong>Linear</strong> mode shows the same segments as one continuous document, top to bottom, which is handy for reading or printing. Switch by clicking <strong>Canvas</strong> / <strong>Linear</strong> in the status bar.</p>
+<figure class="wide"><img src="screenshots/23-linear-mode.png" alt=""><figcaption>The same page in Linear mode</figcaption></figure>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="drawing">
+<h2>Drawing and handwriting</h2>
+<p>Open the <strong>Draw</strong> tab to draw anywhere on the page with the mouse, a touchpad or a pen.</p>
+<ul>
+  <li><strong>Pen</strong> draws a thin line, <strong>Marker</strong> a translucent, highlighter-style one, and <strong>Eraser</strong> removes strokes.</li>
+  <li>Pick a colour from the swatches.</li>
+  <li>Switch back to the <strong>Home</strong> tab to type again. Your drawing stays on the page.</li>
+</ul>
+<figure class="wide"><img src="screenshots/18-draw-ink.png" alt=""><figcaption>Drawing with the pen in different colours</figcaption></figure>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="attachments">
+<h2>Pictures and attachments</h2>
+<p>Copy a file or picture (for example in your file manager, or a screenshot) and paste it into a segment with <kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
+<ul>
+  <li><strong>Screenshots and copied images</strong> are embedded straight away.</li>
+  <li><strong>Other files</strong> ask how you want them: <strong>Attach as file</strong> shows a compact chip with the file name and size (click it to open the file), and <strong>Embed in note</strong> shows the file inline.</li>
+  <li>Resize an embedded picture by dragging its corner.</li>
+</ul>
+<figure class="small"><img src="screenshots/15-embedded-image.png" alt=""><figcaption>An embedded picture</figcaption></figure>
+<div class="note"><p>Attached files are copied into FlowNote's own data folder, so the note keeps working even if you move or delete the original.</p></div>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="search">
+<h2>Finding notes</h2>
+<p>Use the search box at the top of the Pages panel. The drop-down next to it chooses what to search:</p>
+<ul>
+  <li><strong>Name</strong> finds pages whose name matches what you type.</li>
+  <li><strong>Contents</strong> finds pages whose text contains it, across all folders.</li>
+</ul>
+<p>Click a result to open it. Clear the search box to go back to the folder's page list.</p>
+<div class="two-col">
+  <figure><img src="screenshots/21-search-name.png" alt=""><figcaption>Searching by name</figcaption></figure>
+  <figure><img src="screenshots/22-search-contents.png" alt=""><figcaption>Searching by contents</figcaption></figure>
+</div>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="look">
+<h2>Making FlowNote look the way you like</h2>
+
+<h3>Light and dark theme</h3>
+<p>Click the theme button in the status bar to switch between <strong>System</strong> (follow your computer's setting), <strong>Light</strong> and <strong>Dark</strong>.</p>
+<figure class="wide"><img src="screenshots/24-dark-theme.png" alt=""><figcaption>Dark theme</figcaption></figure>
+
+<h3>Page colour</h3>
+<p>On the <strong>View</strong> tab, click <strong>Page colour</strong>. Choose a paper tone for <strong>this page</strong>, or a default for <strong>all pages</strong>. <em>Custom…</em> lets you pick any colour. Page colours show in the light theme.</p>
+<figure><img src="screenshots/19-view-page-colour.png" alt=""><figcaption>The Page colour menu on the View tab</figcaption></figure>
+<p>If you choose a page colour that makes some coloured text hard to read, FlowNote tells you. <strong>Adjust</strong> fixes the colours for you, <strong>Show me</strong> highlights the affected text, and <strong>Keep</strong> leaves it as it is.</p>
+<figure class="wide"><img src="screenshots/20-contrast-notice.png" alt=""><figcaption>The contrast notice on a dark page</figcaption></figure>
+
+<h3>Zoom</h3>
+<p>The <strong>View</strong> tab has zoom out (−), zoom in (+) and a reset button that shows the current zoom level (50% to 200%).</p>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="safe">
+<h2>Keeping your notes safe</h2>
+
+<h3>Where your notes are stored</h3>
+<table>
+  <thead><tr><th></th><th>Linux</th><th>Windows</th></tr></thead>
+  <tbody>
+    <tr><td>Notes database</td><td><code>~/.config/@flownote/electron/flownote.sqlite3</code></td><td><code>%APPDATA%\com.sandeep.flownote\flownote.sqlite3</code></td></tr>
+    <tr><td>Attached files</td><td><code>~/.config/@flownote/electron/attachments/</code></td><td><code>%APPDATA%\com.sandeep.flownote\attachments\</code></td></tr>
+    <tr><td>Copies made before syncing</td><td><code>~/.config/@flownote/electron/backups/</code></td><td><code>%APPDATA%\com.sandeep.flownote\backups\</code></td></tr>
+  </tbody>
+</table>
+<p>To make a manual backup, close FlowNote and copy that folder somewhere safe.</p>
+
+<h3>Backup &amp; Sync</h3>
+<p>Sync keeps an <strong>end-to-end encrypted</strong> copy of your notes in a place you choose, and keeps several computers in step. Your notes are encrypted on your computer before they leave it, so only your devices can read them, not the cloud provider.</p>
+<ol class="steps">
+  <li>On the <strong>View</strong> tab, click <strong>Sync…</strong>.</li>
+  <li>Choose where to sync: <strong>OneDrive</strong>, <strong>Google Drive</strong>, or <strong>A folder on this computer</strong> (for example a Dropbox or Syncthing folder, or a network drive).</li>
+  <li>For OneDrive or Google Drive, click <strong>Continue to … sign-in</strong> and sign in with your browser.</li>
+  <li>Choose a <strong>passphrase</strong>. Use the same passphrase on every device you want to sync.</li>
+  <li>Give this device a name, so you can tell your devices apart.</li>
+</ol>
+<figure class="small"><img src="screenshots/29-sync-settings.png" alt=""><figcaption>Sync settings</figcaption></figure>
+<div class="warn"><p>Keep your passphrase somewhere safe. Without it, nobody (including you) can read the synced copy. Your notes on this computer are unaffected.</p></div>
+<p>The status bar shows the sync state: <em>Synced</em>, <em>Syncing…</em>, <em>Not synced yet</em>, <em>Sync needs attention</em> or <em>Sync error</em>.</p>
+<ul>
+  <li><strong>Conflicts:</strong> if two devices edit the same segment at the same time, FlowNote keeps both versions and marks the other one with a badge. Keep what you need and delete the rest.</li>
+  <li><strong>Large deletions:</strong> if another device deletes a lot at once, FlowNote pauses and asks before applying it here (<em>Apply</em>, <em>Not now</em> or <em>Details</em>).</li>
+</ul>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="shortcuts">
+<h2>Keyboard shortcuts</h2>
+<p>These work while you're typing in a segment.</p>
+<table>
+  <thead><tr><th>Action</th><th>Shortcut</th></tr></thead>
+  <tbody>
+    <tr><td>Bold / Italic / Underline</td><td><kbd>Ctrl</kbd>+<kbd>B</kbd> / <kbd>Ctrl</kbd>+<kbd>I</kbd> / <kbd>Ctrl</kbd>+<kbd>U</kbd></td></tr>
+    <tr><td>Strikethrough</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td></tr>
+    <tr><td>Subscript / Superscript</td><td><kbd>Ctrl</kbd>+<kbd>,</kbd> / <kbd>Ctrl</kbd>+<kbd>.</kbd></td></tr>
+    <tr><td>Highlight</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd></td></tr>
+    <tr><td>Heading 1 / 2 / 3</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd></td></tr>
+    <tr><td>Bulleted list / Numbered list / Checklist</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>8</kbd> / <kbd>7</kbd> / <kbd>9</kbd></td></tr>
+    <tr><td>Indent / Outdent a list item</td><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td></tr>
+    <tr><td>Quote</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td></tr>
+    <tr><td>Code block</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td></tr>
+    <tr><td>Insert block menu</td><td><kbd>/</kbd></td></tr>
+    <tr><td>Undo / Redo</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>)</td></tr>
+    <tr><td>Select all text in a segment</td><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td></tr>
+    <tr><td>Paste a picture or file</td><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td></tr>
+    <tr><td>Close a menu or dialog</td><td><kbd>Esc</kbd></td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="troubleshooting">
+<h2>Troubleshooting</h2>
+<table>
+  <thead><tr><th>Problem</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td>Double-clicking the Linux <code>.run</code> file opens it as text</td><td>Make it executable (Properties → Permissions → <em>Allow executing file as program</em>), or run <code>chmod +x FlowNote-*.run</code>.</td></tr>
+    <tr><td>The Linux installer asks questions in a terminal instead of windows</td><td>Graphical dialogs need <code>zenity</code> or <code>kdialog</code>. Install one (e.g. <code>sudo apt install zenity</code>) or simply answer in the terminal.</td></tr>
+    <tr><td>FlowNote takes several seconds to start (just-for-me install)</td><td>Install FUSE 2: <code>sudo apt install libfuse2t64</code> (or <code>libfuse2</code>), then run the installer again.</td></tr>
+    <tr><td>The system install fails</td><td>Check your password, and that no other software update is running. The log is in <code>~/.cache/flownote-install.log</code>. Alternatively choose "Just for me".</td></tr>
+    <tr><td>Windows says "Windows protected your PC"</td><td>The preview installers aren't code-signed yet. Click <strong>More info → Run anyway</strong>.</td></tr>
+    <tr><td><code>flownote</code> isn't found in a terminal (just-for-me install)</td><td><code>~/.local/bin</code> isn't on your <code>PATH</code>. Open FlowNote from the app menu, or run <code>~/.local/bin/flownote</code>. Logging out and in again usually fixes the <code>PATH</code>.</td></tr>
+    <tr><td>Typing after clicking the page does nothing</td><td>Click inside the new segment first, then type.</td></tr>
+    <tr><td>Sync says it needs attention</td><td>Open <strong>View → Sync…</strong> to see what's wrong. Often you just need to sign in again.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ================================================================== -->
+<section class="chapter" id="faq">
+<h2>Frequently asked questions</h2>
+<h4>Does FlowNote need an internet connection?</h4>
+<p>No. Everything works offline. The internet is only used for Backup &amp; Sync to OneDrive or Google Drive, and for AI services you choose to set up.</p>
+<h4>Will uninstalling delete my notes?</h4>
+<p>Not unless you ask it to. Both the Linux and Windows uninstallers keep your notes by default.</p>
+<h4>How do I move my notes to a new computer?</h4>
+<p>Set up Backup &amp; Sync on both computers with the same passphrase. Or close FlowNote, copy the data folder (see <em>Where your notes are stored</em>) to the same place on the new computer, and start FlowNote there.</p>
+<h4>Can I use FlowNote without segments, like a normal document?</h4>
+<p>Yes. Switch the page to <strong>Linear</strong> mode in the status bar.</p>
+<h4>Is my data sent to an AI service?</h4>
+<p>Only if you add an AI provider yourself (Insert → ⚙), and only the text you ask it about. With <em>Ollama (local)</em>, nothing leaves your computer. See the Feature Guide for details.</p>
+</section>
+
+</main>
+</body>
+</html>

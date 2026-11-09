@@ -1,75 +1,50 @@
-# Builds FlowNote's Windows shell (apps/tauri, Tauri v2 — Windows/macOS are
-# Tauri, not Electron; see apps/electron/electron-builder.yml's own comment)
-# from this source tree and runs the generated installer.
-#
-# tauri.conf.json's `bundle.targets: "all"` produces both an .msi and an
-# NSIS setup .exe under apps/tauri/src-tauri/target/release/bundle/. This
-# script prefers the .msi: it registers a clean product code under Windows'
-# own Programs and Features / Settings > Apps, which scripts\windows\
-# uninstall.ps1 (and Windows' own UI) can then remove without hunting for a
-# separate uninstaller binary.
-#
-# Usage (from a PowerShell prompt, repo root or anywhere):
-#   .\scripts\windows\install.ps1            # runs the .msi with its normal UI
-#   .\scripts\windows\install.ps1 -Silent    # msiexec /qn, no prompts
+<#
+.SYNOPSIS
+  Builds FlowNote from this source tree and installs it.
 
+.DESCRIPTION
+  Runs scripts\windows\package.ps1 (a clean release build of the Windows
+  bundle), then starts the bundle's setup wizard — the same setup.exe
+  shipped to users (per-user install, no admin rights needed).
+
+.PARAMETER Silent
+  Install unattended (setup.exe /S) instead of showing the wizard.
+
+.PARAMETER Msi
+  Install the .msi instead of setup.exe (msiexec; /qn with -Silent).
+
+.PARAMETER NoClean
+  Incremental build (passed to package.ps1).
+
+.EXAMPLE
+  .\scripts\windows\install.ps1
+  .\scripts\windows\install.ps1 -Silent
+#>
 [CmdletBinding()]
 param(
-    [switch]$Silent
+  [switch]$Silent,
+  [switch]$Msi,
+  [switch]$NoClean
 )
 
 $ErrorActionPreference = 'Stop'
-
-function Assert-Command($name) {
-    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-        Write-Error "'$name' is required but was not found on PATH."
-        exit 1
-    }
-}
-
-Assert-Command pnpm
-Assert-Command node
-Assert-Command cargo
-
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$TauriDir = Join-Path $RepoRoot 'apps\tauri'
 
-Write-Host '==> Installing workspace dependencies'
-Push-Location $RepoRoot
-try {
-    pnpm install --frozen-lockfile
-    if ($LASTEXITCODE -ne 0) { throw "pnpm install failed (exit $LASTEXITCODE)" }
+& (Join-Path $PSScriptRoot 'package.ps1') -NoClean:$NoClean
 
-    Write-Host '==> Building FlowNote (frontend + Tauri bundle: .msi + NSIS .exe)'
-    # tauri.conf.json's beforeBuildCommand already builds the frontend
-    # (`pnpm --filter @flownote/frontend build`); `tauri build` runs that
-    # for us, then compiles src-tauri and bundles the installers.
-    pnpm --filter @flownote/tauri exec tauri build
-    if ($LASTEXITCODE -ne 0) { throw "tauri build failed (exit $LASTEXITCODE)" }
-}
-finally {
-    Pop-Location
-}
+$Version = (Get-Content (Join-Path $RepoRoot 'VERSION') -Raw).Trim()
+$Bundle = Join-Path $RepoRoot "dist-release\FlowNote-$Version-windows-x64"
 
-$BundleDir = Join-Path $TauriDir 'src-tauri\target\release\bundle'
-$MsiPath = Get-ChildItem -Path (Join-Path $BundleDir 'msi') -Filter '*.msi' -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-
-if (-not $MsiPath) {
-    Write-Error "No .msi found under $BundleDir\msi — check the tauri build output above for errors."
-    exit 1
-}
-
-Write-Host "==> Running installer: $($MsiPath.FullName)"
-if ($Silent) {
-    $proc = Start-Process msiexec.exe -ArgumentList "/i `"$($MsiPath.FullName)`" /qn /norestart" -Wait -PassThru
+if ($Msi) {
+  $installer = (Get-ChildItem $Bundle -Filter '*.msi' | Select-Object -First 1).FullName
+  $msiArgs = "/i `"$installer`"" + $(if ($Silent) { ' /qn /norestart' } else { '' })
+  Write-Host "==> Running $installer"
+  $proc = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
 } else {
-    $proc = Start-Process msiexec.exe -ArgumentList "/i `"$($MsiPath.FullName)`"" -Wait -PassThru
+  $installer = (Get-ChildItem $Bundle -Filter '*-setup.exe' | Select-Object -First 1).FullName
+  Write-Host "==> Running $installer"
+  $proc = if ($Silent) { Start-Process $installer -ArgumentList '/S' -Wait -PassThru } else { Start-Process $installer -Wait -PassThru }
 }
 
-if ($proc.ExitCode -ne 0) {
-    Write-Error "msiexec exited with code $($proc.ExitCode)"
-    exit $proc.ExitCode
-}
-
+if ($proc.ExitCode -ne 0) { throw "installer exited with code $($proc.ExitCode)" }
 Write-Host '==> Installed. Launch FlowNote from the Start menu.'

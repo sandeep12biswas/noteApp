@@ -1,0 +1,208 @@
+/* Print stylesheet shared by user-guide.html and feature-guide.html.
+   Rendered to A4 PDF by build-pdfs.mjs (headless Chrome); page header and
+   footer (title, page numbers) come from build-pdfs.mjs's templates. */
+:root {
+  --ink: #111827;
+  --muted: #4b5563;
+  --rule: #e5e7eb;
+  --accent: #2563eb;
+  --accent-dark: #1e40af;
+  --tip-bg: #eff6ff;
+  --warn-bg: #fffbeb;
+  --warn-rule: #f59e0b;
+  --code-bg: #f3f4f6;
+}
+
+/* Running header/footer as CSS page-margin boxes (Chrome 131+). The
+   document title and version strings are injected by build-pdfs.mjs as
+   --doc-title / --doc-version rules below. The cover page has none. */
+@page {
+  size: A4;
+  margin: 22mm 18mm 20mm 18mm;
+  @top-left { content: var(--doc-title, "FlowNote"); font: 8pt "Segoe UI", Roboto, Arial, sans-serif; color: #6b7280; }
+  @top-right { content: var(--doc-version, ""); font: 8pt "Segoe UI", Roboto, Arial, sans-serif; color: #6b7280; }
+  @bottom-center { content: "Page " counter(page) " of " counter(pages); font: 8pt "Segoe UI", Roboto, Arial, sans-serif; color: #6b7280; }
+}
+/* Same side margins as the other pages: Chrome lays the document out at one
+   width, and anything wider (a full-bleed cover included) makes it shrink
+   every page to fit. So the cover is a card inside an 18 mm margin. */
+@page :first {
+  margin: 18mm;
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-center { content: none; }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+  margin: 0;
+  background: #fff;
+  color: var(--ink);
+  font: 10.5pt/1.55 "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ------------------------------------------------------------ cover */
+.cover {
+  height: 261mm;
+  width: 100%;
+  border-radius: 5mm;
+  overflow: hidden;
+  padding: 26mm 16mm 16mm;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #1e3a8a 0%, #2563eb 60%, #3b82f6 100%);
+  color: #fff;
+  page-break-after: always;
+  break-after: page;
+}
+.cover img.logo { width: 30mm; height: 30mm; margin-bottom: 12mm; }
+.cover .kicker { text-transform: uppercase; letter-spacing: .18em; font-size: 10pt; opacity: .85; margin: 0 0 4mm; }
+.cover h1 { font-size: 40pt; line-height: 1.1; margin: 0 0 6mm; font-weight: 700; }
+.cover .subtitle { font-size: 14pt; opacity: .92; margin: 0 0 12mm; max-width: 130mm; }
+.cover .shot { margin-top: auto; border-radius: 3mm; box-shadow: 0 6mm 16mm rgba(0, 0, 0, .35); width: 100%; border: 0; }
+.cover .meta { margin-top: 10mm; font-size: 9.5pt; opacity: .85; display: flex; justify-content: space-between; }
+
+/* --------------------------------------------------------------- toc */
+.toc { page-break-after: always; break-after: page; }
+.toc-title { font-size: 19pt; font-weight: 700; color: var(--accent-dark); margin: 0 0 6mm; padding-bottom: 2.5mm; border-bottom: 2px solid var(--accent); }
+.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+.toc > ol > li { counter-increment: toc; margin: 0 0 1.6mm; font-weight: 600; font-size: 10pt; }
+.toc > ol > li::before { content: counter(toc) ". "; color: var(--accent); }
+.toc ol ol { margin: .6mm 0 0 6mm; counter-reset: toc2; columns: 2; column-gap: 8mm; }
+.toc ol ol li { counter-increment: toc2; font-weight: 400; color: var(--muted); margin-bottom: .3mm; font-size: 9pt; break-inside: avoid; }
+.toc ol ol li::before { content: counter(toc) "." counter(toc2) " "; }
+.toc a { color: inherit; text-decoration: none; }
+
+/* ----------------------------------------------------------- headings */
+main { counter-reset: h2; }
+h2 {
+  counter-increment: h2;
+  counter-reset: h3;
+  font-size: 19pt;
+  line-height: 1.2;
+  margin: 0 0 5mm;
+  padding-bottom: 2.5mm;
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent-dark);
+  break-after: avoid;
+}
+h2::before { content: counter(h2) ". "; color: var(--accent); }
+/* Chapters flow on from each other (forced page breaks left many
+   near-empty pages); a heading never sits alone at the bottom of a page. */
+section.chapter { margin-top: 11mm; }
+section.chapter:first-of-type { margin-top: 0; }
+section.chapter.new-page { break-before: page; margin-top: 0; }
+h3 {
+  counter-increment: h3;
+  font-size: 13pt;
+  margin: 7mm 0 2.5mm;
+  color: var(--ink);
+  break-after: avoid;
+}
+h3::before { content: counter(h2) "." counter(h3) "  "; color: var(--muted); font-weight: 500; }
+h4 { font-size: 11pt; margin: 5mm 0 1.5mm; break-after: avoid; }
+
+p { margin: 0 0 3mm; }
+ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+li { margin-bottom: 1mm; }
+a { color: var(--accent); }
+strong { font-weight: 650; }
+
+/* ------------------------------------------------------------ figures */
+figure {
+  margin: 4mm 0 5mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  text-align: center;
+}
+figure img {
+  max-width: 100%;
+  max-height: 105mm;
+  border: 1px solid var(--rule);
+  border-radius: 1.5mm;
+}
+figure.small img { max-width: 70%; max-height: 80mm; }
+figure.tiny img { max-width: 48%; max-height: 62mm; }
+.two-col figure img { max-height: 75mm; }
+figure.wide img { width: 100%; }
+figcaption { font-size: 9pt; color: var(--muted); margin-top: 2mm; }
+figcaption::before { content: "Figure: "; font-weight: 600; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start; }
+.two-col figure { margin-top: 0; }
+
+/* ------------------------------------------------------- call-outs */
+.tip, .note, .warn {
+  border-left: 3px solid var(--accent);
+  background: var(--tip-bg);
+  padding: 2.5mm 4mm;
+  margin: 3mm 0 4mm;
+  border-radius: 0 1.5mm 1.5mm 0;
+  break-inside: avoid;
+}
+.warn { border-left-color: var(--warn-rule); background: var(--warn-bg); }
+.tip::before, .note::before, .warn::before { font-weight: 700; display: block; margin-bottom: .5mm; }
+.tip::before { content: "Tip"; color: var(--accent-dark); }
+.note::before { content: "Note"; color: var(--accent-dark); }
+.warn::before { content: "Important"; color: #b45309; }
+.tip p:last-child, .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------- tables */
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 5mm; font-size: 9.5pt; break-inside: auto; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th, td { text-align: left; vertical-align: top; padding: 1.8mm 2.5mm; border-bottom: 1px solid var(--rule); }
+th { background: #f9fafb; font-weight: 650; }
+
+code, kbd, pre { font-family: "JetBrains Mono", "Cascadia Code", "DejaVu Sans Mono", Consolas, monospace; font-size: 8.8pt; }
+code { background: var(--code-bg); padding: .3mm 1.2mm; border-radius: 1mm; }
+pre { background: var(--code-bg); padding: 3mm 4mm; border-radius: 1.5mm; white-space: pre-wrap; break-inside: avoid; margin: 0 0 3mm; }
+pre code { background: none; padding: 0; }
+kbd {
+  display: inline-block;
+  padding: 0 1.4mm;
+  border: 1px solid #d1d5db;
+  border-bottom-width: 2px;
+  border-radius: 1mm;
+  background: #fff;
+  font-size: 8.5pt;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* Step lists */
+ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+ol.steps > li { counter-increment: step; position: relative; padding-left: 9mm; margin-bottom: 2.2mm; }
+ol.steps > li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: .2mm;
+  width: 5.6mm; height: 5.6mm; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 8.5pt; font-weight: 700; text-align: center; line-height: 5.6mm;
+}
+
+/* Feature cards (feature guide) */
+.feature { margin-bottom: 6mm; }
+.feature h3 + .what { break-before: avoid; }
+.feature .what, .feature .how { margin-bottom: 2mm; }
+.feature .label { font-weight: 700; color: var(--accent-dark); }
+.badge {
+  display: inline-block; font-size: 7.8pt; font-weight: 600; padding: .3mm 2mm; border-radius: 3mm;
+  background: #e0e7ff; color: #3730a3; margin-left: 2mm; vertical-align: middle;
+}
+.badge.linux { background: #dcfce7; color: #166534; }
+.badge.windows { background: #e0f2fe; color: #075985; }
+
+.lead { font-size: 11.5pt; color: var(--muted); }
+.muted { color: var(--muted); }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 6mm 0; }
+
+/* On screen (opening the HTML directly) — show it like pages. */
+@media screen {
+  body { background: #e5e7eb; }
+  .cover, main, .toc { max-width: 210mm; margin: 0 auto; }
+  main, .toc { background: #fff; padding: 18mm; }
+}

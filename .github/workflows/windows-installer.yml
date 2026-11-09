@@ -1,12 +1,17 @@
 name: Windows installer
 
-# Builds FlowNote's Windows package from the Tauri shell (apps/tauri) and
-# uploads it as the `flownote-windows` artifact:
-#   - NSIS  `FlowNote_<version>_x64-setup.exe` — per-user install, no admin
-#     needed; registers an uninstaller under Settings → Apps.
-#   - MSI   `FlowNote_<version>_x64_en-US.msi` — uninstall the same way.
+# Builds FlowNote's Windows release bundle from the Tauri shell (apps/tauri)
+# with scripts/windows/package.ps1 — the same one-command clean build
+# developers run — and uploads it as the `flownote-windows` artifact
+# (`FlowNote-<version>-windows-x64.zip`):
+#   - `FlowNote_<version>_x64-setup.exe` — setup wizard (tauri.conf.json ->
+#     bundle.windows.nsis: branded pages, release notice, Start Menu folder
+#     with the PDF guides + uninstaller, optional desktop shortcut);
+#     per-user, no admin needed; registers an uninstaller under Settings → Apps.
+#   - `FlowNote_<version>_x64_en-US.msi` — uninstall the same way.
 #   - `Uninstall FlowNote.cmd` + `Uninstall-FlowNote.ps1` — standalone
-#     uninstaller for either install (packaging/windows/), and README.txt.
+#     uninstaller for either install (packaging/windows/), README, the PDF
+#     guides, SHA256SUMS.txt.
 # Then, on the runner itself, each installer is tested end to end: silent
 # install → launch (must stay up and create its database) → uninstall via
 # Uninstall-FlowNote.ps1 → verify nothing is left behind.
@@ -48,9 +53,9 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
-      # `tauri build` runs tauri.conf.json's beforeBuildCommand (the frontend
-      # build) itself, then builds the release binary and both installers.
-      - name: Build installers
+      # Clean build + bundle: `tauri build --bundles nsis,msi` (which builds
+      # the frontend itself), then the bundle folder and zip under dist-release\.
+      - name: Build release bundle
         # Cloud sync app registrations (docs/sync-cloud-setup.md), compiled
         # in. Without these repository secrets the build still works; the
         # OneDrive / Google Drive options then say the build isn't registered.
@@ -58,21 +63,28 @@ jobs:
           FLOWNOTE_ONEDRIVE_CLIENT_ID: ${{ secrets.FLOWNOTE_ONEDRIVE_CLIENT_ID }}
           FLOWNOTE_GOOGLE_CLIENT_ID: ${{ secrets.FLOWNOTE_GOOGLE_CLIENT_ID }}
           FLOWNOTE_GOOGLE_CLIENT_SECRET: ${{ secrets.FLOWNOTE_GOOGLE_CLIENT_SECRET }}
-        run: pnpm --filter @flownote/tauri tauri build --bundles nsis,msi
+        shell: pwsh
+        run: ./scripts/windows/package.ps1 -SkipInstall
 
-      - name: Assemble package
+      # Later steps use `package/` — the bundle folder.
+      - name: Locate bundle
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force package | Out-Null
-          Copy-Item target/release/bundle/nsis/*.exe, target/release/bundle/msi/*.msi package/
-          Copy-Item packaging/windows/* package/
-          Get-ChildItem package | Format-Table Name, Length
+          $version = (Get-Content VERSION -Raw).Trim()
+          $bundle = "dist-release/FlowNote-$version-windows-x64"
+          foreach ($pdf in 'Installation', 'User', 'Feature') {
+            if (-not (Test-Path "$bundle/docs/FlowNote-$pdf-Guide.pdf")) { throw "$pdf Guide PDF missing from the bundle" }
+          }
+          Copy-Item -Recurse $bundle package
+          Get-ChildItem -Recurse package | Format-Table FullName, Length
 
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: flownote-windows
-          path: package/
+          path: |
+            dist-release/*.zip
+            dist-release/*.sha256
           if-no-files-found: error
 
       - name: "Test: setup.exe install -> launch -> uninstall"
@@ -89,6 +101,15 @@ jobs:
           $exe = Get-ChildItem $installDir -Filter *.exe | Where-Object Name -ne 'uninstall.exe' | Select-Object -First 1
           Write-Host "Installed to $installDir ($($exe.Name))"
 
+          # hooks.nsh: the guides ship in the install, with Start Menu entries.
+          foreach ($pdf in 'FlowNote-Installation-Guide.pdf', 'FlowNote-User-Guide.pdf', 'FlowNote-Feature-Guide.pdf') {
+            if (-not (Test-Path (Join-Path $installDir "docs\$pdf"))) { throw "$pdf not installed" }
+          }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\FlowNote'
+          foreach ($lnk in 'FlowNote.lnk', 'FlowNote Installation Guide.lnk', 'FlowNote User Guide.lnk', 'FlowNote Feature Guide.lnk', 'Uninstall FlowNote.lnk') {
+            if (-not (Test-Path (Join-Path $menu $lnk))) { throw "Start Menu entry missing: $lnk" }
+          }
+
           $app = Start-Process $exe.FullName -PassThru
           Start-Sleep -Seconds 15
           if ($app.HasExited) { throw "FlowNote exited right after launch (code $($app.ExitCode))" }
@@ -102,6 +123,7 @@ jobs:
           if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'FlowNote') { throw 'uninstall entry still present' }
           if (Test-Path $exe.FullName) { throw "$($exe.FullName) still present" }
           if (Test-Path (Split-Path $db -Parent)) { throw 'app data still present after -RemoveData' }
+          if (Test-Path $menu) { throw "Start Menu folder still present: $menu" }
           Write-Host 'setup.exe: install, launch and uninstall all OK'
 
       - name: "Test: MSI install -> launch -> uninstall"
