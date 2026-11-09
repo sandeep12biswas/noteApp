@@ -28,17 +28,25 @@ describe('validateFileName', () => {
     expect(validateFileName('Meeting Notes')).toEqual({ valid: true })
   })
 
+  it('accepts a name starting with a lowercase letter (issue #31)', () => {
+    expect(validateFileName('meeting notes')).toEqual({ valid: true })
+    expect(validateFileName('mEETING')).toEqual({ valid: true })
+  })
+
+  it('accepts accented and non-Latin first letters', () => {
+    for (const name of ['élan', 'Ünïcode', 'ñandú', 'заметки', 'ノート']) expect(validateFileName(name).valid).toBe(true)
+  })
+
   it('rejects a name starting with a digit', () => {
     expect(validateFileName('1st Draft').valid).toBe(false)
   })
 
   it('rejects a name starting with a special character', () => {
-    expect(validateFileName('#urgent').valid).toBe(false)
+    for (const name of ['#urgent', '_draft', '-notes', '.hidden', '(todo)']) {
+      expect(validateFileName(name)).toEqual({ valid: false, error: 'File name must start with a letter.' })
+    }
   })
 
-  it('rejects a name starting with a lowercase letter', () => {
-    expect(validateFileName('untitled').valid).toBe(false)
-  })
 
   it('rejects an empty name', () => {
     expect(validateFileName('').valid).toBe(false)

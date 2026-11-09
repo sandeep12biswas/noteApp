@@ -16,16 +16,18 @@ export interface ValidationResult {
 }
 
 /**
- * File names cannot start with a number or a special character, and must
- * start with a capital letter — unlike folder names, this is a hard
- * validation the user must fix, not an auto-correct.
+ * File names must start with a letter — lowercase or capital, any script
+ * (`\p{L}`), so not a number or a special character (issue #31: they used
+ * to require a capital). Unlike folder names, nothing is auto-corrected:
+ * the name keeps the case the user typed, and an invalid one is an error
+ * the user must fix.
  */
 export function validateFileName(name: string): ValidationResult {
   if (name.trim().length === 0) {
     return { valid: false, error: 'File name cannot be empty.' }
   }
-  if (!/^[A-Z]/.test(name)) {
-    return { valid: false, error: 'File name must start with a capital letter.' }
+  if (!/^\p{L}/u.test(name)) {
+    return { valid: false, error: 'File name must start with a letter.' }
   }
   return { valid: true }
 }
