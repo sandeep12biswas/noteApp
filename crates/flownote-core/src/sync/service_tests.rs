@@ -410,3 +410,18 @@ fn a_build_without_app_registrations_says_how_to_add_them() {
     assert!(e.contains("FLOWNOTE_ONEDRIVE_CLIENT_ID") && e.contains("docs/sync-cloud-setup.md"), "{e}");
     assert!(app.sync().configure(&json!({ "target": "gdrive" })).unwrap_err().contains("FLOWNOTE_GOOGLE_CLIENT_ID"));
 }
+
+#[test]
+fn the_passphrase_step_knows_whether_it_creates_or_joins_the_vault() {
+    let cloud = temp_dir("cloud");
+    let (a, b) = (App::new("a"), App::new("b"));
+    assert_eq!(a.sync().status().unwrap()["vaultExists"], Value::Null, "nothing chosen yet");
+    let s = a.sync().configure(&json!({ "target": "folder", "folderPath": cloud.to_str().unwrap() })).unwrap();
+    assert_eq!(s["vaultExists"], false, "first device: creates it");
+    a.sync().connect(PASS).unwrap();
+    a.wait_idle();
+    assert_eq!(a.sync().status().unwrap()["vaultExists"], Value::Null, "not looked up once connected");
+    let s = b.sync().configure(&json!({ "target": "folder", "folderPath": cloud.to_str().unwrap() })).unwrap();
+    assert_eq!(s["vaultExists"], true, "second device: joins it");
+    std::fs::remove_dir_all(&cloud).ok();
+}
