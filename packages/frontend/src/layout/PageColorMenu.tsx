@@ -3,23 +3,17 @@
 // default, store/editorBackgroundStore.ts). Any colour is allowed: the
 // editor's text follows the background (issue #12).
 //
-// One palette, with an "Apply to" switch choosing the target: paper-tone
-// quick picks, a darkest-to-lightest shade grid per hue, recently used
-// wheel colours, and "More colours…" for the in-app colour wheel.
+// One palette (ColorPalette.tsx: paper-tone presets, shade grid, recent
+// colours, colour wheel), with an "Apply to" switch choosing the target.
 import { useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import { useNotebookStore } from '../store/notebookStore'
 import { useThemeStore } from '../store/themeStore'
-import {
-  PAGE_BACKGROUND_PRESETS,
-  PAGE_BACKGROUND_SHADES,
-  PAGE_SHADE_NAMES,
-  useEditorBackgroundStore,
-  useEffectiveBackground,
-} from '../store/editorBackgroundStore'
-import { MENU_TEXT_BUTTON_CLASSNAME, POPOVER_CLASSNAME, SwatchGrid, useDismiss } from './ColorPickerMenu'
-import { ShadeGrid } from './ShadeGrid'
-import { ColorWheel } from './ColorWheel'
+import { COLOR_SHADES, SHADE_NAMES } from '../lib/colorShades'
+import { useRecentPageColors } from '../lib/recentColors'
+import { PAGE_BACKGROUND_PRESETS, useEditorBackgroundStore, useEffectiveBackground } from '../store/editorBackgroundStore'
+import { MENU_TEXT_BUTTON_CLASSNAME, POPOVER_CLASSNAME, useDismiss } from './ColorPickerMenu'
+import { ColorPalette } from './ColorPalette'
 
 export const DARK_THEME_TITLE = 'Page colours show in light mode'
 
@@ -39,12 +33,10 @@ function PageColorPopover({ x, y, onClose }: { x: number; y: number; onClose: ()
   const setFileBackground = useNotebookStore((s) => s.setFileBackground)
   const defaultBackground = useEditorBackgroundStore((s) => s.defaultBackground)
   const setDefaultBackground = useEditorBackgroundStore((s) => s.setDefaultBackground)
-  const recentBackgrounds = useEditorBackgroundStore((s) => s.recentBackgrounds)
-  const addRecentBackground = useEditorBackgroundStore((s) => s.addRecentBackground)
+  const recentColors = useRecentPageColors((s) => s.colors)
+  const addRecentColor = useRecentPageColors((s) => s.add)
 
   const [target, setTarget] = useState<Target>(fileId ? 'page' : 'default')
-  const [wheelOpen, setWheelOpen] = useState(false)
-  const moreColoursRef = useRef<HTMLButtonElement | null>(null)
   const label = TARGET_LABEL[target]
   const activeColor = target === 'page' ? pageBackground : defaultBackground
 
@@ -98,64 +90,37 @@ function PageColorPopover({ x, y, onClose }: { x: number; y: number; onClose: ()
         <span className={SECTION_HEADING}>All pages (default)</span>
       )}
 
-      {wheelOpen ? (
-        <ColorWheel
-          initialColor={activeColor ?? (target === 'page' ? defaultBackground : null) ?? '#ffffff'}
-          onCancel={() => {
-            setWheelOpen(false)
-            requestAnimationFrame(() => moreColoursRef.current?.focus())
-          }}
-          onApply={(color) => {
-            addRecentBackground(color)
-            pickAndClose(color)
-          }}
-        />
-      ) : (
-        <>
-          <div className="flex flex-col gap-1">
-            <span className={SECTION_HEADING}>Paper</span>
-            <SwatchGrid label={label} groupLabel={`${label} paper`} colors={PAGE_BACKGROUND_PRESETS} activeColor={activeColor} onPick={pickAndClose} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className={SECTION_HEADING}>Shades</span>
-            <ShadeGrid label={label} hues={PAGE_BACKGROUND_SHADES} shadeNames={PAGE_SHADE_NAMES} activeColor={activeColor} onPick={pickAndClose} />
-          </div>
-          {recentBackgrounds.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className={SECTION_HEADING}>Recent</span>
-              <SwatchGrid
-                label={`${label} recent`}
-                groupLabel={`${label} recent colours`}
-                colors={recentBackgrounds}
-                activeColor={activeColor}
-                onPick={pickAndClose}
-              />
-            </div>
-          )}
-          <div className="flex flex-col">
-            <button ref={moreColoursRef} type="button" role="menuitem" onClick={() => setWheelOpen(true)} className={MENU_TEXT_BUTTON_CLASSNAME + ' flex items-center gap-1.5'}>
-              <span
-                aria-hidden
-                className="h-4 w-4 rounded-full border border-black/30"
-                style={{ background: 'conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
-              />
-              More colours…
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={activeColor === null}
-              onClick={() => {
-                apply(null)
-                onClose()
-              }}
-              className={MENU_TEXT_BUTTON_CLASSNAME + ' disabled:opacity-40'}
-            >
-              {target === 'page' ? 'Use default' : 'White'}
-            </button>
-          </div>
-        </>
-      )}
+      <ColorPalette
+        // Remount per target so switching it closes the wheel.
+        key={target}
+        label={label}
+        presetsHeading="Paper"
+        presets={PAGE_BACKGROUND_PRESETS}
+        hues={COLOR_SHADES}
+        shadeNames={SHADE_NAMES}
+        recent={recentColors}
+        activeColor={activeColor}
+        wheelInitialColor={(target === 'page' ? defaultBackground : null) ?? '#ffffff'}
+        onPick={pickAndClose}
+        onWheelPick={(color) => {
+          addRecentColor(color)
+          pickAndClose(color)
+        }}
+        footer={
+          <button
+            type="button"
+            role="menuitem"
+            disabled={activeColor === null}
+            onClick={() => {
+              apply(null)
+              onClose()
+            }}
+            className={MENU_TEXT_BUTTON_CLASSNAME + ' disabled:opacity-40'}
+          >
+            {target === 'page' ? 'Use default' : 'White'}
+          </button>
+        }
+      />
     </div>
   )
 }

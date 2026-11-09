@@ -9,7 +9,7 @@
 //
 // The Text colour menu also gets `suggested` colours and a `lowContrast`
 // check when the page has a background colour (issue #12).
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 
 export const LOW_CONTRAST_TITLE = 'Hard to read on this background'
@@ -30,6 +30,22 @@ export function useDismiss(ref: RefObject<HTMLElement | null>, onClose: () => vo
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [ref, onClose])
+}
+
+/**
+ * Keeps a fixed popover opened at (x, y) inside the window: shifts it left/up
+ * when it would run off the right/bottom edge (a right-click menu near the
+ * edge, or one that grows, like the colour wheel view). Runs after every
+ * render, so it follows height changes.
+ */
+export function useClampToViewport(ref: RefObject<HTMLElement | null>, x: number, y: number, margin = 8) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    el.style.left = `${Math.max(margin, Math.min(x, window.innerWidth - width - margin))}px`
+    el.style.top = `${Math.max(margin, Math.min(y, window.innerHeight - height - margin))}px`
+  })
 }
 
 export const POPOVER_CLASSNAME =

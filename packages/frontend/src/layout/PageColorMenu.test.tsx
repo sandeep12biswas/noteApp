@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { PageColorButton, DARK_THEME_TITLE } from './PageColorMenu'
 import { DEFAULT_MAX_FOLDER_DEPTH, useNotebookStore } from '../store/notebookStore'
-import { PAGE_BACKGROUND_SHADES, PAGE_SHADE_NAMES, useEditorBackgroundStore } from '../store/editorBackgroundStore'
+import { useEditorBackgroundStore } from '../store/editorBackgroundStore'
+import { COLOR_SHADES, SHADE_NAMES } from '../lib/colorShades'
+import { useRecentPageColors } from '../lib/recentColors'
 import { useThemeStore } from '../store/themeStore'
 
 afterEach(cleanup)
@@ -17,7 +19,8 @@ beforeEach(() => {
     selectedFileId: null,
     maxFolderDepth: DEFAULT_MAX_FOLDER_DEPTH,
   })
-  useEditorBackgroundStore.setState({ defaultBackground: null, recentBackgrounds: [] })
+  useEditorBackgroundStore.setState({ defaultBackground: null })
+  useRecentPageColors.setState({ colors: [] })
   useThemeStore.setState({ isDark: false })
 })
 
@@ -101,7 +104,7 @@ describe('Page colour menu', () => {
     render(<PageColorButton />)
     const menu = await openMenu(user)
     const grid = within(menu).getByRole('group', { name: 'This page shades' })
-    expect(within(grid).getAllByRole('menuitemradio')).toHaveLength(PAGE_BACKGROUND_SHADES.length * PAGE_SHADE_NAMES.length)
+    expect(within(grid).getAllByRole('menuitemradio')).toHaveLength(COLOR_SHADES.length * SHADE_NAMES.length)
     await user.click(within(grid).getByRole('menuitemradio', { name: 'This page Blue darkest' }))
     expect(useNotebookStore.getState().files[a]?.background).toBe('#1e3a8a')
   })
@@ -137,7 +140,7 @@ describe('Page colour menu', () => {
     expect(useNotebookStore.getState().files[a]?.background).toBeNull() // nothing applies before Apply
     await user.click(within(menu).getByRole('menuitem', { name: 'Apply' }))
     expect(useNotebookStore.getState().files[a]?.background).toBe('#1e3a8a')
-    expect(useEditorBackgroundStore.getState().recentBackgrounds).toEqual(['#1e3a8a'])
+    expect(useRecentPageColors.getState().colors).toEqual(['#1e3a8a'])
 
     menu = await openMenu(user)
     expect(within(menu).getByRole('menuitemradio', { name: 'This page recent #1e3a8a' })).toHaveAttribute('aria-checked', 'true')
