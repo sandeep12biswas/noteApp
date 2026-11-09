@@ -96,9 +96,11 @@ try {
   Copy-Item (Join-Path $RepoRoot 'packaging\windows\*') $Bundle
   Copy-Item (Join-Path $RepoRoot 'packaging\RELEASE-NOTICE.txt') $Bundle
   Set-Content -Path (Join-Path $Bundle 'VERSION') -Value $Version -NoNewline
-  foreach ($name in 'Installation', 'User', 'Feature') {
+  # Not `$name`: PowerShell variables ignore case, so that would overwrite
+  # $Name (the bundle name) and the zip would come out as Feature.zip.
+  foreach ($guideName in 'Installation', 'User', 'Feature') {
     foreach ($ext in 'pdf', 'docx') {
-      $guide = "FlowNote-$name-Guide.$ext"
+      $guide = "FlowNote-$guideName-Guide.$ext"
       $src = Join-Path $RepoRoot "docs\$guide"
       if (Test-Path $src) { Copy-Item $src (Join-Path $Bundle 'docs') }
       else { Write-Warning "docs\$guide is missing (run: pnpm docs); the bundle won't include it" }
