@@ -15,12 +15,19 @@ export interface SidecarIO {
 }
 
 interface WireResponse {
-  id: number
+  /** Absent on event lines. */
+  id?: number
   result?: unknown
   error?: string
   /** Set on intermediate lines of a streaming request (`ai_complete`); the final line has `result`/`error` as usual. */
   chunk?: string
+  /** Set on unsolicited event lines (`{"event":"sync","data":…}`), which carry no `id`. */
+  event?: string
+  data?: unknown
 }
+
+/** Receives the sidecar's unsolicited event lines: the event's name and its data. */
+export type SidecarEventListener = (event: string, data: unknown) => void
 
 /** A streaming request in flight: its id (for `ai_cancel`) and the final result. */
 export interface SidecarStream {
@@ -41,6 +48,7 @@ export class SidecarClient {
   #nextId = 1
   #pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; onChunk?: (chunk: string) => void }>()
   #closed = false
+  #listeners = new Set<SidecarEventListener>()
 
   constructor(io: SidecarIO) {
     this.#io = io
@@ -73,6 +81,12 @@ export class SidecarClient {
     return { id, done }
   }
 
+  /** Subscribes to event lines (e.g. sync changes); returns the unsubscribe function. */
+  onEvent(listener: SidecarEventListener): () => void {
+    this.#listeners.add(listener)
+    return () => this.#listeners.delete(listener)
+  }
+
   /** Rejects every in-flight request. Call once the underlying process has exited. */
   close(): void {
     this.#closed = true
@@ -91,6 +105,12 @@ export class SidecarClient {
       // to crash the whole Electron main process — drop it and move on.
       return
     }
+
+    if (typeof response.event === 'string') {
+      for (const listener of this.#listeners) listener(response.event, response.data)
+      return
+    }
+    if (typeof response.id !== 'number') return
 
     const pending = this.#pending.get(response.id)
     if (!pending) return

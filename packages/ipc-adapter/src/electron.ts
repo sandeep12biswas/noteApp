@@ -12,7 +12,9 @@ import type {
   PluginManifest,
   SearchResult,
   Segment,
+  SyncConfigInput,
   SyncEvent,
+  SyncStatus,
 } from './types'
 
 // The renderer-side trpc client's procedure shape, hand-mirrored from
@@ -59,6 +61,15 @@ interface ElectronRouter {
   pluginStorageList: { query: (pluginId: string) => Promise<string[]> }
   pluginContentSecurityPolicy: { query: (input: { pluginId: string; origin: string }) => Promise<string> }
   listAiProviders: { query: () => Promise<AiProvider[]> }
+  syncStatus: { query: () => Promise<SyncStatus> }
+  syncConfigure: { mutate: (input: SyncConfigInput) => Promise<SyncStatus> }
+  syncConnect: { mutate: (passphrase: string) => Promise<SyncStatus> }
+  syncNow: { mutate: () => Promise<SyncStatus> }
+  syncConfirmMassDelete: { mutate: () => Promise<SyncStatus> }
+  syncDisconnect: { mutate: () => Promise<SyncStatus> }
+  onSyncEvent: {
+    subscribe: (input: undefined, handlers: { onData: (event: SyncEvent) => void; onError?: (err: unknown) => void }) => { unsubscribe: () => void }
+  }
   saveAiProvider: { mutate: (input: AiProviderInput) => Promise<AiProvider> }
   deleteAiProvider: { mutate: (id: string) => Promise<void> }
   setDefaultAiProvider: { mutate: (id: string) => Promise<void> }
@@ -186,8 +197,39 @@ export class ElectronIPCAdapter implements IPCAdapter {
     await getClient().setPageBackground.mutate({ pageId, background })
   }
 
-  onSyncEvent(_handler: (event: SyncEvent) => void): () => void {
-    throw new Error('ElectronIPCAdapter.onSyncEvent not implemented')
+  async getSyncStatus(): Promise<SyncStatus> {
+    return getClient().syncStatus.query()
+  }
+
+  async configureSync(input: SyncConfigInput): Promise<SyncStatus> {
+    return getClient().syncConfigure.mutate(input)
+  }
+
+  async connectSync(passphrase: string): Promise<SyncStatus> {
+    return getClient().syncConnect.mutate(passphrase)
+  }
+
+  async syncNow(): Promise<SyncStatus> {
+    return getClient().syncNow.mutate()
+  }
+
+  async confirmSyncMassDelete(): Promise<SyncStatus> {
+    return getClient().syncConfirmMassDelete.mutate()
+  }
+
+  async disconnectSync(): Promise<SyncStatus> {
+    return getClient().syncDisconnect.mutate()
+  }
+
+  onSyncEvent(handler: (event: SyncEvent) => void): () => void {
+    const sub = getClient().onSyncEvent.subscribe(undefined, {
+      onData: handler,
+      onError: (err) => {
+        // eslint-disable-next-line no-console -- nothing else observes a dropped subscription
+        console.error('ElectronIPCAdapter: sync event subscription failed', err)
+      },
+    })
+    return () => sub.unsubscribe()
   }
 
   aiComplete(prompt: string, context: string, providerId?: string): AsyncIterableIterator<string> {

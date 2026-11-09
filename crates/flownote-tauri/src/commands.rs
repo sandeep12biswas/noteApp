@@ -12,6 +12,7 @@
 
 use flownote_core::db::Pool;
 use flownote_core::store;
+use flownote_core::sync::service::SyncService;
 use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -23,10 +24,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tauri::ipc::Channel;
 use tauri::State;
 
-/// Shared app state — the SQLite connection pool, managed by Tauri and
-/// injected into every command via `State<AppState>`.
+/// Shared app state — the SQLite connection pool and the background sync
+/// service, managed by Tauri and injected into every command via
+/// `State<AppState>`.
 pub struct AppState {
     pub pool: Pool,
+    pub sync: Arc<SyncService>,
 }
 
 /// `store` speaks camelCase JSON (the IPCAdapter wire shape); these two
@@ -561,6 +564,58 @@ pub fn ai_cancel(stream_id: u32) {
     if let Some(flag) = ai_streams().lock().unwrap().get(&(stream_id as u64)) {
         flag.store(true, Ordering::Relaxed);
     }
+}
+
+// ---- Sync (flownote_core::sync::service, step S5) ----
+//
+// Each returns the new status (the same object a `sync-event` of type
+// `status` carries; see SyncStatus in packages/ipc-adapter). They run on a
+// blocking thread: connecting derives the passphrase key, and settings
+// changes wait for a running cycle to finish — neither may freeze the window.
+
+async fn on_sync(
+    state: State<'_, AppState>,
+    f: impl FnOnce(&SyncService) -> Result<Value, String> + Send + 'static,
+) -> Result<Value, String> {
+    let sync = state.sync.clone();
+    tauri::async_runtime::spawn_blocking(move || f(&sync)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_status(state: State<'_, AppState>) -> Result<Value, String> {
+    on_sync(state, |s| s.status()).await
+}
+
+/// `input`: `{ target?, folderPath?, deviceName? }` (SyncConfigInput).
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_configure(state: State<'_, AppState>, input: Value) -> Result<Value, String> {
+    on_sync(state, move |s| s.configure(&input)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_connect(state: State<'_, AppState>, passphrase: String) -> Result<Value, String> {
+    on_sync(state, move |s| s.connect(&passphrase)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_now(state: State<'_, AppState>) -> Result<Value, String> {
+    on_sync(state, |s| s.sync_now()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_confirm_mass_delete(state: State<'_, AppState>) -> Result<Value, String> {
+    on_sync(state, |s| s.confirm_mass_delete()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_disconnect(state: State<'_, AppState>) -> Result<Value, String> {
+    on_sync(state, |s| s.disconnect()).await
 }
 
 // `plugin_id` arrives from the frontend, already resolved from the sending

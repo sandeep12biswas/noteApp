@@ -29,6 +29,7 @@
 //!    Changes it only received from others aren't re-uploaded — they're in
 //!    their authors' logs.
 
+pub mod service;
 mod target;
 pub use target::{LocalFolderTarget, MemoryTarget, RemoteFile, SyncTarget};
 
@@ -140,12 +141,51 @@ pub fn connect_vault(conn: &Connection, target: &dyn SyncTarget, passphrase: &st
         }
     };
     crdt::device_id(conn)?;
-    conn.execute(
-        "UPDATE sync_settings SET vault_key = ?1, vault_id = ?2 WHERE id = 1",
-        rusqlite::params![key.to_base64(), vault["vaultId"].as_str()],
+    in_transaction(conn, || {
+        let previous: Option<String> =
+            conn.query_row("SELECT vault_id FROM sync_settings WHERE id = 1", [], |r| r.get(0)).map_err(err)?;
+        if previous.is_some_and(|p| Some(p.as_str()) != vault["vaultId"].as_str()) {
+            reset_for_new_vault(conn)?;
+        }
+        conn.execute(
+            "UPDATE sync_settings SET vault_key = ?1, vault_id = ?2 WHERE id = 1",
+            rusqlite::params![key.to_base64(), vault["vaultId"].as_str()],
+        )
+        .map_err(err)?;
+        Ok(())
+    })?;
+    Ok(key)
+}
+
+/// Joining a different vault than before (another cloud, or the old cloud
+/// folder was deleted and set up again): nothing there is this device's yet.
+/// Numbering starts again at 1, other devices are forgotten, and every
+/// document gets a change by this device so its next push uploads all of it
+/// — including content it only received from devices that aren't in the new
+/// vault, which its own log must now carry. Local notes are untouched.
+fn reset_for_new_vault(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "UPDATE sync_settings SET upload_seq = 0, last_sync_at = NULL WHERE id = 1;
+         DELETE FROM sync_peers;
+         DELETE FROM sync_quarantine;
+         UPDATE crdt_docs SET synced_heads = '[]';",
     )
     .map_err(err)?;
-    Ok(key)
+    let actor = crdt::device_actor(conn)?;
+    let ids: Vec<String> = conn
+        .prepare("SELECT doc_id FROM crdt_docs")
+        .map_err(err)?
+        .query_map([], |r| r.get(0))
+        .map_err(err)?
+        .collect::<Result<_, _>>()
+        .map_err(err)?;
+    for id in ids {
+        let Some(mut doc) = crdt::load_doc(conn, &id)? else { continue };
+        doc.set_actor(actor.clone());
+        doc.empty_change(automerge::transaction::CommitOptions::default().with_time(now_ms()));
+        crdt::store_doc(conn, &id, &mut doc)?;
+    }
+    Ok(())
 }
 
 /// The key saved by `connect_vault`, if this device has joined a vault.

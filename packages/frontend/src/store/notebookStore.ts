@@ -175,6 +175,8 @@ interface NotebookState {
   setFileBackground: (id: string, background: string | null) => void
   /** Loads every folder and its pages from IPCAdapter — called once at startup once an adapter resolves. */
   hydrateFromIPC: () => Promise<void>
+  /** Hydrates again after another device changed folders or pages (sync), dropping a selection that no longer exists. */
+  reloadFromIPC: () => Promise<void>
 }
 
 
@@ -384,5 +386,13 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
       }
     }
     set({ folders: folderMap, files: fileMap })
+  },
+
+  reloadFromIPC: async () => {
+    await get().hydrateFromIPC()
+    set((state) => ({
+      selectedFolderId: state.selectedFolderId && state.folders[state.selectedFolderId] ? state.selectedFolderId : null,
+      selectedFileId: state.selectedFileId && state.files[state.selectedFileId] ? state.selectedFileId : null,
+    }))
   },
 }))

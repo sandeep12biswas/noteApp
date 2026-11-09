@@ -229,6 +229,36 @@ export const appRouter = t.router({
     })
     .mutation(({ ctx, input }) => ctx.sidecar.request('set_default_ai_provider', { id: input })),
 
+  // ---- Sync (flownote_core::sync::service, step S5) ----
+  syncStatus: t.procedure.query(({ ctx }) => ctx.sidecar.request('sync_status')),
+
+  syncConfigure: t.procedure
+    .input((input: unknown): Record<string, unknown> => {
+      if (typeof input !== 'object' || input === null) throw new Error('syncConfigure expects an object')
+      return input as Record<string, unknown>
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('sync_configure', input)),
+
+  syncConnect: t.procedure
+    .input((passphrase: unknown): string => {
+      if (typeof passphrase !== 'string') throw new Error('syncConnect expects a string passphrase')
+      return passphrase
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('sync_connect', { passphrase: input })),
+
+  syncNow: t.procedure.mutation(({ ctx }) => ctx.sidecar.request('sync_now')),
+
+  syncConfirmMassDelete: t.procedure.mutation(({ ctx }) => ctx.sidecar.request('sync_confirm_mass_delete')),
+
+  syncDisconnect: t.procedure.mutation(({ ctx }) => ctx.sidecar.request('sync_disconnect')),
+
+  /** The sidecar's `sync` event lines (status, docsChanged, conflict), passed through as they arrive. */
+  onSyncEvent: t.procedure.subscription(({ ctx }) =>
+    observable<unknown>((emit) => ctx.sidecar.onEvent((event, data) => {
+      if (event === 'sync') emit.next(data)
+    })),
+  ),
+
   /**
    * Streams generated text: `{ type: 'text', text }` per piece, then
    * `{ type: 'done' }`; a provider/transport failure ends it with an error.

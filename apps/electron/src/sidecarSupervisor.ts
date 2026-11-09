@@ -7,7 +7,7 @@
 // can be unit-tested with a fake `spawn` that exits on command, without
 // touching a real child process or the filesystem.
 import { appendFileSync } from 'node:fs'
-import { SidecarClient, type SidecarIO, type SidecarStream } from './sidecar'
+import { SidecarClient, type SidecarEventListener, type SidecarIO, type SidecarStream } from './sidecar'
 
 export interface SupervisedProcess extends SidecarIO {
   stderr: NodeJS.ReadableStream
@@ -37,6 +37,8 @@ export class SidecarSupervisor {
   #client: SidecarClient | null = null
   #restartCount = 0
   #dead = false
+  /** Kept here, not on the client, so listeners survive a sidecar restart. */
+  #listeners = new Set<SidecarEventListener>()
 
   constructor(options: SidecarSupervisorOptions) {
     this.#spawn = options.spawn
@@ -65,6 +67,12 @@ export class SidecarSupervisor {
     return this.#client.requestStream(method, params, onChunk)
   }
 
+  /** Event lines from whichever sidecar process is running, across restarts. */
+  onEvent(listener: SidecarEventListener): () => void {
+    this.#listeners.add(listener)
+    return () => this.#listeners.delete(listener)
+  }
+
   stop(): void {
     this.#client?.close()
     this.#client = null
@@ -73,6 +81,9 @@ export class SidecarSupervisor {
   #launch(): void {
     const proc = this.#spawn()
     this.#client = new SidecarClient(proc)
+    this.#client.onEvent((event, data) => {
+      for (const listener of this.#listeners) listener(event, data)
+    })
 
     proc.stderr.on('data', (chunk: Buffer) => {
       try {

@@ -12,7 +12,8 @@ pub use commands::{
     get_ink_layer, get_installed_plugins, get_page, install_plugin, list_dictionary_words, list_folders, list_pages,
     list_segments, open_attachment, ping, plugin_content_security_policy, plugin_storage_delete, plugin_storage_get, plugin_storage_list,
     plugin_storage_set, save_attachment, save_folder, save_ink_layer, save_page, save_segment, save_segments_batch,
-    search, set_page_background, set_page_mode, set_plugin_enabled, uninstall_plugin, AppState, AttachmentDto, AttachmentWithPathDto,
+    search, set_page_background, set_page_mode, set_plugin_enabled, sync_configure, sync_confirm_mass_delete, sync_connect, sync_disconnect, sync_now,
+    sync_status, uninstall_plugin, AppState, AttachmentDto, AttachmentWithPathDto,
     FolderDto, FolderInput, PageDto, PageInput, SearchResultDto, SegmentDto, SegmentInput,
 };
 
@@ -61,6 +62,12 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         set_default_ai_provider,
         ai_complete,
         ai_cancel,
+        sync_status,
+        sync_configure,
+        sync_connect,
+        sync_now,
+        sync_confirm_mass_delete,
+        sync_disconnect,
     ])
 }
 
@@ -110,5 +117,8 @@ mod tests {
         assert!(bindings.contains("ping"), "expected `ping` in bindings:\n{bindings}");
         assert!(bindings.contains("get_page") || bindings.contains("getPage"), "expected get_page/getPage in bindings:\n{bindings}");
         assert!(bindings.contains("PageDto") || bindings.contains("notebookId"), "expected the PageDto shape in bindings:\n{bindings}");
+        for sync in ["syncStatus", "syncConfigure", "syncConnect", "syncNow", "syncConfirmMassDelete", "syncDisconnect"] {
+            assert!(bindings.contains(sync), "expected `{sync}` in bindings");
+        }
     }
 }

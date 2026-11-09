@@ -7,6 +7,7 @@ import { hydratePersonalDictionary, setIPCAdapter as setSpellIPCAdapter } from '
 import { loadLastOpenedPage } from './lib/lastOpenedPage'
 import { setIPCAdapter as setNotebookIPCAdapter, useNotebookStore } from './store/notebookStore'
 import { usePluginStore } from './store/pluginStore'
+import { startSync } from './store/syncStore'
 
 export default function App() {
   useEffect(() => {
@@ -24,6 +25,8 @@ export default function App() {
         setSpellIPCAdapter(ipc)
         await useNotebookStore.getState().hydrateFromIPC()
         await hydratePersonalDictionary()
+        // Follow background sync (step S5): reload what other devices change.
+        startSync(ipc)
         // PluginManager also calls loadPlugins() on mount, but child effects
         // run before this parent effect, so at that point there's no adapter
         // yet and it returns empty — installed plugins then never loaded on

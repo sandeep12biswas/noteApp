@@ -42,21 +42,38 @@ pub fn get_page(conn: &Connection, page_id: &str) -> rusqlite::Result<Option<Val
 }
 
 /// Runs `f` atomically: everything it writes is committed together, or
-/// nothing is if it returns `Err`. Uses a SAVEPOINT rather than BEGIN so it
-/// nests — a function that uses it can be called from another one that does
-/// (e.g. `save_segments_batch` → `save_segment`) — and so it works on the
-/// shared `&Connection` every function here takes.
+/// nothing is if it returns `Err`. It nests — a function that uses it can be
+/// called from another one that does (e.g. `save_segments_batch` →
+/// `save_segment`): the outermost call opens the transaction, inner ones are
+/// SAVEPOINTs inside it. Works on the shared `&Connection` every function
+/// here takes.
+///
+/// The outermost call uses `BEGIN IMMEDIATE`, taking the write lock up
+/// front: the sync worker and the shell's request loop write through
+/// separate connections, and a deferred transaction that reads and then
+/// writes after the other connection committed fails at once with
+/// "database is locked" (SQLITE_BUSY_SNAPSHOT) — the busy timeout only
+/// covers waiting for a lock, which IMMEDIATE does.
 pub fn in_transaction<T>(conn: &Connection, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    conn.execute_batch("SAVEPOINT flownote_tx").map_err(|e| e.to_string())?;
+    let outermost = conn.is_autocommit();
+    let (begin, commit, rollback) = if outermost {
+        ("BEGIN IMMEDIATE", "COMMIT", "ROLLBACK")
+    } else {
+        // ROLLBACK TO undoes the writes but leaves the savepoint open;
+        // RELEASE then closes it.
+        ("SAVEPOINT flownote_tx", "RELEASE flownote_tx", "ROLLBACK TO flownote_tx; RELEASE flownote_tx")
+    };
+    conn.execute_batch(begin).map_err(|e| e.to_string())?;
     match f() {
-        Ok(value) => {
-            conn.execute_batch("RELEASE flownote_tx").map_err(|e| e.to_string())?;
-            Ok(value)
-        }
+        Ok(value) => match conn.execute_batch(commit) {
+            Ok(()) => Ok(value),
+            Err(e) => {
+                let _ = conn.execute_batch(rollback);
+                Err(e.to_string())
+            }
+        },
         Err(e) => {
-            // ROLLBACK TO undoes the writes but leaves the savepoint open;
-            // RELEASE then closes it.
-            let _ = conn.execute_batch("ROLLBACK TO flownote_tx; RELEASE flownote_tx");
+            let _ = conn.execute_batch(rollback);
             Err(e)
         }
     }
@@ -1174,6 +1191,37 @@ mod transaction_tests {
         // The connection is usable afterwards — no transaction left open.
         save_segment(&conn, &segment("s2")).unwrap();
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM segments"), 1);
+    }
+
+    /// Sync's worker and the shell's request loop write through separate
+    /// connections. A transaction that reads, then writes after the other
+    /// connection committed, must wait for the lock — not fail at once with
+    /// "database is locked" (a deferred transaction's SQLITE_BUSY_SNAPSHOT,
+    /// which the busy timeout doesn't cover).
+    #[test]
+    fn a_transaction_waits_for_another_connections_write_instead_of_failing() {
+        let dir = std::env::temp_dir().join(format!("flownote-tx-{}-{}", std::process::id(), now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pool = db::open(dir.join("db.sqlite3").to_str().unwrap()).unwrap();
+        page(&pool.get().unwrap());
+        let (tx_read, rx_read) = std::sync::mpsc::channel::<()>();
+        let pool2 = pool.clone();
+        let other = std::thread::spawn(move || {
+            rx_read.recv().unwrap(); // the transaction below has read
+            save_segment(&pool2.get().unwrap(), &segment("from-other")).map_err(|e| format!("other: {e}"))
+        });
+        let conn = pool.get().unwrap();
+        let mine: Result<(), String> = in_transaction(&conn, || {
+            count(&conn, "SELECT COUNT(*) FROM segments");
+            tx_read.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(200)); // the other write lands meanwhile, if it can
+            save_segment(&conn, &segment("mine"))
+        });
+        let theirs = other.join().unwrap();
+        assert_eq!((mine, theirs), (Ok(()), Ok(())));
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM segments"), 2);
+        drop(conn);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

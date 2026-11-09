@@ -136,4 +136,27 @@ describe('SidecarSupervisor', () => {
 
     expect(readFileSync(crashLogPath, 'utf8')).toContain('panicked at src/main.rs')
   })
+
+  it('keeps event listeners across a restart', async () => {
+    const processes: FakeProcess[] = []
+    const supervisor = new SidecarSupervisor({
+      spawn: () => {
+        const p = new FakeProcess()
+        processes.push(p)
+        return p
+      },
+      crashLogPath,
+      scheduleRestart: (fn) => fn(),
+    })
+    const events: unknown[] = []
+    supervisor.onEvent((_event, data) => events.push(data))
+    supervisor.start()
+    processes[0]!.stdout.write(JSON.stringify({ event: 'sync', data: 1 }) + '\n')
+    await new Promise((resolve) => setImmediate(resolve))
+    processes[0]!.emitExit(1)
+    processes[1]!.stdout.write(JSON.stringify({ event: 'sync', data: 2 }) + '\n')
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(events).toEqual([1, 2])
+  })
 })
+

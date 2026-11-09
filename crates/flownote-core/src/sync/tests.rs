@@ -429,3 +429,55 @@ fn change_file_names_parse_back() {
     assert_eq!(parse_changes_path("devices/dev-1/info.json.enc"), None);
     assert_eq!(parse_changes_path("devices/a/b/changes/1.bundle.enc"), None);
 }
+
+#[test]
+fn reconnecting_to_the_same_vault_keeps_going() {
+    let cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&cloud);
+    a.sync(&cloud);
+    b.connect(&cloud);
+    settle(&[&a, &b], &cloud);
+    let seq: i64 = a.conn.query_row("SELECT upload_seq FROM sync_settings", [], |r| r.get(0)).unwrap();
+
+    a.connect(&cloud); // e.g. after "Disconnect", the same folder again
+    let seq_after: i64 = a.conn.query_row("SELECT upload_seq FROM sync_settings", [], |r| r.get(0)).unwrap();
+    assert_eq!(seq_after, seq, "same vault: numbering continues");
+    save_seg(&a.conn, "s2", "p1", "after reconnect");
+    settle(&[&a, &b], &cloud);
+    assert_eq!(texts(&b.conn, "p1"), ["after reconnect", "hello"]);
+}
+
+#[test]
+fn joining_a_new_vault_uploads_everything_including_other_devices_notes() {
+    let old_cloud = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("b"));
+    notebook(&a.conn);
+    a.connect(&old_cloud);
+    a.sync(&old_cloud);
+    b.connect(&old_cloud);
+    settle(&[&a, &b], &old_cloud);
+    // A page only B ever wrote: A's own log never carried it.
+    store::save_page(&b.conn, &json!({ "id": "p2", "folderId": "f1", "title": "From B" })).unwrap();
+    save_seg(&b.conn, "s9", "p2", "written on b");
+    settle(&[&a, &b], &old_cloud);
+    assert_eq!(texts(&a.conn, "p2"), ["written on b"]);
+
+    // A moves to a new, empty cloud; C joins it there. B never does.
+    let new_cloud = MemoryTarget::default();
+    a.connect(&new_cloud);
+    let seq: i64 = a.conn.query_row("SELECT upload_seq FROM sync_settings", [], |r| r.get(0)).unwrap();
+    assert_eq!(seq, 0, "new vault: numbering starts again");
+    let peers: i64 = a.conn.query_row("SELECT COUNT(*) FROM sync_peers", [], |r| r.get(0)).unwrap();
+    assert_eq!(peers, 0, "devices of the old vault are forgotten");
+    a.sync(&new_cloud);
+    assert!(new_cloud.get(&changes_path(&crdt::device_id(&a.conn).unwrap(), 1)).unwrap().is_some());
+
+    let mut c = Device::new("c");
+    c.connect(&new_cloud);
+    settle(&[&a, &c], &new_cloud);
+    assert_eq!(texts(&c.conn, "p1"), ["hello"]);
+    assert_eq!(texts(&c.conn, "p2"), ["written on b"], "B's page reached C through A's log");
+    assert_eq!(dump(&a.conn), dump(&c.conn));
+}

@@ -12,6 +12,15 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }))
 
+const listeners: Array<(e: { payload: unknown }) => void> = []
+const unlisten = vi.fn()
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async (name: string, handler: (e: { payload: unknown }) => void) => {
+    if (name === 'sync-event') listeners.push(handler)
+    return unlisten
+  }),
+}))
+
 vi.mock('./generated/tauri-bindings', () => ({
   commands: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
     get: (target, name: string) => (target[name] ??= vi.fn()),
@@ -185,5 +194,34 @@ describe('TauriIPCAdapter.aiComplete', () => {
       break
     }
     expect(commands.aiCancel).toHaveBeenCalledWith(9)
+  })
+})
+
+describe('TauriIPCAdapter sync', () => {
+  it('returns the status the command resolves to, and its error message', async () => {
+    const { commands } = await import('./generated/tauri-bindings')
+    const { TauriIPCAdapter } = await import('./tauri')
+    vi.mocked(commands.syncConfigure).mockResolvedValue({ status: 'ok', data: { state: 'needsPassphrase' } })
+    await expect(new TauriIPCAdapter().configureSync({ target: 'folder', folderPath: '/x' })).resolves.toEqual({ state: 'needsPassphrase' })
+    expect(commands.syncConfigure).toHaveBeenCalledWith({ target: 'folder', folderPath: '/x' })
+
+    vi.mocked(commands.syncConnect).mockResolvedValue({ status: 'error', error: 'Wrong passphrase: …' })
+    await expect(new TauriIPCAdapter().connectSync('nope')).rejects.toThrow('Wrong passphrase')
+  })
+
+  it('delivers sync-event payloads until unsubscribed', async () => {
+    const { TauriIPCAdapter } = await import('./tauri')
+    ;(globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
+    try {
+      const received: unknown[] = []
+      const stop = new TauriIPCAdapter().onSyncEvent((e) => received.push(e))
+      await vi.waitFor(() => expect(listeners).toHaveLength(1))
+      listeners[0]!({ payload: { type: 'docsChanged', pageIds: ['p1'], folders: false } })
+      expect(received).toEqual([{ type: 'docsChanged', pageIds: ['p1'], folders: false }])
+      stop()
+      expect(unlisten).toHaveBeenCalled()
+    } finally {
+      delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    }
   })
 })
