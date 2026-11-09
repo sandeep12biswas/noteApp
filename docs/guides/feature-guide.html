@@ -27,14 +27,22 @@
 <h2>FlowNote at a glance</h2>
 <p class="lead">FlowNote combines the freedom of a paper notebook with the organisation of a filing cabinet. It runs on Linux and Windows, works fully offline, and can keep your devices in sync with end-to-end encryption.</p>
 <figure class="wide"><img src="screenshots/30-final-overview.png" alt=""><figcaption>Folders, pages and the canvas editor</figcaption></figure>
+<div class="new">
+  <ul>
+    <li><strong>Richer colour pickers</strong> for page colours and segment colours: a darkest-to-lightest shade grid for ten colour families, recently used colours, and an in-app colour wheel with a brightness slider and hex input (sections 3 and 7).</li>
+    <li><strong>Delete segment</strong> from a segment's right-click menu, with a few seconds to <strong>Undo</strong> (section 3).</li>
+    <li><strong>Lowercase page names</strong> are now allowed (section 2).</li>
+    <li><strong>Clearer swatches:</strong> every colour swatch has a visible edge, so pale colours are easy to tell apart.</li>
+  </ul>
+</div>
 <table>
   <thead><tr><th>Area</th><th>Features</th><th>Section</th></tr></thead>
   <tbody>
     <tr><td>Organising</td><td>Folders and sub-folders, folder icons, page counts, natural sort, drag to reorganise</td><td>2</td></tr>
-    <tr><td>Writing</td><td>Click-anywhere canvas, segments, Linear mode, rich text, lists and checklists, headings, quotes</td><td>3, 4</td></tr>
+    <tr><td>Writing</td><td>Click-anywhere canvas, segments (colour, delete with Undo), Linear mode, rich text, lists and checklists, headings, quotes</td><td>3, 4</td></tr>
     <tr><td>Inserting</td><td>"/" block menu, code blocks with highlighting, pictures and file attachments</td><td>5</td></tr>
     <tr><td>Drawing</td><td>Pen, marker and eraser in five colours</td><td>6</td></tr>
-    <tr><td>Appearance</td><td>Light/dark theme, page colours, contrast assistant, zoom</td><td>7</td></tr>
+    <tr><td>Appearance</td><td>Light/dark theme, page colours with shades and a colour wheel, contrast assistant, zoom</td><td>7</td></tr>
     <tr><td>Finding</td><td>Search by page name or by contents</td><td>8</td></tr>
     <tr><td>AI</td><td>Draft text with Claude, Gemini, OpenAI, or a local model through Ollama</td><td>9</td></tr>
     <tr><td>Plugins</td><td>Extend FlowNote with new block types, such as the Spreadsheet plugin</td><td>10</td></tr>
@@ -68,7 +76,7 @@
 <div class="feature">
 <h3>Pages and the New page flow</h3>
 <p class="what"><span class="label">What it does.</span> The middle panel lists the pages in the selected folder. Creating a page always asks where it belongs first, so pages never end up loose.</p>
-<p class="how"><span class="label">How to use it.</span> Click <strong>+</strong> next to <em>Pages</em>, choose an existing folder or create a new one, then name the page. Page names start with a capital letter, and the same name can be reused in different folders. Rename a page by editing its title in the editor; delete it from its right-click menu.</p>
+<p class="how"><span class="label">How to use it.</span> Click <strong>+</strong> next to <em>Pages</em>, choose an existing folder or create a new one, then name the page. Page names start with a letter, lowercase or capital (not a number or symbol), and keep the case you type. The same name can be reused in different folders. Rename a page by editing its title in the editor; delete it from its right-click menu.</p>
 <div class="two-col">
   <figure><img src="screenshots/02-new-page-dialog.png" alt=""><figcaption>Choose a folder…</figcaption></figure>
   <figure><img src="screenshots/03-new-page-name.png" alt=""><figcaption>…then name the page</figcaption></figure>
@@ -103,8 +111,15 @@
 <div class="feature">
 <h3>Segment colours</h3>
 <p class="what"><span class="label">What it does.</span> Colour-code segments, for example orange for action items or green for decisions. A colour gives the segment a visible border and a matching soft background.</p>
-<p class="how"><span class="label">How to use it.</span> Right-click a segment and pick one of nine colours, or <strong>None</strong> to remove it.</p>
-<figure class="small"><img src="screenshots/10-segment-colour-menu.png" alt=""><figcaption>Nine segment colours</figcaption></figure>
+<p class="how"><span class="label">How to use it.</span> Right-click a segment. Pick one of the nine <strong>quick picks</strong>, a colour from the <strong>shades</strong> grid (ten colour families, darkest at the top), one of your <strong>recent</strong> colours, or choose <strong>More colours…</strong> for the colour wheel. <strong>None</strong> removes the colour. The two palest shades are left out here, because they'd make a border you can't see on a white page.</p>
+<figure class="small"><img src="screenshots/10-segment-colour-menu.png" alt=""><figcaption>Quick picks, shades, More colours… and Delete segment</figcaption></figure>
+</div>
+
+<div class="feature">
+<h3>Delete segment, with Undo</h3>
+<p class="what"><span class="label">What it does.</span> Removes a segment in one step, whatever it contains and whether or not it has a colour, and gives you a few seconds to change your mind.</p>
+<p class="how"><span class="label">How to use it.</span> Right-click the segment and choose <strong>Delete segment</strong>. A <strong>Segment deleted</strong> message appears with a bar that counts down. Click <strong>Undo</strong> (or press <kbd>Ctrl</kbd>+<kbd>Z</kbd> when you're not typing in a segment) to restore it, with its text, colour and position, or <strong>✕</strong> to make the deletion final straight away. Deleting another segment makes the earlier deletion final.</p>
+<figure class="wide"><img src="screenshots/10b-delete-segment-undo.png" alt=""><figcaption>The Undo message after deleting a segment</figcaption></figure>
 </div>
 
 <div class="feature">
@@ -209,9 +224,11 @@
 
 <div class="feature">
 <h3>Page colours</h3>
-<p class="what"><span class="label">What it does.</span> Paper tones (Ivory, Sepia, Cream, Mint, Sky, Lavender, Rose, Grey) or any custom colour, set for one page or as the default for all pages.</p>
-<p class="how"><span class="label">How to use it.</span> <strong>View → Page colour</strong>. The top half of the menu applies to <em>this page</em>, the bottom half to <em>all pages</em>.</p>
-<figure><img src="screenshots/19-view-page-colour.png" alt=""><figcaption>Choosing a page colour</figcaption></figure>
+<p class="what"><span class="label">What it does.</span> Gives a page a background colour: a paper tone (Ivory, Sepia, Cream, Mint, Sky, Lavender, Rose, Grey), any of 100 shades, or any colour at all from the colour wheel. Set it for one page, or as the default for all pages. Dark colours work too: the editor's text turns light to stay readable.</p>
+<p class="how"><span class="label">How to use it.</span> <strong>View → Page colour</strong>. Choose <strong>This page</strong> or <strong>All pages</strong> under <em>Apply to</em>, then pick from <strong>Paper</strong>, <strong>Shades</strong> (ten colour families, darkest to lightest) or <strong>Recent</strong>. <strong>Use default</strong> / <strong>White</strong> removes the colour.</p>
+<figure><img src="screenshots/19-view-page-colour.png" alt=""><figcaption>Apply to, paper tones and the shade grid</figcaption></figure>
+<p class="how"><span class="label">The colour wheel.</span> <strong>More colours…</strong> opens a colour wheel inside the menu. Drag on the wheel (or use the arrow keys) to choose hue and strength, set <strong>Brightness</strong> with the slider, or type a hex code. The preview compares the current and new colour; <strong>Apply</strong> sets it and adds it to <em>Recent</em>, <strong>Cancel</strong> goes back.</p>
+<figure class="small"><img src="screenshots/19b-colour-wheel.png" alt=""><figcaption>The in-app colour wheel</figcaption></figure>
 </div>
 
 <div class="feature">
@@ -282,6 +299,7 @@
 <figure class="wide"><img src="screenshots/27-plugin-manager.png" alt=""><figcaption>The Spreadsheet plugin, installed and enabled</figcaption></figure>
 <p class="how"><span class="label">How to use a plugin block.</span> Type <kbd>/</kbd> in a segment. Plugin blocks appear in the menu after the built-in ones. Choose <strong>Spreadsheet</strong> to insert a grid.</p>
 <figure class="small"><img src="screenshots/28-spreadsheet-block.png" alt=""><figcaption>A Spreadsheet block in a note</figcaption></figure>
+<div class="note"><p><strong>Known issue on Windows:</strong> in this version, plugins don't load in the Windows app, so <em>Spreadsheet</em> doesn't appear in the "/" menu there. Plugins work on Linux. A fix is planned.</p></div>
 <div class="tip"><p>Developers can build their own plugins with the FlowNote plugin SDK (<code>@flownote/sdk</code>) and the <code>@flownote/cli</code> scaffolding tool in the FlowNote source repository.</p></div>
 </div>
 </section>

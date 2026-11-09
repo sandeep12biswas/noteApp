@@ -1,5 +1,5 @@
 {
-  "captured": "2026-11-09T08:27:00.469Z",
+  "captured": "2026-11-09T17:18:45.594Z",
   "results": [
     {
       "name": "01-first-launch",
@@ -46,6 +46,10 @@
       "ok": true
     },
     {
+      "name": "10b-delete-segment-undo",
+      "ok": true
+    },
+    {
       "name": "11-ribbon-home",
       "ok": true
     },
@@ -83,6 +87,10 @@
     },
     {
       "name": "19-view-page-colour",
+      "ok": true
+    },
+    {
+      "name": "19b-colour-wheel",
       "ok": true
     },
     {

@@ -320,6 +320,25 @@ await step('10-segment-colour-menu', async () => {
   await page.keyboard.press('Escape')
 })
 
+await step('10b-delete-segment-undo', async () => {
+  // A throwaway segment, deleted and then dismissed, so the sample notes stay as they are.
+  await writeSegment(40, 560, async () => {
+    await page.keyboard.type('Draft idea, no longer needed')
+  })
+  await page.mouse.click(1000, 18) // deselect: empty part of the ribbon's tab row
+  await wait(200)
+  const seg = segments().filter({ hasText: 'Draft idea, no longer needed' })
+  await seg.click({ button: 'right' })
+  const menu = page.getByRole('menu', { name: 'Segment colour' })
+  await menu.getByRole('menuitem', { name: 'Delete segment' }).click()
+  const toast = page.getByTestId('undo-delete-toast')
+  await toast.waitFor()
+  await wait(1200) // let the countdown bar run down a little
+  await shot('10b-delete-segment-undo', page.getByTestId('editor-pane'))
+  await toast.getByRole('button', { name: 'Dismiss' }).click()
+  await wait(200)
+})
+
 await step('11-ribbon-home', () => shot('11-ribbon-home', page.getByTestId('ribbon-root')))
 
 await step('12-text-colour-menu', async () => {
@@ -447,6 +466,19 @@ await step('19-view-page-colour', async () => {
   await wait(300)
 })
 
+await step('19b-colour-wheel', async () => {
+  await tab('View').click()
+  await page.getByRole('button', { name: 'Page colour' }).click()
+  const menu = page.getByRole('menu', { name: 'Page colour' })
+  await menu.getByRole('menuitem', { name: 'More colours…' }).click()
+  await menu.getByRole('textbox', { name: 'Hex colour' }).fill('#7dd3fc')
+  await wait(200)
+  await shot('19b-colour-wheel', menu, 8)
+  await menu.getByRole('menuitem', { name: 'Cancel' }).click()
+  await page.keyboard.press('Escape')
+  await wait(200)
+})
+
 await step('20-contrast-notice', async () => {
   // Its own page, so Adjust doesn't change the other sample notes.
   await fileButton('Ideas 10').click()
@@ -454,8 +486,10 @@ await step('20-contrast-notice', async () => {
   await tab('View').click()
   await page.getByRole('button', { name: 'Page colour' }).click()
   // A dark custom page colour makes the blue text hard to read, so the notice offers to fix it.
-  await page.getByRole('menu', { name: 'Page colour' }).getByLabel('Custom colour for this page').fill('#1e3a8a')
-  await page.keyboard.press('Escape')
+  const colourMenu = page.getByRole('menu', { name: 'Page colour' })
+  await colourMenu.getByRole('menuitem', { name: 'More colours…' }).click()
+  await colourMenu.getByRole('textbox', { name: 'Hex colour' }).fill('#1e3a8a')
+  await colourMenu.getByRole('menuitem', { name: 'Apply' }).click()
   await writeSegment(40, 30, async () => {
     await page.getByRole('button', { name: 'Heading 2' }).click()
     await page.keyboard.type('Night notes')

@@ -144,6 +144,17 @@ figcaption::before { content: "Figure: "; font-weight: 600; }
   break-inside: avoid;
 }
 .warn { border-left-color: var(--warn-rule); background: var(--warn-bg); }
+.new {
+  border-left: 3px solid #16a34a;
+  background: #f0fdf4;
+  padding: 2.5mm 4mm;
+  margin: 3mm 0 4mm;
+  border-radius: 0 1.5mm 1.5mm 0;
+  break-inside: avoid;
+}
+.new::before { content: "What's new"; font-weight: 700; display: block; margin-bottom: .5mm; color: #15803d; }
+.new ul { margin: 0; }
+.new p:last-child { margin-bottom: 0; }
 .tip::before, .note::before, .warn::before { font-weight: 700; display: block; margin-bottom: .5mm; }
 .tip::before { content: "Tip"; color: var(--accent-dark); }
 .note::before { content: "Note"; color: var(--accent-dark); }

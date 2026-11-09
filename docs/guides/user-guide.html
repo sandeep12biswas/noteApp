@@ -34,6 +34,15 @@
 </ul>
 <p>Everything is saved automatically as you type. There is no Save button.</p>
 
+<div class="new">
+  <ul>
+    <li><strong>Many more colours.</strong> The Page colour and segment colour menus now offer a grid of shades for ten colour families (darkest to lightest), your recently used colours, and a built-in colour wheel under <em>More colours…</em>.</li>
+    <li><strong>Delete a segment directly.</strong> Right-click a segment and choose <em>Delete segment</em>. Changed your mind? Click <em>Undo</em>, or press <kbd>Ctrl</kbd>+<kbd>Z</kbd>.</li>
+    <li><strong>Page names can start with a lowercase letter</strong>, and keep the case you type.</li>
+    <li><strong>Easier-to-see colour swatches.</strong> Every swatch now has a visible edge, so pale colours no longer blend into the menu.</li>
+  </ul>
+</div>
+
 <h3>What's in this guide</h3>
 <ul>
   <li><strong>Installing and uninstalling</strong> on Linux and Windows.</li>
@@ -182,7 +191,7 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -Silent -KeepD
   <figure><img src="screenshots/02-new-page-dialog.png" alt=""><figcaption>Step 2: choose or create a folder</figcaption></figure>
   <figure><img src="screenshots/03-new-page-name.png" alt=""><figcaption>Step 3: name the page</figcaption></figure>
 </div>
-<div class="note"><p>Page names must start with a capital letter (not a number or symbol). Folder names are capitalised for you as you type: <em>work</em> becomes <em>Work</em>. The same page name can be used in different folders.</p></div>
+<div class="note"><p>Page names must start with a letter, lowercase or capital (not a number or symbol), and keep the case you type: <em>meeting notes</em> stays <em>meeting notes</em>. Folder names are capitalised for you as you type: <em>work</em> becomes <em>Work</em>. The same page name can be used in different folders.</p></div>
 
 <h3>Adding folders and sub-folders</h3>
 <ul>
@@ -216,14 +225,17 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -Silent -KeepD
 <p>Click any empty spot on a page. A <strong>segment</strong> (a block of text) appears exactly there. Click inside it and start typing. Click somewhere else on the page to start another segment. Arrange segments side by side, in columns, or wherever suits your notes.</p>
 <figure class="wide"><img src="screenshots/09-segment-handles.png" alt=""><figcaption>Segments placed freely on a page; the selected one shows its border and handles</figcaption></figure>
 
-<h3>Moving, resizing and colouring segments</h3>
+<h3>Moving, resizing, colouring and deleting segments</h3>
 <ul>
   <li><strong>Move:</strong> drag the small circle at the segment's top-left corner.</li>
   <li><strong>Resize:</strong> drag the small bar on the segment's right edge.</li>
-  <li><strong>Colour:</strong> right-click the segment (not on a misspelled word) and pick a colour. Its border and a soft background tint are coloured. Choose <strong>None</strong> to remove the colour.</li>
-  <li><strong>Delete:</strong> delete all of a segment's text and click elsewhere. Empty segments disappear by themselves, unless they have a colour.</li>
+  <li><strong>Colour:</strong> right-click the segment (not on a misspelled word) and pick a colour. Its border and a soft background tint are coloured. The menu has nine <strong>quick picks</strong>, a grid of <strong>shades</strong> for ten colour families (darkest at the top), your <strong>recent</strong> colours, and <strong>More colours…</strong> for the colour wheel (see <em>Page colour</em> below). Choose <strong>None</strong> to remove the colour.</li>
+  <li><strong>Delete:</strong> right-click the segment and choose <strong>Delete segment</strong> (at the bottom of the menu). This works for any segment, even one with text or a colour.</li>
 </ul>
-<figure class="small"><img src="screenshots/10-segment-colour-menu.png" alt=""><figcaption>Right-click a segment to colour it</figcaption></figure>
+<figure class="small"><img src="screenshots/10-segment-colour-menu.png" alt=""><figcaption>Right-click a segment to colour or delete it</figcaption></figure>
+<p>After you delete a segment, a <strong>Segment deleted</strong> message appears at the bottom of the window for a few seconds. Click <strong>Undo</strong> (or press <kbd>Ctrl</kbd>+<kbd>Z</kbd> while you're not typing in a segment) to bring it back exactly as it was. Click <strong>✕</strong>, or wait for the bar to run out, to make the deletion final.</p>
+<figure class="wide"><img src="screenshots/10b-delete-segment-undo.png" alt=""><figcaption>A deleted segment can be brought back with Undo</figcaption></figure>
+<div class="tip"><p>Empty segments still tidy themselves away: delete all of a segment's text and click elsewhere, and it disappears, unless it has a colour.</p></div>
 
 <h3>Formatting text</h3>
 <p>Select some text and use the <strong>Home</strong> tab of the ribbon:</p>
@@ -306,8 +318,22 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -Silent -KeepD
 <figure class="wide"><img src="screenshots/24-dark-theme.png" alt=""><figcaption>Dark theme</figcaption></figure>
 
 <h3>Page colour</h3>
-<p>On the <strong>View</strong> tab, click <strong>Page colour</strong>. Choose a paper tone for <strong>this page</strong>, or a default for <strong>all pages</strong>. <em>Custom…</em> lets you pick any colour. Page colours show in the light theme.</p>
+<p>On the <strong>View</strong> tab, click <strong>Page colour</strong>. Page colours show in the light theme.</p>
+<ol>
+  <li>Under <strong>Apply to</strong>, choose <strong>This page</strong> or <strong>All pages</strong> (the default for every page that doesn't have its own colour).</li>
+  <li>Pick a colour:
+    <ul>
+      <li><strong>Paper:</strong> soft paper tones such as Ivory, Sepia and Mint.</li>
+      <li><strong>Shades:</strong> ten colour families, each from darkest (top) to lightest (bottom). Dark colours are fine: the text turns light so it stays readable.</li>
+      <li><strong>Recent:</strong> colours you recently chose on the colour wheel.</li>
+      <li><strong>More colours…:</strong> opens the colour wheel.</li>
+    </ul>
+  </li>
+  <li><strong>Use default</strong> (for this page) or <strong>White</strong> (for all pages) removes the colour.</li>
+</ol>
 <figure><img src="screenshots/19-view-page-colour.png" alt=""><figcaption>The Page colour menu on the View tab</figcaption></figure>
+<p>On the <strong>colour wheel</strong>, drag across the wheel to choose the colour, use the <strong>Brightness</strong> slider to make it lighter or darker, or type an exact hex code such as <code>#7dd3fc</code>. The two squares compare the current and the new colour. Nothing changes until you click <strong>Apply</strong>; <strong>Cancel</strong> goes back to the palette.</p>
+<figure class="small"><img src="screenshots/19b-colour-wheel.png" alt=""><figcaption>The colour wheel</figcaption></figure>
 <p>If you choose a page colour that makes some coloured text hard to read, FlowNote tells you. <strong>Adjust</strong> fixes the colours for you, <strong>Show me</strong> highlights the affected text, and <strong>Keep</strong> leaves it as it is.</p>
 <figure class="wide"><img src="screenshots/20-contrast-notice.png" alt=""><figcaption>The contrast notice on a dark page</figcaption></figure>
 
@@ -366,6 +392,7 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -Silent -KeepD
     <tr><td>Code block</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd></td></tr>
     <tr><td>Insert block menu</td><td><kbd>/</kbd></td></tr>
     <tr><td>Undo / Redo</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>)</td></tr>
+    <tr><td>Undo deleting a segment (while the message shows)</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd>, when you're not typing in a segment</td></tr>
     <tr><td>Select all text in a segment</td><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td></tr>
     <tr><td>Paste a picture or file</td><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td></tr>
     <tr><td>Close a menu or dialog</td><td><kbd>Esc</kbd></td></tr>
@@ -386,6 +413,9 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-FlowNote.ps1 -Silent -KeepD
     <tr><td>Windows says "Windows protected your PC"</td><td>The preview installers aren't code-signed yet. Click <strong>More info → Run anyway</strong>.</td></tr>
     <tr><td><code>flownote</code> isn't found in a terminal (just-for-me install)</td><td><code>~/.local/bin</code> isn't on your <code>PATH</code>. Open FlowNote from the app menu, or run <code>~/.local/bin/flownote</code>. Logging out and in again usually fixes the <code>PATH</code>.</td></tr>
     <tr><td>Typing after clicking the page does nothing</td><td>Click inside the new segment first, then type.</td></tr>
+    <tr><td>"File name must start with a letter"</td><td>Page names can start with any letter, lowercase or capital, but not with a number or a symbol. Put a word first, e.g. <em>Draft 2</em> instead of <em>2nd draft</em>.</td></tr>
+    <tr><td>I deleted a segment by mistake</td><td>Click <strong>Undo</strong> in the message at the bottom of the window, or press <kbd>Ctrl</kbd>+<kbd>Z</kbd>, before it disappears (a few seconds).</td></tr>
+    <tr><td>The Spreadsheet plugin doesn't appear in the "/" menu on Windows</td><td>A known issue in this version: plugins don't load yet in the Windows app. It works on Linux. A fix is planned.</td></tr>
     <tr><td>Sync says it needs attention</td><td>Open <strong>View → Sync…</strong> to see what's wrong. Often you just need to sign in again.</td></tr>
   </tbody>
 </table>

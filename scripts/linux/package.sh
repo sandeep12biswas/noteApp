@@ -7,7 +7,7 @@
 #     FlowNote-<ver>-x86_64.AppImage                runs anywhere, no root
 #     install.sh  uninstall.sh  lib/ui.sh           (packaging/linux/)
 #     README.txt  RELEASE-NOTICE.txt  VERSION
-#     docs/FlowNote-{Installation,User,Feature}-Guide.pdf
+#     docs/FlowNote-{Installation,User,Feature}-Guide.{pdf,docx}
 #     SHA256SUMS
 #   dist-release/FlowNote-<ver>-linux-x86_64.tar.gz the bundle, archived
 #   dist-release/FlowNote-<ver>-linux-x86_64.run    self-extracting installer
@@ -98,13 +98,14 @@ cp packaging/linux/install.sh packaging/linux/uninstall.sh packaging/linux/READM
 cp packaging/linux/lib/ui.sh "$BUNDLE/lib/"
 cp packaging/RELEASE-NOTICE.txt "$BUNDLE/"
 echo "$VERSION" >"$BUNDLE/VERSION"
-for pdf in FlowNote-Installation-Guide.pdf FlowNote-User-Guide.pdf FlowNote-Feature-Guide.pdf; do
-  if [ -f "docs/$pdf" ]; then cp "docs/$pdf" "$BUNDLE/docs/"
-  else echo "warning: docs/$pdf is missing (run: pnpm docs); the bundle won't include it" >&2
+for guide in FlowNote-{Installation,User,Feature}-Guide.{pdf,docx}; do
+  if [ -f "docs/$guide" ]; then cp "docs/$guide" "$BUNDLE/docs/"
+  else echo "warning: docs/$guide is missing (run: pnpm docs); the bundle won't include it" >&2
   fi
 done
 chmod 755 "$BUNDLE/install.sh" "$BUNDLE/uninstall.sh" "$BUNDLE"/*.AppImage
 chmod 644 "$BUNDLE"/*.deb "$BUNDLE"/*.txt "$BUNDLE/VERSION" "$BUNDLE/lib/ui.sh"
+chmod 644 "$BUNDLE"/docs/* 2>/dev/null || true
 
 step "Writing SHA256SUMS"
 (cd "$BUNDLE" && find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | xargs -d '\n' sha256sum >SHA256SUMS)

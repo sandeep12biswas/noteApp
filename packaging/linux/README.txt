@@ -3,7 +3,7 @@ FlowNote for Linux
 
 Built for 64-bit PCs (x86_64). Step-by-step instructions with pictures:
 docs/FlowNote-Installation-Guide.pdf. Using FlowNote: docs/FlowNote-User-Guide.pdf
-and docs/FlowNote-Feature-Guide.pdf.
+and docs/FlowNote-Feature-Guide.pdf (each also as an editable Word .docx).
 
 INSTALL — the easy way
   Double-click FlowNote-<version>-linux-x86_64.run (or run it in a terminal)
