@@ -3,9 +3,9 @@
 //! Both shells start one [`SyncService`] next to their database pool and
 //! forward its events to the frontend (the Electron sidecar as
 //! `{"event":"sync","data":…}` lines, Tauri as a `sync-event` app event).
-//! Settings commands (`status`, `configure`, `connect`, `sync_now`,
-//! `confirm_mass_delete`, `disconnect`) are methods here, so the two shells
-//! can't behave differently.
+//! Settings commands (`status`, `configure`, `sign_in`, `connect`,
+//! `sync_now`, `confirm_mass_delete`, `disconnect`) are methods here, so the
+//! two shells can't behave differently.
 //!
 //! A cycle runs:
 //! - when the app starts, if sync is set up;
@@ -21,7 +21,9 @@
 //! - `docsChanged`: `{ pageIds, folders }` — pages whose segments, ink or
 //!   attachments another device changed, and whether the folder tree, page
 //!   list or dictionary changed;
-//! - `conflict`: `{ segmentIds }` — conflict copies just created.
+//! - `conflict`: `{ segmentIds }` — conflict copies just created;
+//! - `signIn`: `{ url }` — a cloud sign-in is waiting in the browser at
+//!   `url` (shown as a link in case the browser didn't open).
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -32,7 +34,12 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use super::gdrive::{self, GoogleDriveTarget};
+use super::http::{Http, Retry};
+use super::oauth::{self, Provider, TokenSource, Tokens, SIGN_IN_AGAIN};
+use super::onedrive::{self, OneDriveTarget};
 use super::{connect_vault, stored_vault_key, sync_once, ConnectError, LocalFolderTarget, MassDelete, SyncOptions, SyncTarget};
+use std::sync::atomic::{AtomicBool, Ordering};
 use crate::crypto::KdfParams;
 use crate::crdt;
 use crate::store::now_ms;
@@ -63,9 +70,122 @@ impl Default for Timing {
     }
 }
 
-/// Targets this build can sync to. OneDrive and Google Drive arrive with S6.
 pub const TARGET_NONE: &str = "none";
 pub const TARGET_FOLDER: &str = "folder";
+pub const TARGET_ONEDRIVE: &str = "onedrive";
+pub const TARGET_GDRIVE: &str = "gdrive";
+
+fn is_cloud(target: &str) -> bool {
+    target == TARGET_ONEDRIVE || target == TARGET_GDRIVE
+}
+
+/// This app's OAuth registrations and the cloud APIs' addresses.
+#[derive(Debug, Clone)]
+pub struct Cloud {
+    /// `None` when this build has no OneDrive app id (see [`Cloud::from_env`]).
+    pub onedrive: Option<Provider>,
+    pub google: Option<Provider>,
+    pub graph_api: String,
+    pub drive_api: String,
+    pub retry: Retry,
+    /// How long a sign-in waits for the browser.
+    pub sign_in_timeout: Duration,
+}
+
+/// A build-time setting, overridable at run time (developers, tests).
+fn setting(runtime: &str, built_in: Option<&'static str>) -> Option<String> {
+    std::env::var(runtime).ok().or(built_in.map(str::to_string)).filter(|v| !v.trim().is_empty())
+}
+
+impl Cloud {
+    /// The app registrations come from `FLOWNOTE_ONEDRIVE_CLIENT_ID`,
+    /// `FLOWNOTE_GOOGLE_CLIENT_ID` and `FLOWNOTE_GOOGLE_CLIENT_SECRET`, set
+    /// when building (compiled in) or when running. docs/sync-cloud-setup.md
+    /// explains how to register the apps.
+    pub fn from_env() -> Cloud {
+        let onedrive = setting("FLOWNOTE_ONEDRIVE_CLIENT_ID", option_env!("FLOWNOTE_ONEDRIVE_CLIENT_ID")).map(|client_id| Provider {
+            name: "OneDrive",
+            auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".into(),
+            token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".into(),
+            client_id,
+            client_secret: None,
+            scopes: "Files.ReadWrite.AppFolder User.Read offline_access".into(),
+            redirect_host: "localhost",
+            extra_auth_params: vec![("prompt", "select_account")],
+        });
+        let google = setting("FLOWNOTE_GOOGLE_CLIENT_ID", option_env!("FLOWNOTE_GOOGLE_CLIENT_ID")).map(|client_id| Provider {
+            name: "Google Drive",
+            auth_url: "https://accounts.google.com/o/oauth2/v2/auth".into(),
+            token_url: "https://oauth2.googleapis.com/token".into(),
+            client_id,
+            client_secret: setting("FLOWNOTE_GOOGLE_CLIENT_SECRET", option_env!("FLOWNOTE_GOOGLE_CLIENT_SECRET")),
+            scopes: "https://www.googleapis.com/auth/drive.file".into(),
+            redirect_host: "127.0.0.1",
+            // A refresh token every time, so sync keeps working unattended.
+            extra_auth_params: vec![("access_type", "offline"), ("prompt", "consent")],
+        });
+        Cloud {
+            onedrive,
+            google,
+            graph_api: onedrive::GRAPH_API.into(),
+            drive_api: gdrive::DRIVE_API.into(),
+            retry: Retry::default(),
+            sign_in_timeout: Duration::from_secs(300),
+        }
+    }
+
+    fn provider(&self, target: &str) -> Result<Provider, String> {
+        let (found, name, var) = match target {
+            TARGET_ONEDRIVE => (&self.onedrive, "OneDrive", "FLOWNOTE_ONEDRIVE_CLIENT_ID"),
+            TARGET_GDRIVE => (&self.google, "Google Drive", "FLOWNOTE_GOOGLE_CLIENT_ID"),
+            other => return Err(format!("Syncing to \"{other}\" isn't available in this version.")),
+        };
+        found.clone().ok_or_else(|| format!("This build of FlowNote isn't registered with {name} ({var} wasn't set; see docs/sync-cloud-setup.md)."))
+    }
+
+    fn target(&self, kind: &str, tokens: Arc<TokenSource>) -> Result<CloudTarget, String> {
+        let http = Http::new(self.retry.clone())?;
+        Ok(match kind {
+            TARGET_ONEDRIVE => CloudTarget::OneDrive(OneDriveTarget::with_api(http, tokens, &self.graph_api)),
+            _ => CloudTarget::Google(GoogleDriveTarget::with_api(http, tokens, &self.drive_api)),
+        })
+    }
+}
+
+enum CloudTarget {
+    OneDrive(OneDriveTarget),
+    Google(GoogleDriveTarget),
+}
+
+impl CloudTarget {
+    fn account(&self) -> Result<String, String> {
+        match self {
+            CloudTarget::OneDrive(t) => t.account(),
+            CloudTarget::Google(t) => t.account(),
+        }
+    }
+
+    fn boxed(self) -> Box<dyn SyncTarget> {
+        match self {
+            CloudTarget::OneDrive(t) => Box::new(t),
+            CloudTarget::Google(t) => Box::new(t),
+        }
+    }
+}
+
+/// Everything [`SyncService::start_with`] can change; tests shorten it.
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub timing: Timing,
+    pub kdf: KdfParams,
+    pub cloud: Cloud,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config { timing: Timing::default(), kdf: KdfParams::default(), cloud: Cloud::from_env() }
+    }
+}
 
 #[derive(Default)]
 struct Runtime {
@@ -78,6 +198,8 @@ struct Runtime {
     last_failed: bool,
     held_back: Option<MassDelete>,
     waiting: usize,
+    /// Set to stop the sign-in waiting in the browser, if any.
+    sign_in_cancel: Option<Arc<AtomicBool>>,
 }
 
 struct Shared {
@@ -85,6 +207,7 @@ struct Shared {
     emit: Emit,
     timing: Timing,
     kdf: KdfParams,
+    cloud: Cloud,
     runtime: Mutex<Runtime>,
     wake: Condvar,
     /// Held for a whole cycle and while (dis)connecting, so settings never
@@ -106,15 +229,23 @@ struct Settings {
     device_name: String,
     target: String,
     account_label: Option<String>,
+    oauth_tokens: Option<String>,
     enabled: bool,
     last_sync_at: Option<i64>,
     last_error: Option<String>,
 }
 
+impl Settings {
+    /// A cloud target chosen but not signed in (or the sign-in was revoked).
+    fn needs_sign_in(&self) -> bool {
+        is_cloud(&self.target) && self.oauth_tokens.is_none()
+    }
+}
+
 fn read_settings(conn: &Connection) -> Result<Settings, String> {
     crdt::device_id(conn)?;
     conn.query_row(
-        "SELECT device_id, device_name, target, account_label, enabled, last_sync_at, last_error FROM sync_settings WHERE id = 1",
+        "SELECT device_id, device_name, target, account_label, oauth_tokens, enabled, last_sync_at, last_error FROM sync_settings WHERE id = 1",
         [],
         |r| {
             Ok(Settings {
@@ -122,29 +253,16 @@ fn read_settings(conn: &Connection) -> Result<Settings, String> {
                 device_name: r.get(1)?,
                 target: r.get(2)?,
                 account_label: r.get(3)?,
-                enabled: r.get::<_, i64>(4)? != 0,
-                last_sync_at: r.get(5)?,
-                last_error: r.get(6)?,
+                oauth_tokens: r.get(4)?,
+                enabled: r.get::<_, i64>(5)? != 0,
+                last_sync_at: r.get(6)?,
+                last_error: r.get(7)?,
             })
         },
     )
     .map_err(err)
 }
 
-/// The cloud folder for the configured target, if there is one.
-fn open_target(settings: &Settings) -> Result<Option<Box<dyn SyncTarget>>, String> {
-    match settings.target.as_str() {
-        TARGET_NONE => Ok(None),
-        TARGET_FOLDER => {
-            let path = settings.account_label.as_deref().unwrap_or_default();
-            if !Path::new(path).is_dir() {
-                return Err(format!("The sync folder {path} isn't there (is the drive connected?)."));
-            }
-            Ok(Some(Box::new(LocalFolderTarget::new(path))))
-        }
-        other => Err(format!("Syncing to \"{other}\" isn't available in this version.")),
-    }
-}
 
 /// This computer's name, shown on the user's other devices until they pick one.
 fn default_device_name() -> String {
@@ -159,11 +277,13 @@ fn default_device_name() -> String {
 
 impl SyncService {
     pub fn start(pool: Pool<SqliteConnectionManager>, emit: Emit) -> Result<SyncService, String> {
-        Self::start_with(pool, emit, Timing::default(), KdfParams::default())
+        Self::start_with(pool, emit, Config::default())
     }
 
-    /// [`start`](Self::start) with other timings and key-derivation cost (tests).
-    pub fn start_with(pool: Pool<SqliteConnectionManager>, emit: Emit, timing: Timing, kdf: KdfParams) -> Result<SyncService, String> {
+    /// [`start`](Self::start) with other timings, key-derivation cost or
+    /// cloud endpoints (tests).
+    pub fn start_with(pool: Pool<SqliteConnectionManager>, emit: Emit, config: Config) -> Result<SyncService, String> {
+        let Config { timing, kdf, cloud } = config;
         {
             let conn = pool.get().map_err(err)?;
             let settings = read_settings(&conn)?;
@@ -176,6 +296,7 @@ impl SyncService {
             emit,
             timing,
             kdf,
+            cloud,
             runtime: Mutex::new(Runtime { requested: true, ..Runtime::default() }), // sync on start
             wake: Condvar::new(),
             cycle: Mutex::new(()),
@@ -195,9 +316,10 @@ impl SyncService {
     }
 
     /// Picks where to sync and/or names this device. `input`:
-    /// `{ target?: "none" | "folder", folderPath?, deviceName? }`. Choosing a
-    /// different target forgets the passphrase key, so [`connect`](Self::connect)
-    /// is needed again; local notes are untouched.
+    /// `{ target?: "none" | "folder" | "onedrive" | "gdrive", folderPath?,
+    /// deviceName? }`. Choosing a different target forgets the sign-in and the
+    /// passphrase key, so [`sign_in`](Self::sign_in) (cloud targets) and
+    /// [`connect`](Self::connect) are needed again; local notes are untouched.
     pub fn configure(&self, input: &Value) -> Result<Value, String> {
         let shared = &self.shared;
         let _cycle = lock(&shared.cycle);
@@ -223,7 +345,14 @@ impl SyncService {
                     }
                     Some(path.to_string())
                 }
-                other => return Err(format!("Syncing to \"{other}\" isn't available in this version.")),
+                cloud => {
+                    shared.cloud.provider(cloud)?;
+                    if cloud == current.target {
+                        current.account_label.clone() // same drive: keep the sign-in
+                    } else {
+                        None
+                    }
+                }
             };
             if target != current.target || label != current.account_label {
                 conn.execute(
@@ -252,7 +381,10 @@ impl SyncService {
             let _cycle = lock(&shared.cycle);
             let conn = shared.pool.get().map_err(err)?;
             let settings = read_settings(&conn)?;
-            let Some(target) = open_target(&settings)? else {
+            if settings.needs_sign_in() {
+                return Err("Sign in first.".into());
+            }
+            let Some(target) = shared.open_target(&settings)? else {
                 return Err("Choose where to sync first.".into());
             };
             match connect_vault(&conn, target.as_ref(), passphrase, shared.kdf) {
@@ -267,6 +399,78 @@ impl SyncService {
         shared.request(false);
         shared.emit_status();
         shared.status()
+    }
+
+    /// Signs in to a cloud drive (`"onedrive"` or `"gdrive"`) in the system
+    /// browser, which `open_browser` opens at the sign-in URL (also sent as a
+    /// `signIn` event, for a link in case it didn't open). Blocks until the
+    /// browser comes back, [`cancel_sign_in`](Self::cancel_sign_in), or a
+    /// timeout. Then the drive is the target: the passphrase is still needed
+    /// ([`connect`](Self::connect)) — unless this was the same account again
+    /// (e.g. after the sign-in expired), which carries on syncing.
+    pub fn sign_in(&self, target: &str, open_browser: &dyn Fn(&str) -> Result<(), String>) -> Result<Value, String> {
+        let shared = &self.shared;
+        let provider = shared.cloud.provider(target)?;
+        let cancel = Arc::new(AtomicBool::new(false));
+        if let Some(previous) = lock(&shared.runtime).sign_in_cancel.replace(cancel.clone()) {
+            previous.store(true, Ordering::Relaxed); // one sign-in at a time
+        }
+        let result = (|| {
+            let http = Http::new(shared.cloud.retry.clone())?;
+            let auth = oauth::begin(&provider)?;
+            (shared.emit)(json!({ "type": "signIn", "url": auth.url }));
+            if let Err(e) = open_browser(&auth.url) {
+                eprintln!("flownote sync: couldn't open the browser: {e}");
+            }
+            let code = auth.wait(&cancel, shared.cloud.sign_in_timeout)?;
+            let tokens = oauth::exchange(&http, &provider, &auth, &code)?;
+            let source = Arc::new(TokenSource::new(provider.clone(), tokens.clone(), Box::new(|_| Ok(()))));
+            let account = shared.cloud.target(target, source)?.account()?;
+            Ok::<_, String>((tokens, account))
+        })();
+        {
+            let mut rt = lock(&shared.runtime);
+            if rt.sign_in_cancel.as_ref().is_some_and(|c| Arc::ptr_eq(c, &cancel)) {
+                rt.sign_in_cancel = None;
+            }
+        }
+        let (tokens, account) = result?;
+
+        let carry_on = {
+            let _cycle = lock(&shared.cycle);
+            let conn = shared.pool.get().map_err(err)?;
+            let current = read_settings(&conn)?;
+            let same_account = current.target == target && current.account_label.as_deref() == Some(account.as_str());
+            if same_account {
+                conn.execute(
+                    "UPDATE sync_settings SET oauth_tokens = ?1, last_error = NULL WHERE id = 1",
+                    [tokens.to_json()],
+                )
+                .map_err(err)?;
+            } else {
+                conn.execute(
+                    "UPDATE sync_settings SET target = ?1, account_label = ?2, oauth_tokens = ?3, vault_key = NULL,
+                       enabled = 0, last_error = NULL WHERE id = 1",
+                    rusqlite::params![target, account, tokens.to_json()],
+                )
+                .map_err(err)?;
+                lock(&shared.runtime).held_back = None;
+            }
+            same_account && current.enabled
+        };
+        if carry_on {
+            shared.request(false);
+        }
+        shared.emit_status();
+        shared.status()
+    }
+
+    /// Stops a sign-in waiting in the browser; its `sign_in` call then fails.
+    pub fn cancel_sign_in(&self) -> Result<Value, String> {
+        if let Some(cancel) = lock(&self.shared.runtime).sign_in_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.shared.status()
     }
 
     /// Runs a cycle now (or right after the one in progress).
@@ -321,6 +525,33 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl Shared {
+    /// Where the configured target stores files, if one is chosen.
+    fn open_target(&self, settings: &Settings) -> Result<Option<Box<dyn SyncTarget>>, String> {
+        match settings.target.as_str() {
+            TARGET_NONE => Ok(None),
+            TARGET_FOLDER => {
+                let path = settings.account_label.as_deref().unwrap_or_default();
+                if !Path::new(path).is_dir() {
+                    return Err(format!("The sync folder {path} isn't there (is the drive connected?)."));
+                }
+                Ok(Some(Box::new(LocalFolderTarget::new(path))))
+            }
+            cloud => {
+                let provider = self.cloud.provider(cloud)?;
+                let stored = settings.oauth_tokens.as_deref().ok_or_else(|| format!("Sign in to {} first.", provider.name))?;
+                let tokens = Tokens::from_json(stored)?;
+                let pool = self.pool.clone();
+                let save = Box::new(move |t: &Tokens| {
+                    let conn = pool.get().map_err(err)?;
+                    conn.execute("UPDATE sync_settings SET oauth_tokens = ?1 WHERE id = 1", [t.to_json()]).map_err(err)?;
+                    Ok(())
+                });
+                let source = Arc::new(TokenSource::new(provider, tokens, save));
+                Ok(Some(self.cloud.target(cloud, source)?.boxed()))
+            }
+        }
+    }
+
     fn request(&self, allow_mass_delete: bool) {
         let mut rt = lock(&self.runtime);
         rt.requested = true;
@@ -370,6 +601,8 @@ impl Shared {
         };
         let state = if s.target == TARGET_NONE {
             "off"
+        } else if s.needs_sign_in() {
+            "needsSignIn"
         } else if !connected {
             "needsPassphrase"
         } else if rt.syncing {
@@ -385,6 +618,8 @@ impl Shared {
             "state": state,
             "target": s.target,
             "folderPath": if s.target == TARGET_FOLDER { s.account_label.clone() } else { None },
+            "accountLabel": if is_cloud(&s.target) { s.account_label.clone() } else { None },
+            "signingIn": rt.sign_in_cancel.is_some(),
             "deviceId": s.device_id,
             "deviceName": s.device_name,
             "connected": connected,
@@ -407,7 +642,7 @@ impl Shared {
         }
         let conn = self.pool.get().map_err(err)?;
         let s = read_settings(&conn)?;
-        if s.target == TARGET_NONE || !s.enabled {
+        if s.target == TARGET_NONE || !s.enabled || s.needs_sign_in() {
             return Ok(false);
         }
         if last_attempt.is_none_or(|at| at.elapsed() >= self.timing.interval) {
@@ -456,11 +691,11 @@ impl Shared {
     fn cycle_inner(&self, allow_mass_delete: bool) -> Result<Option<super::SyncReport>, String> {
         let conn = self.pool.get().map_err(err)?;
         let settings = read_settings(&conn)?;
-        if !settings.enabled {
+        if !settings.enabled || settings.needs_sign_in() {
             return Ok(None);
         }
         let prepared = (|| {
-            let target = open_target(&settings)?;
+            let target = self.open_target(&settings)?;
             let key = stored_vault_key(&conn)?;
             Ok::<_, String>(target.zip(key))
         })();
@@ -473,7 +708,15 @@ impl Shared {
             }
         };
         let options = SyncOptions { allow_mass_delete, device_name: settings.device_name };
-        sync_once(&conn, target.as_ref(), &key, &options).map(Some)
+        let result = sync_once(&conn, target.as_ref(), &key, &options).map(Some);
+        if let Err(e) = &result
+            && e.contains(SIGN_IN_AGAIN)
+        {
+            // Only a new sign-in helps: forget the dead tokens so the status
+            // says so, instead of failing again every minute.
+            conn.execute("UPDATE sync_settings SET oauth_tokens = NULL WHERE id = 1", []).map_err(err)?;
+        }
+        result
     }
 }
 

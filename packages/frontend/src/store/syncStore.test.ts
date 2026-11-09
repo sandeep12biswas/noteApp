@@ -8,6 +8,8 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({
   state: 'idle',
   target: 'folder',
   folderPath: '/sync',
+  accountLabel: null,
+  signingIn: false,
   deviceId: 'd1',
   deviceName: 'Laptop',
   connected: true,
@@ -21,7 +23,7 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({
 })
 
 beforeEach(() => {
-  useSyncStore.setState({ status: null, pageRevs: {}, conflictSegmentIds: [] })
+  useSyncStore.setState({ status: null, pageRevs: {}, conflictSegmentIds: [], signInUrl: null })
   useNotebookStore.setState({ selectedFileId: 'p1' })
 })
 
@@ -51,6 +53,17 @@ describe('syncStore.handleEvent', () => {
     expect(reload).toHaveBeenCalledTimes(1)
     expect(apply).toHaveBeenCalledWith('p1')
     expect(useSyncStore.getState().pageRevs).toEqual({ p1: 1, p2: 2 })
+  })
+})
+
+describe('signIn events', () => {
+  it('keep the sign-in link only while the sign-in waits', async () => {
+    await useSyncStore.getState().handleEvent({ type: 'signIn', url: 'https://login.example/authorize?x=1' })
+    expect(useSyncStore.getState().signInUrl).toBe('https://login.example/authorize?x=1')
+    await useSyncStore.getState().handleEvent({ type: 'status', status: status({ state: 'needsSignIn', signingIn: true }) })
+    expect(useSyncStore.getState().signInUrl).not.toBeNull()
+    await useSyncStore.getState().handleEvent({ type: 'status', status: status({ state: 'needsPassphrase', signingIn: false }) })
+    expect(useSyncStore.getState().signInUrl).toBeNull()
   })
 })
 

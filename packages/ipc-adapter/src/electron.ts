@@ -12,6 +12,7 @@ import type {
   PluginManifest,
   SearchResult,
   Segment,
+  SyncCloudTarget,
   SyncConfigInput,
   SyncEvent,
   SyncStatus,
@@ -64,6 +65,8 @@ interface ElectronRouter {
   syncStatus: { query: () => Promise<SyncStatus> }
   syncConfigure: { mutate: (input: SyncConfigInput) => Promise<SyncStatus> }
   syncConnect: { mutate: (passphrase: string) => Promise<SyncStatus> }
+  syncSignIn: { mutate: (target: SyncCloudTarget) => Promise<SyncStatus> }
+  syncCancelSignIn: { mutate: () => Promise<SyncStatus> }
   syncNow: { mutate: () => Promise<SyncStatus> }
   syncConfirmMassDelete: { mutate: () => Promise<SyncStatus> }
   syncDisconnect: { mutate: () => Promise<SyncStatus> }
@@ -207,6 +210,14 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async connectSync(passphrase: string): Promise<SyncStatus> {
     return getClient().syncConnect.mutate(passphrase)
+  }
+
+  async signInSync(target: SyncCloudTarget): Promise<SyncStatus> {
+    return getClient().syncSignIn.mutate(target)
+  }
+
+  async cancelSyncSignIn(): Promise<SyncStatus> {
+    return getClient().syncCancelSignIn.mutate()
   }
 
   async syncNow(): Promise<SyncStatus> {

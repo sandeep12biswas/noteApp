@@ -13,6 +13,7 @@ import type {
   PluginManifest,
   SearchResult,
   Segment,
+  SyncCloudTarget,
   SyncConfigInput,
   SyncEvent,
   SyncStatus,
@@ -162,6 +163,14 @@ export class TauriIPCAdapter implements IPCAdapter {
 
   async connectSync(passphrase: string): Promise<SyncStatus> {
     return unwrap(await commands.syncConnect(passphrase)) as unknown as SyncStatus
+  }
+
+  async signInSync(target: SyncCloudTarget): Promise<SyncStatus> {
+    return unwrap(await commands.syncSignIn(target)) as unknown as SyncStatus
+  }
+
+  async cancelSyncSignIn(): Promise<SyncStatus> {
+    return unwrap(await commands.syncCancelSignIn()) as unknown as SyncStatus
   }
 
   async syncNow(): Promise<SyncStatus> {

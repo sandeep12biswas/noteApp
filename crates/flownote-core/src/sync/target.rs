@@ -27,7 +27,7 @@ pub trait SyncTarget: Send + Sync {
 }
 
 /// Rejects paths that could leave the sync folder.
-fn check_path(path: &str) -> Result<(), String> {
+pub(crate) fn check_path(path: &str) -> Result<(), String> {
     if path.is_empty() || path.starts_with('/') || path.contains('\\') || path.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
         return Err(format!("invalid sync path `{path}`"));
     }
@@ -152,10 +152,11 @@ impl SyncTarget for MemoryTarget {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn exercise(target: &dyn SyncTarget) {
+    /// The behaviour every target must have; also run against the cloud targets.
+    pub(crate) fn exercise(target: &dyn SyncTarget) {
         assert_eq!(target.get("a/b.bin").unwrap(), None);
         target.put("a/b.bin", b"one").unwrap();
         target.put("a/c/d.bin", b"two").unwrap();

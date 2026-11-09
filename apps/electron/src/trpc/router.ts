@@ -246,6 +246,16 @@ export const appRouter = t.router({
     })
     .mutation(({ ctx, input }) => ctx.sidecar.request('sync_connect', { passphrase: input })),
 
+  /** Resolves once the browser sign-in finishes (the sidecar opens the browser). */
+  syncSignIn: t.procedure
+    .input((target: unknown): string => {
+      if (target !== 'onedrive' && target !== 'gdrive') throw new Error("syncSignIn expects 'onedrive' or 'gdrive'")
+      return target
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('sync_sign_in', { target: input })),
+
+  syncCancelSignIn: t.procedure.mutation(({ ctx }) => ctx.sidecar.request('sync_cancel_sign_in')),
+
   syncNow: t.procedure.mutation(({ ctx }) => ctx.sidecar.request('sync_now')),
 
   syncConfirmMassDelete: t.procedure.mutation(({ ctx }) => ctx.sidecar.request('sync_confirm_mass_delete')),
