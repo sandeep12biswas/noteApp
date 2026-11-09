@@ -28,6 +28,7 @@ import { misspelledWordAt } from './spellcheckExtension'
 import { SlashMenu, slashMenuItems } from './SlashMenu'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 import { useRemoteContent } from './useRemoteContent'
+import { ConflictBadge } from './ConflictBadge'
 
 const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
 
@@ -664,6 +665,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           onPointerDown={startDrag}
         />
       )}
+      <ConflictBadge segmentId={segment.id} floating />
       <EditorContent editor={editor} className="segment-editor" />
       {revealed && (
         <div

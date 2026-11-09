@@ -580,6 +580,14 @@ impl Shared {
             .map_err(err)?
             .collect::<Result<_, _>>()
             .map_err(err)?;
+        // Whether the passphrase step creates the vault (first device) or
+        // joins it — only looked up while that step is showing, since for a
+        // cloud drive it's a request. `null` when unknown (e.g. offline).
+        let vault_exists = if !s.needs_sign_in() && !connected && s.target != TARGET_NONE {
+            self.open_target(&s).ok().flatten().and_then(|t| super::read_vault(t.as_ref()).ok()).map(|v| v.is_some())
+        } else {
+            None
+        };
         let rt = lock(&self.runtime);
         let held_back = match &rt.held_back {
             Some(h) => {
@@ -628,6 +636,7 @@ impl Shared {
             "heldBack": held_back,
             "quarantined": quarantined,
             "waiting": rt.waiting,
+            "vaultExists": vault_exists,
             "peers": peers,
         }))
     }

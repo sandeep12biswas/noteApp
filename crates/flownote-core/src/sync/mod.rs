@@ -112,7 +112,7 @@ impl From<String> for ConnectError {
     }
 }
 
-fn read_vault(target: &dyn SyncTarget) -> Result<Option<Value>, String> {
+pub(crate) fn read_vault(target: &dyn SyncTarget) -> Result<Option<Value>, String> {
     match target.get(VAULT_PATH)? {
         Some(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| format!("vault.json is not valid: {e}")),
         None => Ok(None),

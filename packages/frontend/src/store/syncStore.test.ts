@@ -19,6 +19,7 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({
   quarantined: 0,
   waiting: 0,
   peers: [],
+  vaultExists: null,
   ...over,
 })
 
@@ -115,5 +116,25 @@ describe('startSync', () => {
     const ipc = { onSyncEvent: () => { throw new Error('no shell') } } as unknown as IPCAdapter
     vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => startSync(ipc)()).not.toThrow()
+  })
+})
+
+describe('settings actions', () => {
+  it('store the returned status, or report the error', async () => {
+    const next = status({ state: 'needsPassphrase' })
+    const ipc = {
+      onSyncEvent: () => () => {},
+      getSyncStatus: vi.fn().mockResolvedValue(status()),
+      configureSync: vi.fn().mockResolvedValue(next),
+      connectSync: vi.fn().mockRejectedValue(new Error('Wrong passphrase: no')),
+      pickFolder: vi.fn().mockRejectedValue(new Error('not available')),
+    } as unknown as IPCAdapter
+    const stop = startSync(ipc)
+    expect(await useSyncStore.getState().configure({ target: 'folder', folderPath: '/x' })).toEqual({ ok: true })
+    expect(useSyncStore.getState().status).toEqual(next)
+    expect(await useSyncStore.getState().connect('nope')).toEqual({ ok: false, error: 'Wrong passphrase: no' })
+    expect(await useSyncStore.getState().pickFolder()).toBeUndefined()
+    stop()
+    expect(await useSyncStore.getState().syncNow()).toEqual({ ok: false, error: 'No backend connected.' })
   })
 })
