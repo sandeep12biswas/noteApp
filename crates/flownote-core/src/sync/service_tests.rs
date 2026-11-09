@@ -142,6 +142,8 @@ fn an_edit_reaches_the_other_device_by_itself() {
     a.wait_idle();
     b.join(&cloud);
     b.wait_for("A's note on B", |b| texts(&b.conn(), "p1") == ["hello"]);
+    // The rows are committed a moment before the cycle ends and reports them.
+    b.wait_for("the docsChanged event", |b| !b.events_of("docsChanged").is_empty());
     let changed = b.events_of("docsChanged");
     assert!(changed.iter().any(|e| e["folders"] == true), "{changed:?}");
     assert!(changed.iter().any(|e| e["pageIds"].as_array().unwrap().contains(&json!("p1"))), "{changed:?}");
