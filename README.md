@@ -64,7 +64,7 @@ Every release is one versioned bundle per OS, built from a clean slate by one co
 |---|---|---|
 | Build the bundle | `./scripts/linux/package.sh` | `.\scripts\windows\package.ps1` |
 | Output (`dist-release/`) | `FlowNote-<ver>-linux-x86_64.run` (self-extracting installer), `.tar.gz` (bundle folder) | `FlowNote-<ver>-windows-x64.zip` |
-| Bundle contents | `.deb`, `.AppImage`, `install.sh`, `uninstall.sh`, `lib/ui.sh`, README, PDF guides, `SHA256SUMS` | NSIS `setup.exe`, `.msi`, `Uninstall FlowNote.cmd` + `Uninstall-FlowNote.ps1`, README, PDF guides, `SHA256SUMS.txt` |
+| Bundle contents | `.deb`, `.AppImage`, `install.sh`, `uninstall.sh`, `lib/ui.sh`, README, guides (PDF + Word), `SHA256SUMS` | NSIS `setup.exe`, `.msi`, `Uninstall FlowNote.cmd` + `Uninstall-FlowNote.ps1`, README, guides (PDF + Word), `SHA256SUMS.txt` |
 | CI | `Linux installer` workflow | `Windows installer` workflow |
 
 Both bundle scripts delete every previous build output first (`--no-clean` / `-NoClean` for a faster incremental build), and both CI workflows run them and then test install → launch → uninstall on a fresh runner. Prebuilt bundles are the workflows' `flownote-linux` / `flownote-windows` artifacts (on `v*` tags, or run by hand).
@@ -99,14 +99,15 @@ The setup wizard is Tauri's NSIS installer customised in `tauri.conf.json` → `
 
 Installer artwork (the Linux icon set and the NSIS/MSI images) is generated from the app icon by `python3 scripts/assets/make-installer-art.py`.
 
-### User Guide and Feature Guide (PDF)
+### User Guide and Feature Guide (PDF and Word)
 
-`docs/FlowNote-Installation-Guide.pdf`, `docs/FlowNote-User-Guide.pdf` and `docs/FlowNote-Feature-Guide.pdf` ship in both bundles (and in the Windows install). Their sources are `docs/guides/*.html`. To regenerate after a UI change (Linux, with the app built and a display available):
+`docs/FlowNote-Installation-Guide.pdf`, `docs/FlowNote-User-Guide.pdf` and `docs/FlowNote-Feature-Guide.pdf` ship in both bundles (and in the Windows install). The same three guides are also built as Word documents (`docs/*.docx`) for editing or sharing; the bundles' `docs/` folders carry both (the Windows installer itself installs only the PDFs). Their sources are `docs/guides/*.html`. To regenerate after a UI change (Linux, with the app built and a display available):
 
 ```bash
 pnpm docs:screenshots   # drives the real Electron app with a throwaway profile -> docs/guides/screenshots/*.png
 pnpm docs:pdf           # headless Chrome -> docs/*.pdf (set CHROME_PATH if Chrome/Chromium isn't found)
-pnpm docs               # both
+pnpm docs:docx          # the same HTML -> docs/*.docx (Word)
+pnpm docs               # all three
 ```
 
 ### macOS

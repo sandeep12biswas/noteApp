@@ -11,7 +11,7 @@
       Uninstall FlowNote.cmd            double-click uninstaller
       Uninstall-FlowNote.ps1            (for either install)
       README.txt  RELEASE-NOTICE.txt  VERSION
-      docs\FlowNote-{Installation,User,Feature}-Guide.pdf
+      docs\FlowNote-{Installation,User,Feature}-Guide.{pdf,docx}
       SHA256SUMS.txt
     FlowNote-<ver>-windows-x64.zip      the bundle, zipped
 
@@ -96,10 +96,13 @@ try {
   Copy-Item (Join-Path $RepoRoot 'packaging\windows\*') $Bundle
   Copy-Item (Join-Path $RepoRoot 'packaging\RELEASE-NOTICE.txt') $Bundle
   Set-Content -Path (Join-Path $Bundle 'VERSION') -Value $Version -NoNewline
-  foreach ($pdf in 'FlowNote-Installation-Guide.pdf', 'FlowNote-User-Guide.pdf', 'FlowNote-Feature-Guide.pdf') {
-    $src = Join-Path $RepoRoot "docs\$pdf"
-    if (Test-Path $src) { Copy-Item $src (Join-Path $Bundle 'docs') }
-    else { Write-Warning "docs\$pdf is missing (run: pnpm docs); the bundle won't include it" }
+  foreach ($name in 'Installation', 'User', 'Feature') {
+    foreach ($ext in 'pdf', 'docx') {
+      $guide = "FlowNote-$name-Guide.$ext"
+      $src = Join-Path $RepoRoot "docs\$guide"
+      if (Test-Path $src) { Copy-Item $src (Join-Path $Bundle 'docs') }
+      else { Write-Warning "docs\$guide is missing (run: pnpm docs); the bundle won't include it" }
+    }
   }
 
   Step 'Writing SHA256SUMS.txt'
