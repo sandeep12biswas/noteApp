@@ -178,3 +178,11 @@ jobs:
             & ./packaging/windows/Uninstall-FlowNote.ps1 -RemoveData
           }
           if ($code -ne 0) { throw "smoke test failed ($code)" }
+
+      - name: Upload smoke-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-diagnostics
+          path: smoke-artifacts/
+          if-no-files-found: ignore
