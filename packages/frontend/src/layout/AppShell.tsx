@@ -1,5 +1,5 @@
 // Overall app layout — DESIGN.md §5.1:
-//   Ribbon header (~88px) / three-panel body (flex-1) / status bar (~24px)
+//   Title bar (desktop shells only, TitleBar.tsx) / ribbon header (~88px) / three-panel body (flex-1) / status bar (~24px)
 // The folder and page panels are mouse-drag resizable (DESIGN.md §2) via a
 // PanelResizeHandle on each one's right edge; the editor takes the rest.
 // (No collision machinery needed: segments are positioned inside the
@@ -16,6 +16,7 @@ import { RibbonRoot } from './RibbonRoot'
 import { SectionSidebar } from './SectionSidebar'
 import { StatusBar } from './StatusBar'
 import { SyncSettingsDialog } from './SyncSettingsDialog'
+import { TitleBar } from './TitleBar'
 
 export function AppShell() {
   const activeView = useUIStore((s) => s.activeView)
@@ -38,6 +39,7 @@ export function AppShell() {
           so a plugin's block types/ribbon groups stay live while browsing
           notes, not just while the Plugin Manager itself is open. */}
       <PluginManager />
+      <TitleBar />
       <RibbonRoot />
       <MassDeleteBanner />
       <div className="flex min-h-0 flex-1">

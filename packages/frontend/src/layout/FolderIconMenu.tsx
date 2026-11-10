@@ -65,7 +65,7 @@ export function FolderIconMenu({
               }}
               className={
                 'flex h-7 w-7 items-center justify-center rounded text-base hover:bg-gray-100 dark:hover:bg-gray-800 ' +
-                (active ? 'ring-2 ring-offset-1 ring-blue-500' : '')
+                (active ? 'ring-2 ring-offset-1 ring-lavender-500' : '')
               }
             >
               {icon}

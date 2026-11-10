@@ -41,7 +41,7 @@ function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone:
       <input
         autoFocus
         aria-label="New folder name"
-        className="w-full rounded border border-blue-400 px-1 py-0.5 text-sm outline-none"
+        className="w-full rounded border border-lavender-400 px-1 py-0.5 text-sm outline-none"
         value={value}
         // Live auto-capitalize preview (DESIGN.md §2.1) — the store
         // capitalizes again on submit, this is just what the user sees
@@ -80,7 +80,7 @@ function RenameFolderInput({ folder, onDone }: { folder: Folder; onDone: () => v
     <input
       autoFocus
       aria-label={`Rename ${folder.name}`}
-      className="flex-1 rounded border border-blue-400 px-1 py-0.5 text-sm outline-none"
+      className="flex-1 rounded border border-lavender-400 px-1 py-0.5 text-sm outline-none"
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={onKeyDown}
@@ -153,9 +153,9 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
         className={
           'flex items-center gap-1 rounded px-1 py-0.5 text-sm ' +
           (isDropTarget
-            ? 'bg-blue-200 dark:bg-blue-800/60'
+            ? 'bg-lavender-200 dark:bg-lavender-800/60'
             : isSelected
-              ? 'bg-blue-100 dark:bg-blue-900/40'
+              ? 'bg-lavender-100 dark:bg-lavender-900/40'
               : 'hover:bg-gray-100 dark:hover:bg-gray-800') +
           (isDragging ? ' opacity-50' : '')
         }
@@ -212,7 +212,7 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
             e.stopPropagation()
             setAddingChild(true)
           }}
-          className="shrink-0 text-xs text-gray-400 hover:text-blue-600"
+          className="shrink-0 text-xs text-gray-400 hover:text-lavender-600"
         >
           +
         </button>
@@ -287,7 +287,7 @@ export function SectionSidebar() {
         <button
           type="button"
           aria-label="New folder"
-          className="text-xs text-blue-600 hover:underline"
+          className="text-xs text-lavender-600 hover:underline"
           onClick={() => setAddingRoot(true)}
         >
           +
@@ -295,7 +295,7 @@ export function SectionSidebar() {
       </div>
       <ul
         ref={treeRef}
-        className={'flex-1 overflow-y-auto px-1 ' + (isRootDropTarget ? 'bg-blue-50 dark:bg-blue-950/30' : '')}
+        className={'flex-1 overflow-y-auto px-1 ' + (isRootDropTarget ? 'bg-lavender-50 dark:bg-lavender-950/30' : '')}
         aria-label="Folder tree"
         onContextMenu={(e) => {
           // Leave text inputs (new-folder / rename) their native menu.
@@ -348,7 +348,7 @@ export function SectionSidebar() {
           aria-pressed={activeView === 'plugins'}
           onClick={() => setActiveView(activeView === 'plugins' ? 'notebook' : 'plugins')}
           className={
-            'text-sm ' + (activeView === 'plugins' ? 'font-medium text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300')
+            'text-sm ' + (activeView === 'plugins' ? 'font-medium text-lavender-600 dark:text-lavender-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300')
           }
         >
           Plugins

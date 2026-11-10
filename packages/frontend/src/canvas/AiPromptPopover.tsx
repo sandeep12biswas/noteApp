@@ -100,7 +100,7 @@ export function AiPromptPopover({
       )}
       <div className="mt-2 flex justify-end gap-1">
         {noProvider && (
-          <button type="button" className={BUTTON + ' mr-auto text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-gray-800'} onClick={() => setSettingsOpen(true)}>
+          <button type="button" className={BUTTON + ' mr-auto text-lavender-600 hover:bg-lavender-50 dark:text-lavender-400 dark:hover:bg-gray-800'} onClick={() => setSettingsOpen(true)}>
             AI settings
           </button>
         )}

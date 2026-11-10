@@ -75,7 +75,7 @@ function FormatPainterButton() {
       className={
         'rounded px-1.5 py-1 text-sm font-medium ' +
         (armed
-          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+          ? 'bg-lavender-100 text-lavender-700 dark:bg-lavender-900/40 dark:text-lavender-300'
           : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800')
       }
     >
@@ -481,7 +481,7 @@ function DrawToolsPanel() {
             className={
               'rounded px-2 py-1 text-xs capitalize ' +
               (t === tool
-                ? 'bg-blue-600 text-white'
+                ? 'bg-lavender-600 text-white'
                 : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800')
             }
           >
@@ -499,7 +499,7 @@ function DrawToolsPanel() {
             disabled={tool === 'eraser'}
             onClick={() => setColor(c)}
             className={'h-5 w-5 rounded-full border-2 disabled:opacity-30'}
-            style={{ backgroundColor: c, borderColor: c === color ? '#1d4ed8' : 'transparent' }}
+            style={{ backgroundColor: c, borderColor: c === color ? '#5f3da3' /* lavender-700 */ : 'transparent' }}
           />
         ))}
       </div>
@@ -691,10 +691,10 @@ export function RibbonRoot() {
             aria-selected={tab === activeTab}
             onClick={() => setActiveTab(tab)}
             className={
-              'rounded-t px-3 py-1 text-sm font-medium ' +
+              'rounded-t border-b-2 px-3 py-1 text-sm font-medium ' +
               (tab === activeTab
-                ? 'bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200')
+                ? 'border-lavender-600 bg-white text-lavender-700 dark:border-lavender-400 dark:bg-gray-900 dark:text-lavender-200'
+                : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200')
             }
           >
             {tab}

@@ -80,7 +80,7 @@ export function PanelResizeHandle({ panel, label }: { panel: ResizablePanel; lab
       // margins cancel its width exactly, so the layout (and the editor's
       // minimum-width maths in lib/panelWidths.ts) is unaffected.
       // Highlighted on hover/focus.
-      className="relative z-10 -mx-[2px] w-[4px] shrink-0 cursor-col-resize outline-none hover:bg-blue-400/60 focus-visible:bg-blue-500"
+      className="relative z-10 -mx-[2px] w-[4px] shrink-0 cursor-col-resize outline-none hover:bg-lavender-400/60 focus-visible:bg-lavender-500"
     />
   )
 }

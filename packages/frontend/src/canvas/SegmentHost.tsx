@@ -30,7 +30,7 @@ import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 import { useRemoteContent } from './useRemoteContent'
 import { ConflictBadge } from './ConflictBadge'
 
-const HIGHLIGHT_COLOR = '#60a5fa' // tailwind blue-400 — bright enough to read as "near" against an invisible-by-default segment
+const HIGHLIGHT_COLOR = '#a98de3' // lavender-400 (index.css @theme) — bright enough to read as "near" against an invisible-by-default segment
 
 // Inline style, not a Tailwind class: a highlighted segment is very often
 // not `revealed` (DESIGN.md §4.1 segments are invisible by rest), whose own

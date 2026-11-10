@@ -5,6 +5,7 @@
 import { createIPCHandler } from 'electron-trpc/main'
 import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { appRouter, type Context } from './trpc/router'
@@ -70,6 +71,11 @@ function spawnSidecar(): SupervisedProcess {
   return child as unknown as SupervisedProcess
 }
 
+const DEV_ICON = join(__dirname, '..', 'build', 'icons', '512x512.png')
+
+/** Window buttons drawn over the title bar. `height` must equal TITLE_BAR_HEIGHT in packages/frontend/src/layout/TitleBar.tsx. */
+const TITLE_BAR_OVERLAY = { color: '#8e6cd6', symbolColor: '#ffffff', height: 36 }
+
 function createWindow(sidecar: SidecarSupervisor): void {
   // Theme (light/dark/system) is renderer-owned and localStorage-persisted
   // (packages/frontend/src/store/themeStore.ts) — nativeTheme.themeSource
@@ -78,6 +84,16 @@ function createWindow(sidecar: SidecarSupervisor): void {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    // Lavender title bar (issue #40): hide the native frame and let the
+    // renderer draw the bar (packages/frontend/src/layout/TitleBar.tsx);
+    // the OS window buttons stay, drawn over it on lavender-500 — the colour
+    // the bar's gradient ends on.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: TITLE_BAR_OVERLAY,
+    backgroundColor: '#ffffff',
+    // Packaged builds get their icon from the .desktop file (build/ isn't
+    // shipped); in dev runs the window sets it itself.
+    ...(existsSync(DEV_ICON) ? { icon: DEV_ICON } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       // Electron's default sandboxed preload can only resolve Node/Electron

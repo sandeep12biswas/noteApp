@@ -50,7 +50,7 @@ function InstallForm({ onClose }: { onClose: () => void }) {
         <button type="button" onClick={onClose} className="text-sm text-gray-500">
           Cancel
         </button>
-        <button type="submit" disabled={busy} className="rounded bg-blue-600 px-2 py-1 text-sm text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className="rounded bg-lavender-600 px-2 py-1 text-sm text-white disabled:opacity-50">
           {busy ? 'Installing…' : 'Install'}
         </button>
       </div>
@@ -121,7 +121,7 @@ export function PluginManagerUI() {
         <button
           type="button"
           onClick={() => setShowInstall(true)}
-          className="rounded bg-blue-600 px-2 py-1 text-sm text-white"
+          className="rounded bg-lavender-600 px-2 py-1 text-sm text-white"
         >
           Install…
         </button>

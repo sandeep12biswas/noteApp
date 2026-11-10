@@ -58,8 +58,8 @@ const FONT = 'Arial'
 // Courier New: on every Windows/Mac install, and LibreOffice maps it to the
 // metric-compatible Liberation Mono on Linux (Consolas falls back to a serif).
 const MONO = 'Courier New'
-const ACCENT = '2563EB'
-const ACCENT_DARK = '1D4ED8'
+const ACCENT = '7650C2' // lavender-600 (guide.css --accent)
+const ACCENT_DARK = '4B3182' // lavender-800
 const TEXT = '1F2937'
 const MUTED = '6B7280'
 const PAGE = { width: 11906, height: 16838 } // A4, DXA
@@ -69,8 +69,8 @@ const CONTENT_PX = Math.floor((CONTENT_DXA / 1440) * 96)
 
 /** Callout boxes per class: left rule, background, label. */
 const CALLOUTS = {
-  note: { rule: ACCENT, fill: 'EFF6FF', label: 'Note', labelColor: ACCENT_DARK },
-  tip: { rule: ACCENT, fill: 'EFF6FF', label: 'Tip', labelColor: ACCENT_DARK },
+  note: { rule: ACCENT, fill: 'F6F3FD', label: 'Note', labelColor: ACCENT_DARK },
+  tip: { rule: ACCENT, fill: 'F6F3FD', label: 'Tip', labelColor: ACCENT_DARK },
   warn: { rule: 'D97706', fill: 'FFFBEB', label: 'Important', labelColor: 'B45309' },
   new: { rule: '16A34A', fill: 'F0FDF4', label: "What's new", labelColor: '15803D' },
 }

@@ -85,7 +85,7 @@ export function ColorWheel({
           if (e.buttons & 1) pickAt(e)
         }}
         onKeyDown={onWheelKey}
-        className="relative cursor-crosshair touch-none rounded-full border border-black/30 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+        className="relative cursor-crosshair touch-none rounded-full border border-black/30 outline-none focus-visible:ring-2 focus-visible:ring-lavender-600 focus-visible:ring-offset-2"
         style={{ width: WHEEL_SIZE, height: WHEEL_SIZE, background: `radial-gradient(circle closest-side, #fff, transparent), ${HUE_GRADIENT}` }}
       >
         <div className="pointer-events-none absolute inset-0 rounded-full bg-black" style={{ opacity: 1 - hsv.v }} />
@@ -145,7 +145,7 @@ export function ColorWheel({
           role="menuitem"
           disabled={!hexValid}
           onClick={() => onApply(color)}
-          className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+          className="rounded bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700 disabled:opacity-40"
         >
           Apply
         </button>

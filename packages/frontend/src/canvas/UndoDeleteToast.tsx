@@ -41,7 +41,7 @@ export function UndoDeleteToast() {
       <button
         type="button"
         onClick={undo}
-        className="rounded px-2 py-1 font-medium text-blue-300 hover:bg-white/10 dark:text-blue-700 dark:hover:bg-black/10"
+        className="rounded px-2 py-1 font-medium text-lavender-300 hover:bg-white/10 dark:text-lavender-700 dark:hover:bg-black/10"
       >
         Undo
       </button>
@@ -57,7 +57,7 @@ export function UndoDeleteToast() {
       <span
         key={deleted.id}
         aria-hidden
-        className="undo-toast-timer absolute bottom-0 left-0 h-0.5 w-full origin-left bg-blue-400 dark:bg-blue-600"
+        className="undo-toast-timer absolute bottom-0 left-0 h-0.5 w-full origin-left bg-lavender-400 dark:bg-lavender-600"
         style={{ animationDuration: `${UNDO_DELETE_MS}ms` }}
       />
     </div>

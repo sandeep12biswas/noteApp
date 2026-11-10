@@ -60,7 +60,7 @@ export const MENU_TEXT_BUTTON_CLASSNAME =
  * a border matching the fill hides where one swatch ends and the next begins.
  */
 export const SWATCH_EDGE = 'border border-black/30 dark:border-white/35'
-export const SWATCH_ACTIVE = 'ring-2 ring-blue-600 ring-offset-1 ring-offset-white dark:ring-blue-400 dark:ring-offset-gray-900'
+export const SWATCH_ACTIVE = 'ring-2 ring-lavender-600 ring-offset-1 ring-offset-white dark:ring-lavender-400 dark:ring-offset-gray-900'
 
 /** A grid of round colour swatches (`menuitemradio`s), shared by the ribbon colour menus and the Page colour menu. */
 export function SwatchGrid({
