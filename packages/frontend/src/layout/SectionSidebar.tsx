@@ -5,7 +5,7 @@
 import { type DragEvent, type KeyboardEvent, useMemo, useRef, useState } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
 import { DRAG_MIME, getDragPayload, setDragPayload } from '../lib/dragAndDrop'
-import { DEFAULT_FOLDER_ICON } from '../lib/folderIcons'
+import { FolderIcon } from './FolderIcon'
 import { useExtensionRegistry } from '../store/extensionRegistry'
 import { type Folder, childFoldersOf, fileCountOf, useNotebookStore } from '../store/notebookStore'
 import { useUIStore } from '../store/uiStore'
@@ -187,9 +187,9 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
             const rect = iconButtonRef.current?.getBoundingClientRect()
             setIconMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: e.clientX, y: e.clientY })
           }}
-          className="shrink-0 rounded text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
+          className="flex shrink-0 items-center rounded px-0.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
         >
-          {folder.icon ?? DEFAULT_FOLDER_ICON}
+          <FolderIcon icon={folder.icon} />
         </button>
         {renaming ? (
           <RenameFolderInput folder={folder} onDone={() => setRenaming(false)} />

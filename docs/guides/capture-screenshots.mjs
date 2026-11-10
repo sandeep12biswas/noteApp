@@ -289,8 +289,8 @@ await step('07-folder-icon-menu', async () => {
     path: path.join(OUT, '07-folder-icon-menu.png'),
     clip: { x: 0, y: side.y, width: Math.max(side.width, box.x + box.width + 12), height: Math.max(box.y + box.height + 12 - side.y, 300) },
   })
-  // Pick the 5th icon so the tree shows a custom icon from now on.
-  await menu.first().getByRole('menuitem').nth(4).click().catch(() => page.keyboard.press('Escape'))
+  // Pick a lavender icon so the tree shows a custom one from now on.
+  await menu.first().getByRole('menuitemradio', { name: 'Icon Work' }).click().catch(() => page.keyboard.press('Escape'))
 })
 
 await step('08-pages-natural-order', async () => {
