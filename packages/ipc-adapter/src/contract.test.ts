@@ -138,6 +138,14 @@ describe.each(adapters)('$name (IPCAdapter contract)', ({ create }) => {
     await expect(adapter.listDictionaryWords()).rejects.toThrow()
   })
 
+  it('table template methods reject', async () => {
+    const adapter = create()
+    await expect(adapter.listTableTemplates()).rejects.toThrow()
+    await expect(adapter.saveTableTemplate({ name: 't', table: { type: 'table' }, includesContents: false })).rejects.toThrow()
+    await expect(adapter.renameTableTemplate('a', 'b')).rejects.toThrow()
+    await expect(adapter.deleteTableTemplate('a')).rejects.toThrow()
+  })
+
   it('mergeSegments rejects', async () => {
     const adapter = create()
     await expect(adapter.mergeSegments('seg-1', 'seg-2')).rejects.toThrow()

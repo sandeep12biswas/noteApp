@@ -229,6 +229,33 @@ pub fn dispatch(conn: &Connection, req: Request) -> Response {
             Err(e) => Response::err(req.id, e),
         },
 
+        // Table templates (issue #38) — app-wide, see store::save_table_template.
+        "list_table_templates" => match list_table_templates(conn) {
+            Ok(list) => Response::ok(req.id, Value::Array(list)),
+            Err(e) => Response::err(req.id, e),
+        },
+
+        "save_table_template" => match save_table_template(conn, &req.params) {
+            Ok(()) => Response::ok(req.id, Value::Null),
+            Err(e) => Response::err(req.id, e),
+        },
+
+        "rename_table_template" => match (req.params.get("from").and_then(Value::as_str), req.params.get("to").and_then(Value::as_str)) {
+            (Some(from), Some(to)) => match rename_table_template(conn, from, to) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e),
+            },
+            _ => Response::err(req.id, "rename_table_template requires string `from` and `to` params"),
+        },
+
+        "delete_table_template" => match req.params.get("name").and_then(Value::as_str) {
+            None => Response::err(req.id, "delete_table_template requires a string `name` param"),
+            Some(name) => match delete_table_template(conn, name) {
+                Ok(()) => Response::ok(req.id, Value::Null),
+                Err(e) => Response::err(req.id, e),
+            },
+        },
+
         "search" => match search(conn, &req.params) {
             Ok(results) => Response::ok(req.id, Value::Array(results)),
             Err(e) => Response::err(req.id, e.to_string()),
@@ -677,6 +704,28 @@ mod tests {
         dispatch(&conn, Request { id: 68, method: "save_ink_layer".into(), params: json!({ "pageId": "page-1", "dataUrl": "page-1's ink" }) });
         let other = dispatch(&conn, Request { id: 69, method: "get_ink_layer".into(), params: json!({ "pageId": "page-2" }) });
         assert_eq!(other.result.unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn table_templates_round_trip_through_the_protocol() {
+        let conn = db::open_in_memory().unwrap();
+        let table = json!({ "type": "table", "content": [] });
+        let res = dispatch(&conn, Request { id: 90, method: "save_table_template".into(), params: json!({ "name": "Budget", "table": table, "includesContents": false }) });
+        assert!(res.error.is_none(), "{:?}", res.error);
+        dispatch(&conn, Request { id: 91, method: "rename_table_template".into(), params: json!({ "from": "Budget", "to": "Monthly" }) });
+        let res = dispatch(&conn, Request { id: 92, method: "list_table_templates".into(), params: Value::Null });
+        assert_eq!(res.result.as_ref().unwrap()[0]["name"], "Monthly");
+        assert_eq!(res.result.as_ref().unwrap()[0]["table"], table);
+        dispatch(&conn, Request { id: 93, method: "delete_table_template".into(), params: json!({ "name": "Monthly" }) });
+        let res = dispatch(&conn, Request { id: 94, method: "list_table_templates".into(), params: Value::Null });
+        assert_eq!(res.result, Some(json!([])));
+    }
+
+    #[test]
+    fn rename_table_template_needs_both_names() {
+        let conn = db::open_in_memory().unwrap();
+        let res = dispatch(&conn, Request { id: 95, method: "rename_table_template".into(), params: json!({ "from": "a" }) });
+        assert!(res.error.unwrap().contains("`from` and `to`"));
     }
 
     #[test]
