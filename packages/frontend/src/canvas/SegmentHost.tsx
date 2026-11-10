@@ -29,6 +29,8 @@ import { SlashMenu, slashMenuItems } from './SlashMenu'
 import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 import { useRemoteContent } from './useRemoteContent'
 import { ConflictBadge } from './ConflictBadge'
+import { insertTable } from './tableExtensions'
+import { TableSizePicker } from '../layout/TableSizePicker'
 
 const HIGHLIGHT_COLOR = '#a98de3' // lavender-400 (index.css @theme) — bright enough to read as "near" against an invisible-by-default segment
 
@@ -92,6 +94,8 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
   // "/ Ask AI": the prompt box (where the `/` was, with the formatting the
   // `/` had — the answer is typed in that formatting), then the draft
   // session while the answer streams in and waits for Keep / Discard.
+  // "/ Table…": where the rows × columns picker is open (issue #37).
+  const [tablePicker, setTablePicker] = useState<{ x: number; y: number } | null>(null)
   const [aiPrompt, setAiPrompt] = useState<{ x: number; y: number; pos: number; marks: readonly Mark[] } | null>(null)
   type AiSession = { prompt: string; providerId?: string; status: AiDraftStatus; error?: string }
   const [aiSession, setAiSessionState] = useState<AiSession | null>(null)
@@ -504,6 +508,10 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
       case 'codeBlock':
         chain.toggleCodeBlock().run()
         break
+      case 'table':
+        chain.run()
+        setTablePicker({ x: slashMenu.x, y: slashMenu.y })
+        break
       case 'ai': {
         // The `/`'s own formatting is the destination formatting: read it
         // before the `/` is deleted.
@@ -711,6 +719,20 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           onSelectCore={applyCoreBlock}
           onSelectPlugin={applyPluginBlock}
           onClose={() => setSlashMenu(null)}
+        />
+      )}
+      {tablePicker && editor && (
+        <TableSizePicker
+          x={tablePicker.x}
+          y={tablePicker.y}
+          onPick={(rows, cols) => {
+            insertTable(editor, rows, cols)
+            setTablePicker(null)
+          }}
+          onClose={() => {
+            setTablePicker(null)
+            editor.commands.focus()
+          }}
         />
       )}
       {aiPrompt && (

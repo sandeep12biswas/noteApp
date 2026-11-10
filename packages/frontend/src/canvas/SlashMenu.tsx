@@ -28,6 +28,8 @@ export const CORE_BLOCK_OPTIONS: CoreBlockOption[] = [
   { id: 'taskList', label: 'Checklist' },
   { id: 'blockquote', label: 'Quote' },
   { id: 'codeBlock', label: 'Code block' },
+  // Opens a rows × columns picker (layout/TableSizePicker.tsx) — issue #37.
+  { id: 'table', label: 'Table…' },
   // Opens SegmentHost's AI prompt box; the answer arrives as a draft to
   // keep or discard (aiDraftExtension.ts).
   { id: 'ai', label: 'Ask AI…' },

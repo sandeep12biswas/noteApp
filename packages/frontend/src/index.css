@@ -392,3 +392,58 @@
     animation: none;
   }
 }
+
+/* Tables (issue #37, canvas/tableExtensions.ts). Header cells get their
+   background and contrast-checked text colour inline from the node, so
+   only weight/borders are set here; body cells use the editor's own ink. */
+.ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+.ProseMirror th,
+.ProseMirror td {
+  position: relative;
+  min-width: 3em;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #c4b1ee; /* lavender-300 */
+  vertical-align: top;
+  box-sizing: border-box;
+}
+.dark .ProseMirror th,
+.dark .ProseMirror td {
+  border-color: #5f3da3; /* lavender-700 */
+}
+.ProseMirror th {
+  font-weight: 700;
+  text-align: left;
+}
+.ProseMirror th > p,
+.ProseMirror td > p {
+  margin: 0;
+}
+/* Cell selection (drag across cells) and the column-resize handle. */
+.ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(142 108 214 / 0.25); /* lavender-500 */
+  pointer-events: none;
+}
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 4px;
+  background: #8e6cd6; /* lavender-500 */
+  pointer-events: none;
+}
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+.ProseMirror .tableWrapper {
+  overflow-x: auto;
+}

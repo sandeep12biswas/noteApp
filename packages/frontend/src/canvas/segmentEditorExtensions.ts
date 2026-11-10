@@ -25,6 +25,7 @@ import { AttachmentBlock } from './attachmentBlockNode'
 import { CodeBlock } from './codeBlockNode'
 import { FontSize } from './fontSizeExtension'
 import { Spellcheck } from './spellcheckExtension'
+import { tableExtensions } from './tableExtensions'
 
 export const segmentEditorExtensions = [
   // StarterKit's own code block has no highlighting; `CodeBlock` (same node
@@ -93,4 +94,6 @@ export const segmentEditorExtensions = [
   // tint. Only the canvas view starts drafts; listed here like everything
   // else so both views' editors stay identical.
   AiDraftExtension,
+  // Tables with a coloured, auto-contrast header row (issue #37).
+  ...tableExtensions,
 ]
