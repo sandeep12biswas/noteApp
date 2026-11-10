@@ -727,6 +727,11 @@ fn push(
         let docs: serde_json::Map<String, Value> =
             upload.iter().map(|(id, bytes, _)| (id.clone(), Value::from(b64().encode(bytes)))).collect();
         let bundle = json!({ "format": BUNDLE_FORMAT, "device": me, "seq": seq, "docs": docs });
+        // Info file (name, last sync) first: a device that pulls between the
+        // two writes would otherwise apply this change with the old info and
+        // only refresh it on its next announce cycle — a rename could show
+        // the old name until then.
+        write_info(target, key, me, &options.device_name)?;
         target.put(&path, &crypto::seal(key, &path, bundle.to_string().as_bytes())?)?;
 
         in_transaction(conn, || {
@@ -738,8 +743,6 @@ fn push(
             Ok(())
         })?;
         report.uploaded = Some(seq);
-
-        write_info(target, key, me, &options.device_name)?;
     }
     for (doc_id, heads) in caught_up {
         conn.execute("UPDATE crdt_docs SET synced_heads = ?1 WHERE doc_id = ?2", rusqlite::params![heads_json(&heads), doc_id])
