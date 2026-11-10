@@ -751,3 +751,63 @@ fn a_device_that_only_reads_still_shows_up_and_renames_reach_the_others() {
     a.sync(&cloud);
     assert_eq!(peer(&a).0.as_deref(), Some("b again"));
 }
+
+/// Keeps a copy of the cloud as it was right after a change file was stored:
+/// what another device would see if it synced in the middle of the upload.
+struct SnapshotsMidUpload<'a> {
+    inner: &'a MemoryTarget,
+    mid_upload: Mutex<Option<MemoryTarget>>,
+}
+
+impl SyncTarget for SnapshotsMidUpload<'_> {
+    fn list(&self, prefix: &str) -> Result<Vec<RemoteFile>, String> {
+        self.inner.list(prefix)
+    }
+    fn get(&self, path: &str) -> Result<Option<Vec<u8>>, String> {
+        self.inner.get(path)
+    }
+    fn put(&self, path: &str, bytes: &[u8]) -> Result<(), String> {
+        self.inner.put(path, bytes)?;
+        let mut snapshot = self.mid_upload.lock().unwrap();
+        if path.contains("/changes/") && snapshot.is_none() {
+            let copy = MemoryTarget::default();
+            for file in self.inner.list("")? {
+                copy.put(&file.path, &self.inner.get(&file.path)?.unwrap())?;
+            }
+            *snapshot = Some(copy);
+        }
+        Ok(())
+    }
+    fn delete(&self, path: &str) -> Result<(), String> {
+        self.inner.delete(path)
+    }
+}
+
+fn peer_names(conn: &Connection) -> Vec<String> {
+    conn.prepare("SELECT name FROM sync_peers ORDER BY name").unwrap().query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap()
+}
+
+#[test]
+fn a_rename_reaches_a_device_that_pulls_in_the_middle_of_the_upload() {
+    let memory = MemoryTarget::default();
+    let (mut a, mut b) = (Device::new("a"), Device::new("Phone"));
+    a.connect(&memory);
+    b.connect(&memory);
+    notebook(&b.conn);
+    b.sync(&memory);
+    a.sync(&memory);
+    assert_eq!(peer_names(&a.conn), ["Phone"]);
+
+    // B is renamed and edits a note; A syncs while B's upload is half done…
+    b.name = "Work phone".into();
+    save_seg(&b.conn, "s2", "p1", "from the phone");
+    let cloud = SnapshotsMidUpload { inner: &memory, mid_upload: Mutex::new(None) };
+    b.sync(&cloud);
+    let mid_upload = cloud.mid_upload.lock().unwrap().take().expect("B uploaded a change file");
+    a.sync(&mid_upload);
+    assert_eq!(texts(&a.conn, "p1"), ["from the phone", "hello"], "A applied B's edit mid-upload");
+    // …then again once it's finished. Either way A must know the new name:
+    // it never re-reads B's info for a change it has already applied.
+    a.sync(&memory);
+    assert_eq!(peer_names(&a.conn), ["Work phone"]);
+}
