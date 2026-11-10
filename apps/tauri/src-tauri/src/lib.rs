@@ -5,7 +5,7 @@
 // TypeScript bindings for packages/ipc-adapter's TauriIPCAdapter.
 use flownote_tauri::protocols::{self, ATTACHMENT_SCHEME, PLUGIN_SCHEME};
 use flownote_tauri::AppState;
-use tauri::http::{header, HeaderValue, Method, Response, StatusCode};
+use tauri::http::{Response, StatusCode};
 use tauri::{Emitter, Manager};
 
 fn db_path(app: &tauri::App) -> String {
@@ -16,9 +16,6 @@ fn db_path(app: &tauri::App) -> String {
     std::fs::create_dir_all(&dir).expect("failed to create app data dir");
     dir.join("flownote.sqlite3").to_string_lossy().into_owned()
 }
-
-/// TEMPORARY (issue #33): plugin-protocol requests seen while FLOWNOTE_PROTOCOL_PROBE is set.
-static PROBE_LOG: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// wry's default WebView2 arguments — passing any `additional_browser_args`
 /// replaces them, so they're repeated when adding our own.
@@ -56,31 +53,6 @@ pub fn run() {
         .invoke_handler(specta_builder.invoke_handler())
         // Plugin files/SDK and attachment bytes — see flownote_tauri::protocols.
         .register_uri_scheme_protocol(PLUGIN_SCHEME, |ctx, request| {
-            // TEMPORARY (issue #33): CORS diagnostics, only when the Windows
-            // smoke test sets FLOWNOTE_PROTOCOL_PROBE. Remove with the fix.
-            let probe = std::env::var_os("FLOWNOTE_PROTOCOL_PROBE").is_some();
-            if probe {
-                let h = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok()).unwrap_or("-").to_string();
-                let line = format!(
-                    "{} {} origin={} pna={} mode={} dest={}",
-                    request.method(),
-                    request.uri(),
-                    h("origin"),
-                    h("access-control-request-private-network"),
-                    h("sec-fetch-mode"),
-                    h("sec-fetch-dest")
-                );
-                let mut log = PROBE_LOG.lock().unwrap();
-                if request.uri().path() == "/__probe/log" {
-                    let body = serde_json::to_vec(&*log).unwrap_or_default();
-                    return Response::builder()
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                        .body(body)
-                        .unwrap();
-                }
-                log.push(line);
-            }
             let app = ctx.app_handle();
             let resolver = app.asset_resolver();
             // Where plugin files are served from, as the page sees it:
@@ -88,7 +60,7 @@ pub fn run() {
             // on Windows — the plugin's CSP allows exactly that origin.
             let uri = request.uri();
             let origin = format!("{}://{}", uri.scheme_str().unwrap_or(PLUGIN_SCHEME), uri.authority().map(|a| a.as_str()).unwrap_or("localhost"));
-            let mut response = protocols::plugin_asset_response(
+            protocols::plugin_asset_response(
                 uri.path(),
                 |path| resolver.get(path.to_string()).map(|asset| (asset.bytes, asset.mime_type)),
                 |plugin_id| {
@@ -101,29 +73,7 @@ pub fn run() {
                         .and_then(|conn| flownote_core::store::plugin_csp_for(&conn, plugin_id, &origin).ok())
                         .unwrap_or(strictest)
                 },
-            );
-            if probe {
-                let query = uri.query().unwrap_or("");
-                let headers = response.headers_mut();
-                let origin = request.headers().get(header::ORIGIN).cloned();
-                if query.contains("acao=null") {
-                    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("null"));
-                } else if query.contains("acao=echo") {
-                    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.unwrap_or(HeaderValue::from_static("*")));
-                    headers.insert(header::VARY, HeaderValue::from_static("Origin"));
-                }
-                if query.contains("pna=1") {
-                    headers.insert("access-control-allow-private-network", HeaderValue::from_static("true"));
-                }
-                if request.method() == Method::OPTIONS {
-                    *response.status_mut() = StatusCode::NO_CONTENT;
-                    let headers = response.headers_mut();
-                    headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, OPTIONS"));
-                    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("*"));
-                    headers.insert("access-control-allow-private-network", HeaderValue::from_static("true"));
-                }
-            }
-            response
+            )
         })
         .register_uri_scheme_protocol(ATTACHMENT_SCHEME, |ctx, request| {
             let Some(state) = ctx.app_handle().try_state::<AppState>() else {
