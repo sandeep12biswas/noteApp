@@ -33,6 +33,15 @@ test('save a table as a template, restart, and reuse it on another page', async 
   await page.keyboard.type('/')
   await page.getByRole('menuitem', { name: 'Table…' }).click()
   await page.getByRole('button', { name: '2 by 2 table' }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const anchor = window.getSelection()?.anchorNode
+        const el = anchor instanceof Element ? anchor : anchor?.parentElement
+        return !!document.activeElement?.classList.contains('ProseMirror') && !!el?.closest('th')
+      }),
+    )
+    .toBe(true)
   for (const t of ['Item', 'Qty', 'Apples']) {
     await page.keyboard.type(t)
     await page.keyboard.press('Tab')

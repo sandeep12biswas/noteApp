@@ -5,6 +5,7 @@
 // change the template, and changing the template later can't reach tables
 // already in notes.
 import type { Editor, JSONContent } from '@tiptap/core'
+import { focusEditorNow } from '../canvas/tableExtensions'
 
 /** The table around the selection, as JSON, or null when the cursor isn't in one. */
 export function tableAtSelection(editor: Editor): JSONContent | null {
@@ -37,6 +38,7 @@ export function toTemplateTable(table: JSONContent, includeContents: boolean): J
 
 /** Inserts an independent copy of a template's table at the selection. */
 export function insertTemplateTable(editor: Editor, table: Record<string, unknown>): boolean {
+  focusEditorNow(editor) // the picker or template menu may have had focus
   return editor.chain().focus().insertContent(structuredClone(table) as JSONContent).run()
 }
 
