@@ -88,7 +88,18 @@ export const tableExtensions = [
   TableCell,
 ]
 
+/**
+ * Gives DOM focus back to the editor right away. The table picker had focus,
+ * and TipTap's `focus()` command only restores it a frame later — a key
+ * typed straight after picking would be lost (seen in CI as "tem" for
+ * "Item"; same class of bug as issue #4).
+ */
+export function focusEditorNow(editor: Editor): void {
+  if (!editor.view.hasFocus()) editor.view.focus()
+}
+
 /** Inserts a rows × cols table with a header row at the selection. */
 export function insertTable(editor: Editor, rows: number, cols: number): boolean {
+  focusEditorNow(editor)
   return editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()
 }
