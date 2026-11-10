@@ -23,6 +23,16 @@ test('insert a table, edit it, and it survives a restart', async () => {
   await page.getByRole('menu', { name: 'Insert block' }).getByRole('menuitem', { name: 'Table…' }).click()
   await page.getByRole('dialog', { name: 'Insert table' }).getByRole('button', { name: '3 by 2 table' }).click()
   await expect(table(page)).toBeVisible()
+  // The caret must be back in the editor before typing (it was in the picker).
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const anchor = window.getSelection()?.anchorNode
+        const el = anchor instanceof Element ? anchor : anchor?.parentElement
+        return !!document.activeElement?.classList.contains('ProseMirror') && !!el?.closest('th')
+      }),
+    )
+    .toBe(true)
 
   // Type the header and first row, moving with Tab.
   await page.keyboard.type('Item')
