@@ -167,6 +167,29 @@ export const appRouter = t.router({
 
   listDictionaryWords: t.procedure.query(({ ctx }) => ctx.sidecar.request('list_dictionary_words', {})),
 
+  // Table templates (issue #38).
+  listTableTemplates: t.procedure.query(({ ctx }) => ctx.sidecar.request('list_table_templates', {})),
+  saveTableTemplate: t.procedure
+    .input((raw: unknown) => {
+      const t = raw as { name?: unknown; table?: unknown; includesContents?: unknown }
+      if (typeof t?.name !== 'string' || typeof t.table !== 'object' || t.table === null) throw new Error('saveTableTemplate expects { name, table, includesContents }')
+      return { name: t.name, table: t.table, includesContents: t.includesContents === true }
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('save_table_template', input)),
+  renameTableTemplate: t.procedure
+    .input((raw: unknown) => {
+      const r = raw as { from?: unknown; to?: unknown }
+      if (typeof r?.from !== 'string' || typeof r.to !== 'string') throw new Error('renameTableTemplate expects { from, to }')
+      return { from: r.from, to: r.to }
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('rename_table_template', input)),
+  deleteTableTemplate: t.procedure
+    .input((raw: unknown) => {
+      if (typeof raw !== 'string') throw new Error('deleteTableTemplate expects a template name')
+      return raw
+    })
+    .mutation(({ ctx, input }) => ctx.sidecar.request('delete_table_template', { name: input })),
+
   setPageMode: t.procedure
     .input((input: unknown): { pageId: string; mode: 'canvas' | 'linear' } => input as never)
     .mutation(({ ctx, input }) => ctx.sidecar.request('set_page_mode', { pageId: input.pageId, mode: input.mode })),

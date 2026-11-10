@@ -656,6 +656,85 @@ pub fn list_dictionary_words(conn: &Connection) -> Result<Vec<String>, String> {
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
+/// Longest table-template name accepted (issue #38).
+pub const MAX_TEMPLATE_NAME: usize = 80;
+
+fn template_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a template needs a name".into());
+    }
+    if name.chars().count() > MAX_TEMPLATE_NAME {
+        return Err(format!("template names can be at most {MAX_TEMPLATE_NAME} characters"));
+    }
+    Ok(name.to_string())
+}
+
+/// Table templates (issue #38, V13 migration): every saved template, by
+/// name (case-insensitive order), as `{ name, table, includesContents,
+/// updatedAt }` where `table` is the TipTap `table` node.
+pub fn list_table_templates(conn: &Connection) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare("SELECT name, table_json, includes_contents, updated_at FROM table_templates ORDER BY name COLLATE NOCASE")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            let table_json: String = row.get(1)?;
+            Ok(serde_json::json!({
+                "name": row.get::<_, String>(0)?,
+                "table": serde_json::from_str::<Value>(&table_json).unwrap_or(Value::Null),
+                "includesContents": row.get::<_, i64>(2)? != 0,
+                "updatedAt": row.get::<_, i64>(3)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// Saves a template, replacing one with the same name (ignoring case) — the
+/// app asks before overwriting. `params`: `{ name, table, includesContents }`.
+pub fn save_table_template(conn: &Connection, params: &Value) -> Result<(), String> {
+    let name = template_name(params.get("name").and_then(Value::as_str).ok_or("save_table_template requires a string `name`")?)?;
+    let table = params.get("table").ok_or("save_table_template requires a `table`")?;
+    if table.get("type").and_then(Value::as_str) != Some("table") {
+        return Err("a template must be a table".into());
+    }
+    let includes = params.get("includesContents").and_then(Value::as_bool).unwrap_or(false);
+    conn.execute(
+        "INSERT INTO table_templates (name, table_json, includes_contents) VALUES (?1, ?2, ?3)
+         ON CONFLICT(name) DO UPDATE SET name = excluded.name, table_json = excluded.table_json,
+           includes_contents = excluded.includes_contents, updated_at = unixepoch()",
+        rusqlite::params![name, table.to_string(), includes as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Renames a template. Fails if `to` is taken by a different template, or `from` doesn't exist.
+pub fn rename_table_template(conn: &Connection, from: &str, to: &str) -> Result<(), String> {
+    let to = template_name(to)?;
+    // Names compare ignoring (ASCII) case, like the column's NOCASE collation;
+    // renaming "Tasks" to "TASKS" is the same template, not a clash.
+    let taken: bool = conn
+        .query_row("SELECT EXISTS(SELECT 1 FROM table_templates WHERE name = ?1)", [&to], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if taken && !to.eq_ignore_ascii_case(from) {
+        return Err(format!("a template called \"{to}\" already exists"));
+    }
+    let changed = conn
+        .execute("UPDATE table_templates SET name = ?1, updated_at = unixepoch() WHERE name = ?2", [&to, from])
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("no such template: {from}"));
+    }
+    Ok(())
+}
+
+pub fn delete_table_template(conn: &Connection, name: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM table_templates WHERE name = ?1", [name]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Full-text search over segment content (DESIGN.md §2.2, Phase 5 "Full-text
 /// search") — `blocks_fts MATCH` against the flattened text `save_segment`
 /// keeps in `blocks`, scoped to one notebook, with a `snippet()`-generated
@@ -1296,5 +1375,81 @@ mod page_background_tests {
         }
         let err = set_page_background(&conn, &json!({ "pageId": "missing", "background": "#ffffff" })).unwrap_err();
         assert!(err.contains("no such page"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod table_template_tests {
+    use super::*;
+    use crate::db;
+    use serde_json::json;
+
+    fn table(header: &str) -> Value {
+        json!({ "type": "table", "content": [{ "type": "tableRow", "content": [{ "type": "tableHeader", "attrs": { "background": "#0f766e" }, "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": header }] }] }] }] })
+    }
+
+    fn names(conn: &Connection) -> Vec<String> {
+        list_table_templates(conn).unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[test]
+    fn saves_and_lists_templates_with_their_table() {
+        let conn = db::open_in_memory().unwrap();
+        save_table_template(&conn, &json!({ "name": "  Budget  ", "table": table("Item"), "includesContents": true })).unwrap();
+        let list = list_table_templates(&conn).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["name"], "Budget");
+        assert_eq!(list[0]["table"], table("Item"));
+        assert_eq!(list[0]["includesContents"], true);
+    }
+
+    #[test]
+    fn saving_an_existing_name_replaces_it_ignoring_case() {
+        let conn = db::open_in_memory().unwrap();
+        save_table_template(&conn, &json!({ "name": "Budget", "table": table("Old") })).unwrap();
+        save_table_template(&conn, &json!({ "name": "budget", "table": table("New") })).unwrap();
+        let list = list_table_templates(&conn).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["name"], "budget");
+        assert_eq!(list[0]["table"], table("New"));
+        assert_eq!(list[0]["includesContents"], false);
+    }
+
+    #[test]
+    fn lists_by_name_ignoring_case() {
+        let conn = db::open_in_memory().unwrap();
+        for n in ["beta", "Alpha", "gamma"] {
+            save_table_template(&conn, &json!({ "name": n, "table": table(n) })).unwrap();
+        }
+        assert_eq!(names(&conn), ["Alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn rejects_empty_or_long_names_and_non_tables() {
+        let conn = db::open_in_memory().unwrap();
+        assert!(save_table_template(&conn, &json!({ "name": "  ", "table": table("x") })).unwrap_err().contains("needs a name"));
+        assert!(save_table_template(&conn, &json!({ "name": "x".repeat(81), "table": table("x") })).unwrap_err().contains("at most"));
+        assert!(save_table_template(&conn, &json!({ "name": "p", "table": { "type": "paragraph" } })).unwrap_err().contains("must be a table"));
+    }
+
+    #[test]
+    fn renames_but_not_onto_another_template() {
+        let conn = db::open_in_memory().unwrap();
+        save_table_template(&conn, &json!({ "name": "Budget", "table": table("a") })).unwrap();
+        save_table_template(&conn, &json!({ "name": "Tasks", "table": table("b") })).unwrap();
+        assert!(rename_table_template(&conn, "Budget", "tasks").unwrap_err().contains("already exists"));
+        rename_table_template(&conn, "Budget", "Monthly budget").unwrap();
+        assert_eq!(names(&conn), ["Monthly budget", "Tasks"]);
+        rename_table_template(&conn, "Tasks", "TASKS").unwrap(); // a change of case is fine
+        assert_eq!(names(&conn), ["Monthly budget", "TASKS"]);
+        assert!(rename_table_template(&conn, "Nope", "X").unwrap_err().contains("no such template"));
+    }
+
+    #[test]
+    fn deletes_a_template() {
+        let conn = db::open_in_memory().unwrap();
+        save_table_template(&conn, &json!({ "name": "Budget", "table": table("a") })).unwrap();
+        delete_table_template(&conn, "budget").unwrap();
+        assert!(names(&conn).is_empty());
     }
 }

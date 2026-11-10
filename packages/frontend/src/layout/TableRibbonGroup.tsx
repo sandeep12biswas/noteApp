@@ -1,12 +1,17 @@
-// Insert ▸ Table (issue #37): a button that opens the rows × columns picker,
-// then the tools for the table the cursor is in — add/delete rows and
-// columns, toggle the header row, header colour, delete table. The tools
+// Insert ▸ Table (issue #37): a button that opens the rows × columns picker
+// (and saved templates, #38), then the tools for the table the cursor is in
+// — add/delete rows and columns, toggle the header row, header colour,
+// delete table, save as template — and Manage templates…. The tools
 // are disabled unless the cursor is inside a table.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { JSONContent } from '@tiptap/core'
 import { insertTable, DEFAULT_HEADER_BACKGROUND } from '../canvas/tableExtensions'
+import { insertTemplateTable, tableAtSelection } from '../lib/tableTemplates'
 import { useCanvasStore } from '../store/canvasStore'
 import { ColorPickerMenu } from './ColorPickerMenu'
+import { SaveTableTemplateDialog } from './SaveTableTemplateDialog'
 import { TableSizePicker } from './TableSizePicker'
+import { TableTemplatesDialog } from './TableTemplatesDialog'
 
 /** Background choices for the header row: FlowNote lavenders first, then a few strong colours and light neutrals. */
 export const HEADER_COLORS = [
@@ -56,6 +61,8 @@ export function TableRibbonGroup() {
   const inTable = useInTable()
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null)
   const [colorMenu, setColorMenu] = useState<{ x: number; y: number } | null>(null)
+  const [saving, setSaving] = useState<JSONContent | null>(null)
+  const [managing, setManaging] = useState(false)
   const insertRef = useRef<HTMLButtonElement | null>(null)
   const colorRef = useRef<HTMLButtonElement | null>(null)
 
@@ -108,6 +115,20 @@ export function TableRibbonGroup() {
         <span className="inline-block h-3 w-3 rounded-sm border border-black/20" style={{ background: DEFAULT_HEADER_BACKGROUND }} />▾
       </button>
       <ToolButton label="Delete table" disabled={!inTable} onClick={() => run((c) => c.deleteTable())}>✕ Table</ToolButton>
+      <ToolButton
+        label="Save as template…"
+        disabled={!inTable}
+        onClick={() => {
+          const editor = getActiveEditor()
+          const table = editor ? tableAtSelection(editor) : null
+          if (table) setSaving(table)
+        }}
+      >
+        Save as template…
+      </ToolButton>
+      <ToolButton label="Manage templates…" onClick={() => setManaging(true)}>
+        Templates…
+      </ToolButton>
 
       {picker && (
         <TableSizePicker
@@ -116,6 +137,11 @@ export function TableRibbonGroup() {
           onPick={(rows, cols) => {
             const editor = getActiveEditor()
             if (editor) insertTable(editor, rows, cols)
+            setPicker(null)
+          }}
+          onPickTemplate={(template) => {
+            const editor = getActiveEditor()
+            if (editor) insertTemplateTable(editor, template.table)
             setPicker(null)
           }}
           onClose={() => setPicker(null)}
@@ -133,6 +159,8 @@ export function TableRibbonGroup() {
           onClose={() => setColorMenu(null)}
         />
       )}
+      {saving && <SaveTableTemplateDialog table={saving} onClose={() => setSaving(null)} />}
+      {managing && <TableTemplatesDialog onClose={() => setManaging(false)} />}
     </div>
   )
 }

@@ -163,6 +163,18 @@ export type SyncEvent =
 /** The wire protocol a provider speaks (flownote_core::ai). `openai_compatible` also covers Ollama, LM Studio, OpenRouter, Mistral, Groq, …. */
 export type AiProviderKind = 'anthropic' | 'gemini' | 'openai_compatible'
 
+/** A saved table template (issue #38): a table layout to insert again on any page. `table` is the TipTap `table` node. */
+export interface TableTemplate {
+  name: string
+  table: Record<string, unknown>
+  /** Whether the body cells' text was saved too (otherwise only the structure and header row). */
+  includesContents: boolean
+  /** Unix seconds. */
+  updatedAt: number
+}
+
+export type TableTemplateInput = Omit<TableTemplate, 'updatedAt'>
+
 /** A configured AI provider, as listed. The API key itself is never returned — only whether one is stored. */
 export interface AiProvider {
   id: string
@@ -225,6 +237,13 @@ export interface IPCAdapter {
   getInkLayer(pageId: string): Promise<string | null>
   addDictionaryWord(word: string): Promise<void>
   listDictionaryWords(): Promise<string[]>
+  /** Table templates (issue #38), app-wide, sorted by name. */
+  listTableTemplates(): Promise<TableTemplate[]>
+  /** Saves a template, replacing any with the same name (ignoring case) — callers confirm overwrites first. */
+  saveTableTemplate(template: TableTemplateInput): Promise<void>
+  /** Rejects if `to` is another template's name. */
+  renameTableTemplate(from: string, to: string): Promise<void>
+  deleteTableTemplate(name: string): Promise<void>
   mergeSegments(idA: string, idB: string): Promise<void>
   search(query: string, notebookId: string): Promise<SearchResult[]>
   setPageMode(pageId: string, mode: 'canvas' | 'linear'): Promise<void>

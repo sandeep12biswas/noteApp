@@ -181,6 +181,38 @@ async listDictionaryWords() : Promise<Result<string[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async listTableTemplates() : Promise<Result<TableTemplateDto[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_table_templates") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async saveTableTemplate(template: TableTemplateInput) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_table_template", { template }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async renameTableTemplate(from: string, to: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("rename_table_template", { from, to }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteTableTemplate(name: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_table_template", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async search(query: string, notebookId: string) : Promise<Result<SearchResultDto[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("search", { query, notebookId }) };
@@ -434,6 +466,11 @@ export type SegmentInput = { id: string; pageId: string; x: number; y: number; w
  * TipTap JSON document, passed through as an opaque JSON value (DESIGN.md §7.1).
  */
 content?: JsonValue }
+/**
+ * A saved table template (issue #38); `table` is the TipTap `table` node.
+ */
+export type TableTemplateDto = { name: string; table: JsonValue; includesContents: boolean; updatedAt: number }
+export type TableTemplateInput = { name: string; table: JsonValue; includesContents: boolean }
 
 /** tauri-specta globals **/
 

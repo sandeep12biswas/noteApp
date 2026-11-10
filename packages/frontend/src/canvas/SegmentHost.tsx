@@ -30,6 +30,9 @@ import { SpellingSuggestionMenu } from './SpellingSuggestionMenu'
 import { useRemoteContent } from './useRemoteContent'
 import { ConflictBadge } from './ConflictBadge'
 import { insertTable } from './tableExtensions'
+import { filterTemplates, insertTemplateTable } from '../lib/tableTemplates'
+import { useTableTemplateStore } from '../store/tableTemplateStore'
+import { TableTemplateMenu } from './TableTemplateMenu'
 import { TableSizePicker } from '../layout/TableSizePicker'
 
 const HIGHLIGHT_COLOR = '#a98de3' // lavender-400 (index.css @theme) — bright enough to read as "near" against an invisible-by-default segment
@@ -87,6 +90,25 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     slashIndexRef.current = index
     setSlashIndexState(index)
   }
+  // `/table <name>` (issue #38): the typed query and where it sits (`from`..
+  // `to`, the whole "/table …" text, replaced by the chosen template).
+  // Mirrored into refs for the editor's key handler, like the "/" menu.
+  type TemplateQuery = { x: number; y: number; from: number; to: number; query: string }
+  const [templateQuery, setTemplateQueryState] = useState<TemplateQuery | null>(null)
+  const templateQueryRef = useRef<TemplateQuery | null>(null)
+  const [templateIndex, setTemplateIndexState] = useState(0)
+  const templateIndexRef = useRef(0)
+  const setTemplateIndex = (index: number) => {
+    templateIndexRef.current = index
+    setTemplateIndexState(index)
+  }
+  const setTemplateQuery = (value: TemplateQuery | null) => {
+    if (!value || value.query !== templateQueryRef.current?.query) setTemplateIndex(0)
+    templateQueryRef.current = value
+    setTemplateQueryState(value)
+  }
+  const templateMatches = () => filterTemplates(useTableTemplateStore.getState().templates, templateQueryRef.current?.query ?? '')
+  const selectTemplateRef = useRef<(index: number) => void>(() => {})
   // Applies the menu item at an index; reassigned every render so it sees
   // the current editor and menu position.
   const selectSlashItemRef = useRef<(index: number) => void>(() => {})
@@ -181,6 +203,27 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
             return true
           }
         }
+        if (templateQueryRef.current) {
+          const n = templateMatches().length
+          if (event.key === 'Escape') {
+            setTemplateQuery(null)
+            return true
+          }
+          if (n > 0) {
+            if (event.key === 'ArrowDown') {
+              setTemplateIndex((templateIndexRef.current + 1) % n)
+              return true
+            }
+            if (event.key === 'ArrowUp') {
+              setTemplateIndex((templateIndexRef.current - 1 + n) % n)
+              return true
+            }
+            if (event.key === 'Enter' && !event.shiftKey) {
+              selectTemplateRef.current(Math.min(templateIndexRef.current, n - 1))
+              return true
+            }
+          }
+        }
         if (!slashMenuRef.current) return false
         const count = slashMenuItems(useExtensionRegistry.getState().slashCommands).length
         if (count === 0) return false
@@ -235,6 +278,25 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
         setSlashMenu({ x: coords.left, y: coords.bottom, charPos: $from.pos })
       } else {
         setSlashMenu(null)
+      }
+
+      // `/table <name>` (issue #38): a paragraph that is exactly "/table "
+      // plus a query, with the caret at its end, lists matching templates.
+      const tableQuery =
+        $from.parent.type.name === 'paragraph' && $from.parentOffset === $from.parent.content.size
+          ? /^\/table\s+(\S.*)$/i.exec($from.parent.textContent)
+          : null
+      if (tableQuery) {
+        if (!useTableTemplateStore.getState().loaded) void useTableTemplateStore.getState().load()
+        let coords = { left: 0, bottom: 0 }
+        try {
+          coords = editor.view.coordsAtPos($from.pos)
+        } catch {
+          // jsdom: no layout engine — see the "/" menu above.
+        }
+        setTemplateQuery({ x: coords.left, y: coords.bottom, from: $from.start(), to: $from.pos, query: tableQuery[1]! })
+      } else if (templateQueryRef.current) {
+        setTemplateQuery(null)
       }
     },
     onFocus: () => setActiveSegment(segment.id),
@@ -526,6 +588,16 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
     setSlashMenu(null)
   }
 
+  selectTemplateRef.current = (index: number) => {
+    const query = templateQueryRef.current
+    const template = templateMatches()[index]
+    if (!editor || !query || !template) return
+    refocusEditorNow()
+    editor.chain().focus().deleteRange({ from: query.from, to: query.to }).run()
+    insertTemplateTable(editor, template.table)
+    setTemplateQuery(null)
+  }
+
   const applyPluginBlock = (pluginId: string, slashCommandId: string) => {
     if (!editor || !slashMenu) return
     refocusEditorNow()
@@ -721,12 +793,24 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           onClose={() => setSlashMenu(null)}
         />
       )}
+      {templateQuery && editor && (
+        <TableTemplateMenuHost
+          query={templateQuery}
+          activeIndex={templateIndex}
+          onActiveIndexChange={setTemplateIndex}
+          onSelect={(i) => selectTemplateRef.current(i)}
+        />
+      )}
       {tablePicker && editor && (
         <TableSizePicker
           x={tablePicker.x}
           y={tablePicker.y}
           onPick={(rows, cols) => {
             insertTable(editor, rows, cols)
+            setTablePicker(null)
+          }}
+          onPickTemplate={(template) => {
+            insertTemplateTable(editor, template.table)
             setTablePicker(null)
           }}
           onClose={() => {
@@ -777,5 +861,32 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
         />
       )}
     </div>
+  )
+}
+
+/** `/table <name>`'s menu, subscribed to the template store so it fills in once templates load. */
+function TableTemplateMenuHost({
+  query,
+  activeIndex,
+  onActiveIndexChange,
+  onSelect,
+}: {
+  query: { x: number; y: number; query: string }
+  activeIndex: number
+  onActiveIndexChange: (index: number) => void
+  onSelect: (index: number) => void
+}) {
+  const templates = useTableTemplateStore((s) => s.templates)
+  const matches = filterTemplates(templates, query.query)
+  return (
+    <TableTemplateMenu
+      x={query.x}
+      y={query.y}
+      query={query.query}
+      matches={matches}
+      activeIndex={Math.min(activeIndex, Math.max(0, matches.length - 1))}
+      onActiveIndexChange={onActiveIndexChange}
+      onSelect={onSelect}
+    />
   )
 }

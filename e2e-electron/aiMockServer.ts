@@ -93,5 +93,5 @@ export async function addProvider(page: Page, service: string, baseUrl: string, 
   if (name) await page.getByRole('textbox', { name: 'Name' }).fill(name)
   await page.getByRole('textbox', { name: 'Base URL' }).fill(baseUrl)
   if (apiKey) await page.getByLabel('API key').fill(apiKey)
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('dialog', { name: 'AI settings' }).getByRole('button', { name: 'Save', exact: true }).click()
 }

@@ -15,6 +15,7 @@ pub use commands::{
     search, set_page_background, set_page_mode, set_plugin_enabled, sync_cancel_sign_in, sync_configure, sync_confirm_mass_delete, sync_connect, sync_disconnect,
     sync_now, sync_sign_in, sync_status, uninstall_plugin, AppState, AttachmentDto, AttachmentWithPathDto,
     FolderDto, FolderInput, PageDto, PageInput, SearchResultDto, SegmentDto, SegmentInput,
+    list_table_templates, save_table_template, rename_table_template, delete_table_template, TableTemplateDto, TableTemplateInput,
 };
 
 /// Builds the `tauri-specta` builder wiring every command above. Consumed by
@@ -46,6 +47,10 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         get_ink_layer,
         add_dictionary_word,
         list_dictionary_words,
+        list_table_templates,
+        save_table_template,
+        rename_table_template,
+        delete_table_template,
         search,
         install_plugin,
         uninstall_plugin,

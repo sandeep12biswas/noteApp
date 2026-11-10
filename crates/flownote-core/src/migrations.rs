@@ -66,6 +66,7 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/V11__page_background.sql"),
     },
     Migration { version: 12, name: "sync_compaction", sql: include_str!("../migrations/V12__sync_compaction.sql") },
+    Migration { version: 13, name: "table_templates", sql: include_str!("../migrations/V13__table_templates.sql") },
 ];
 
 /// Applies every migration in `MIGRATIONS` newer than the connection's
@@ -124,6 +125,7 @@ mod tests {
             "sync_outbox",
             "sync_peers",
             "sync_quarantine",
+            "table_templates",
         ];
         for table in expected_tables {
             let count: i64 = conn
@@ -139,7 +141,7 @@ mod tests {
         let applied: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(applied, 12);
+        assert_eq!(applied, 13);
     }
 
     #[test]

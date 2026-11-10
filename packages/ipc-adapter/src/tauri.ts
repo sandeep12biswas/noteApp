@@ -17,6 +17,8 @@ import type {
   SyncConfigInput,
   SyncEvent,
   SyncStatus,
+  TableTemplate,
+  TableTemplateInput,
 } from './types'
 
 /** Unwraps a tauri-specta `Result<T, string>`, throwing the backend's error message on failure. */
@@ -133,6 +135,22 @@ export class TauriIPCAdapter implements IPCAdapter {
 
   async listDictionaryWords(): Promise<string[]> {
     return unwrap(await commands.listDictionaryWords())
+  }
+
+  async listTableTemplates(): Promise<TableTemplate[]> {
+    return unwrap(await commands.listTableTemplates()) as TableTemplate[]
+  }
+
+  async saveTableTemplate(template: TableTemplateInput): Promise<void> {
+    unwrap(await commands.saveTableTemplate({ ...template, table: template.table as JsonValue }))
+  }
+
+  async renameTableTemplate(from: string, to: string): Promise<void> {
+    unwrap(await commands.renameTableTemplate(from, to))
+  }
+
+  async deleteTableTemplate(name: string): Promise<void> {
+    unwrap(await commands.deleteTableTemplate(name))
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {

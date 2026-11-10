@@ -17,6 +17,8 @@ import type {
   SyncConfigInput,
   SyncEvent,
   SyncStatus,
+  TableTemplate,
+  TableTemplateInput,
 } from './types'
 
 // The renderer-side trpc client's procedure shape, hand-mirrored from
@@ -50,6 +52,10 @@ interface ElectronRouter {
   getInkLayer: { query: (pageId: string) => Promise<string | null> }
   addDictionaryWord: { mutate: (word: string) => Promise<void> }
   listDictionaryWords: { query: () => Promise<string[]> }
+  listTableTemplates: { query: () => Promise<TableTemplate[]> }
+  saveTableTemplate: { mutate: (template: TableTemplateInput) => Promise<void> }
+  renameTableTemplate: { mutate: (input: { from: string; to: string }) => Promise<void> }
+  deleteTableTemplate: { mutate: (name: string) => Promise<void> }
   setPageMode: { mutate: (input: { pageId: string; mode: 'canvas' | 'linear' }) => Promise<void> }
   setPageBackground: { mutate: (input: { pageId: string; background: string | null }) => Promise<void> }
   search: { query: (input: { query: string; notebookId: string }) => Promise<SearchResult[]> }
@@ -194,6 +200,22 @@ export class ElectronIPCAdapter implements IPCAdapter {
 
   async listDictionaryWords(): Promise<string[]> {
     return getClient().listDictionaryWords.query()
+  }
+
+  async listTableTemplates(): Promise<TableTemplate[]> {
+    return getClient().listTableTemplates.query()
+  }
+
+  async saveTableTemplate(template: TableTemplateInput): Promise<void> {
+    await getClient().saveTableTemplate.mutate(template)
+  }
+
+  async renameTableTemplate(from: string, to: string): Promise<void> {
+    await getClient().renameTableTemplate.mutate({ from, to })
+  }
+
+  async deleteTableTemplate(name: string): Promise<void> {
+    await getClient().deleteTableTemplate.mutate(name)
   }
 
   async mergeSegments(_idA: string, _idB: string): Promise<void> {

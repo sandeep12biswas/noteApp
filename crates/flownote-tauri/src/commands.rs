@@ -146,6 +146,24 @@ pub struct SearchResultDto {
     pub snippet: String,
 }
 
+/// A saved table template (issue #38); `table` is the TipTap `table` node.
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableTemplateDto {
+    pub name: String,
+    pub table: Value,
+    pub includes_contents: bool,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableTemplateInput {
+    pub name: String,
+    pub table: Value,
+    pub includes_contents: bool,
+}
+
 // ---- pure `_impl` functions (unit-tested below) ----
 
 fn get_page_impl(conn: &Connection, page_id: &str) -> Result<PageDto, String> {
@@ -228,6 +246,14 @@ fn save_ink_layer_impl(conn: &Connection, page_id: &str, data_url: &str) -> Resu
 /// `None` = page has no ink layer saved yet; a missing page is an `Err`.
 fn get_ink_layer_impl(conn: &Connection, page_id: &str) -> Result<Option<String>, String> {
     from_json(store::get_ink_layer(conn, page_id)?)
+}
+
+fn list_table_templates_impl(conn: &Connection) -> Result<Vec<TableTemplateDto>, String> {
+    store::list_table_templates(conn)?.into_iter().map(from_json).collect()
+}
+
+fn save_table_template_impl(conn: &Connection, template: &TableTemplateInput) -> Result<(), String> {
+    store::save_table_template(conn, &serde_json::to_value(template).map_err(|e| e.to_string())?)
 }
 
 fn add_dictionary_word_impl(conn: &Connection, word: &str) -> Result<(), String> {
@@ -411,6 +437,30 @@ pub fn save_ink_layer(state: State<AppState>, page_id: String, data_url: String)
 #[specta::specta]
 pub fn get_ink_layer(state: State<AppState>, page_id: String) -> Result<Option<String>, String> {
     with_conn(&state, |c| get_ink_layer_impl(c, &page_id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_table_templates(state: State<AppState>) -> Result<Vec<TableTemplateDto>, String> {
+    with_conn(&state, list_table_templates_impl)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_table_template(state: State<AppState>, template: TableTemplateInput) -> Result<(), String> {
+    with_conn(&state, |c| save_table_template_impl(c, &template))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn rename_table_template(state: State<AppState>, from: String, to: String) -> Result<(), String> {
+    with_conn(&state, |c| store::rename_table_template(c, &from, &to))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_table_template(state: State<AppState>, name: String) -> Result<(), String> {
+    with_conn(&state, |c| store::delete_table_template(c, &name))
 }
 
 #[tauri::command]
@@ -901,6 +951,16 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let err = get_ink_layer_impl(&conn, "missing").unwrap_err();
         assert!(err.contains("no such page"));
+    }
+
+    #[test]
+    fn table_templates_save_and_list_as_dtos() {
+        let conn = db::open_in_memory().unwrap();
+        let table = json!({ "type": "table", "content": [] });
+        save_table_template_impl(&conn, &TableTemplateInput { name: "Budget".into(), table: table.clone(), includes_contents: true }).unwrap();
+        let list = list_table_templates_impl(&conn).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!((list[0].name.as_str(), &list[0].table, list[0].includes_contents), ("Budget", &table, true));
     }
 
     #[test]
