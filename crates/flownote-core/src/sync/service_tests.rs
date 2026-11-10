@@ -91,6 +91,21 @@ impl Drop for App {
     }
 }
 
+/// Every file under `dir`, recursively (for failure messages).
+fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(walk(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out.sort();
+    out
+}
+
 fn write_note(conn: &Connection, page: &str, seg: &str, text: &str) {
     store::save_folder(conn, &json!({ "id": "f1", "name": "Notes" })).unwrap();
     store::save_page(conn, &json!({ "id": page, "folderId": "f1", "title": "Ideas" })).unwrap();
@@ -135,7 +150,9 @@ fn status_follows_setup_without_exposing_the_key() {
 fn bad_settings_are_refused() {
     let app = App::new("a");
     assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": "relative/path" })).unwrap_err().contains("full path"));
-    assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": "/no/such/flownote/dir" })).unwrap_err().contains("no folder"));
+    // A full path on every OS ("/no/such/…" isn't one on Windows: no drive letter).
+    let missing = std::env::temp_dir().join("no").join("such").join("flownote-dir");
+    assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": missing.to_str().unwrap() })).unwrap_err().contains("no folder"));
     assert!(app.sync().configure(&json!({ "target": "dropbox" })).unwrap_err().contains("isn't available"));
     assert!(app.sync().configure(&json!({ "deviceName": "  " })).unwrap_err().contains("empty"));
     assert!(app.sync().connect(PASS).unwrap_err().contains("Choose where to sync"));
@@ -447,10 +464,37 @@ fn a_device_that_joins_without_notes_shows_up_and_its_rename_follows() {
     assert!(a.sync().status().unwrap()["peers"][0]["lastSeenAt"].is_i64());
 
     b.sync().configure(&json!({ "deviceName": "Work phone" })).unwrap();
+    // Let B's upload finish before A looks: `upload_seq` is recorded only
+    // after the change file is stored (B's outbox empties earlier, when its
+    // edits are turned into document changes). A used to call sync_now() on
+    // every 20 ms poll instead — ~1,000 syncs in 10 s on CI, which kept the
+    // shared folder busy — so it now nudges A at most every 500 ms.
+    let upload_seq = |app: &App| app.conn().query_row("SELECT upload_seq FROM sync_settings", [], |r| r.get::<_, i64>(0)).unwrap();
+    let before = upload_seq(&b);
     write_note(&b.conn(), "p1", "s2", "from the phone"); // uploads by itself, with the new name
-    a.wait_for("the rename on A", |a| {
-        let _ = a.sync().sync_now();
-        peer_names(a) == ["Work phone"]
-    });
+    b.wait_for("B to upload its edit", |b| upload_seq(b) > before);
+    let start = Instant::now();
+    let mut nudged: Option<Instant> = None;
+    while peer_names(&a) != ["Work phone"] {
+        if nudged.is_none_or(|at| at.elapsed() >= Duration::from_millis(500)) {
+            let _ = a.sync().sync_now();
+            nudged = Some(Instant::now());
+        }
+        if start.elapsed() > Duration::from_secs(10) {
+            let mut files: Vec<String> = Vec::new();
+            for entry in walk(&cloud) {
+                let meta = std::fs::metadata(&entry).ok();
+                files.push(format!("{} ({} bytes)", entry.strip_prefix(&cloud).unwrap().display(), meta.map(|m| m.len()).unwrap_or(0)));
+            }
+            panic!(
+                "timed out waiting for the rename on A\nA peers: {:?}\nA texts: {:?}\nB status: {:#}\ncloud files: {:#?}",
+                peer_names(&a),
+                texts(&a.conn(), "p1"),
+                b.sync().status().unwrap(),
+                files,
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
     std::fs::remove_dir_all(&cloud).ok();
 }
