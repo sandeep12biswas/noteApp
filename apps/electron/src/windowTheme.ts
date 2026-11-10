@@ -11,7 +11,8 @@
 // `null` and the bar's own simple buttons.
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+// posix: these are Linux (XDG/KDE) paths; Node's default join would use \ on Windows, where the unit tests also run.
+import { posix } from 'node:path'
 import type { ButtonTheme } from '@flownote/ipc-adapter'
 import { iniValue } from './buttonLayout'
 
@@ -27,7 +28,7 @@ export interface ThemeFs {
 
 /** The Aurorae theme KWin uses, or null for Breeze / any non-Aurorae decoration. The user's kwinrc wins over the global theme's defaults (kdedefaults/kwinrc), which is where Plasma writes it when the theme came with a global look-and-feel package. */
 export function activeAuroraeTheme(fs: ThemeFs): string | null {
-  for (const file of [join(fs.configHome, 'kwinrc'), join(fs.configHome, 'kdedefaults', 'kwinrc')]) {
+  for (const file of [posix.join(fs.configHome, 'kwinrc'), posix.join(fs.configHome, 'kdedefaults', 'kwinrc')]) {
     const text = fs.read(file)
     if (!text) continue
     const library = iniValue(text, 'org.kde.kdecoration2', 'library')
@@ -46,16 +47,16 @@ function num(text: string, key: string, fallback: number): number {
 export function loadAuroraeTheme(name: string, fs: ThemeFs): ButtonTheme | null {
   // Theme names are directory names; refuse anything that could walk out of the themes folder.
   if (!/^[\w .+-]+$/.test(name) || name.includes('..')) return null
-  for (const dir of fs.dataDirs.map((d) => join(d, 'aurorae', 'themes', name))) {
+  for (const dir of fs.dataDirs.map((d) => posix.join(d, 'aurorae', 'themes', name))) {
     const read = (file: string) => {
-      const text = fs.read(join(dir, file))
+      const text = fs.read(posix.join(dir, file))
       return text && text.length <= MAX_SVG_BYTES ? text : null
     }
     const close = read('close.svg')
     const minimize = read('minimize.svg')
     const maximize = read('maximize.svg')
     if (!close || !minimize || !maximize) continue
-    const rc = fs.read(join(dir, `${name}rc`)) ?? ''
+    const rc = fs.read(posix.join(dir, `${name}rc`)) ?? ''
     return {
       kind: 'aurorae',
       name,
@@ -78,10 +79,10 @@ export function resolveButtonTheme(desktop: string, fs: ThemeFs): ButtonTheme | 
 export function systemButtonTheme(): ButtonTheme | null {
   if (process.platform !== 'linux' || process.env.FLOWNOTE_TITLEBAR_BUTTONS) return null
   const home = homedir()
-  const dataHome = process.env.XDG_DATA_HOME || join(home, '.local', 'share')
+  const dataHome = process.env.XDG_DATA_HOME || posix.join(home, '.local', 'share')
   const dataDirs = [dataHome, ...(process.env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':').filter(Boolean)]
   return resolveButtonTheme(process.env.XDG_CURRENT_DESKTOP ?? '', {
-    configHome: process.env.XDG_CONFIG_HOME || join(home, '.config'),
+    configHome: process.env.XDG_CONFIG_HOME || posix.join(home, '.config'),
     dataDirs,
     read: (p) => {
       try {

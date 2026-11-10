@@ -17,10 +17,13 @@ async function setLightTheme(page: Page) {
   await expect(toggle).toHaveAttribute('aria-label', /Theme: light/i)
 }
 
-async function openPageColour(page: Page) {
+async function openPageColour(page: Page, target: 'This page' | 'All pages' = 'This page') {
   await page.getByRole('tab', { name: 'View' }).click()
   await page.getByRole('button', { name: 'Page colour' }).click()
-  return page.getByRole('menu', { name: 'Page colour' })
+  const menu = page.getByRole('menu', { name: 'Page colour' })
+  // "Apply to: This page | All pages" — the swatches below follow it.
+  await menu.getByRole('group', { name: 'Apply to' }).getByRole('menuitemradio', { name: target, exact: true }).click()
+  return menu
 }
 
 async function selectPage(page: Page, folder: string, file: string) {
@@ -36,7 +39,7 @@ test('a page colour and the default survive a restart', async () => {
   await createFolderAndPage(page, 'Own', 'Coloured')
   await (await openPageColour(page)).getByRole('menuitemradio', { name: 'This page Mint' }).click()
   await createFolderAndPage(page, 'Plain', 'Default')
-  await (await openPageColour(page)).getByRole('menuitemradio', { name: 'All pages Sepia' }).click()
+  await (await openPageColour(page, 'All pages')).getByRole('menuitemradio', { name: 'All pages Sepia' }).click()
   await page.waitForTimeout(300) // set_page_background is fire-and-forget
 
   await ctx.app.close()
@@ -59,8 +62,10 @@ test('colours fixed with Adjust survive a restart', async () => {
 
   await createFolderAndPage(page, 'Navy', 'Night')
   const menu = await openPageColour(page)
-  await menu.getByLabel('Custom colour for this page').fill('#1e3a8a')
-  await page.keyboard.press('Escape')
+  // Any colour via the in-app colour wheel's hex box.
+  await menu.getByRole('menuitem', { name: 'More colours…' }).click()
+  await menu.getByRole('textbox', { name: 'Hex colour' }).fill('#1e3a8a')
+  await menu.getByRole('menuitem', { name: 'Apply' }).click()
   await page.getByRole('tab', { name: 'Home' }).click()
 
   await clickCanvasAt(page, 100, 100)
