@@ -135,7 +135,9 @@ fn status_follows_setup_without_exposing_the_key() {
 fn bad_settings_are_refused() {
     let app = App::new("a");
     assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": "relative/path" })).unwrap_err().contains("full path"));
-    assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": "/no/such/flownote/dir" })).unwrap_err().contains("no folder"));
+    // A full path on every OS ("/no/such/…" isn't one on Windows: no drive letter).
+    let missing = std::env::temp_dir().join("no").join("such").join("flownote-dir");
+    assert!(app.sync().configure(&json!({ "target": "folder", "folderPath": missing.to_str().unwrap() })).unwrap_err().contains("no folder"));
     assert!(app.sync().configure(&json!({ "target": "dropbox" })).unwrap_err().contains("isn't available"));
     assert!(app.sync().configure(&json!({ "deviceName": "  " })).unwrap_err().contains("empty"));
     assert!(app.sync().connect(PASS).unwrap_err().contains("Choose where to sync"));
@@ -448,9 +450,12 @@ fn a_device_that_joins_without_notes_shows_up_and_its_rename_follows() {
 
     b.sync().configure(&json!({ "deviceName": "Work phone" })).unwrap();
     write_note(&b.conn(), "p1", "s2", "from the phone"); // uploads by itself, with the new name
-    a.wait_for("the rename on A", |a| {
-        let _ = a.sync().sync_now();
-        peer_names(a) == ["Work phone"]
-    });
+    // Let B's upload finish before A looks. A used to call sync_now() on
+    // every 20 ms poll while waiting — ~1,000 syncs in 10 s on CI, keeping
+    // the shared folder busy so B's upload never got in (failed on every
+    // Windows run, sometimes on Linux).
+    b.wait_for("B to upload its edit", |b| b.conn().query_row("SELECT COUNT(*) FROM sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap() == 0);
+    a.sync().sync_now().unwrap();
+    a.wait_for("the rename on A", |a| peer_names(a) == ["Work phone"]);
     std::fs::remove_dir_all(&cloud).ok();
 }
