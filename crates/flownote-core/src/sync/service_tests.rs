@@ -91,6 +91,21 @@ impl Drop for App {
     }
 }
 
+/// Every file under `dir`, recursively (for failure messages).
+fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(walk(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out.sort();
+    out
+}
+
 fn write_note(conn: &Connection, page: &str, seg: &str, text: &str) {
     store::save_folder(conn, &json!({ "id": "f1", "name": "Notes" })).unwrap();
     store::save_page(conn, &json!({ "id": page, "folderId": "f1", "title": "Ideas" })).unwrap();
@@ -456,6 +471,23 @@ fn a_device_that_joins_without_notes_shows_up_and_its_rename_follows() {
     // Windows run, sometimes on Linux).
     b.wait_for("B to upload its edit", |b| b.conn().query_row("SELECT COUNT(*) FROM sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap() == 0);
     a.sync().sync_now().unwrap();
-    a.wait_for("the rename on A", |a| peer_names(a) == ["Work phone"]);
+    let start = Instant::now();
+    while peer_names(&a) != ["Work phone"] {
+        if start.elapsed() > Duration::from_secs(10) {
+            let mut files: Vec<String> = Vec::new();
+            for entry in walk(&cloud) {
+                let meta = std::fs::metadata(&entry).ok();
+                files.push(format!("{} ({} bytes)", entry.strip_prefix(&cloud).unwrap().display(), meta.map(|m| m.len()).unwrap_or(0)));
+            }
+            panic!(
+                "timed out waiting for the rename on A\nA peers: {:?}\nB status: {:#}\ncloud files: {:#?}\nB events: {:#?}",
+                peer_names(&a),
+                b.sync().status().unwrap(),
+                files,
+                b.events.lock().unwrap()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
     std::fs::remove_dir_all(&cloud).ok();
 }
