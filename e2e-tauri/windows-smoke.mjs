@@ -153,6 +153,51 @@ await check('flownote-attachment serves an image that renders', async () => {
   expectEqual(size, '4x3', 'image size')
 })
 
+// TEMPORARY probe v2 (issue #33): which plugin-module imports from a
+// sandboxed srcdoc iframe reach the app's flownote-plugin handler?
+await check('probe v2: module imports from sandboxed frames', async () => {
+  const r = await page.evaluate(async () => {
+    const base = 'http://flownote-plugin.localhost/plugins/com.sandeep.spreadsheet/index.js'
+    const sdk = 'http://flownote-plugin.localhost/sdk/index.js'
+    const run = (label, head, target) =>
+      new Promise((resolve) => {
+        const id = Math.random().toString(36).slice(2)
+        const f = document.createElement('iframe')
+        f.setAttribute('sandbox', 'allow-scripts')
+        const onMsg = (e) => {
+          if (e.data?.probe !== id) return
+          window.removeEventListener('message', onMsg)
+          f.remove()
+          resolve(e.data.result)
+        }
+        window.addEventListener('message', onMsg)
+        setTimeout(() => resolve('timeout'), 10_000)
+        f.srcdoc = `<!doctype html>${head}<script type="module">
+          import(${JSON.stringify(target)}).then(() => 'ok', (e) => String(e))
+            .then((result) => parent.postMessage({ probe: ${JSON.stringify(id)}, result }, '*'))
+        </script>`
+        document.body.appendChild(f)
+      })
+    const map = `<script type="importmap">{"imports":{"@flownote/sdk":"${sdk}"}}</script>`
+    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src http://flownote-plugin.localhost 'unsafe-inline'; connect-src http://flownote-plugin.localhost">`
+    const out = {}
+    out['A wrapper(csp+map) plain'] = await run('A', csp + map, base)
+    out['B wrapper(csp+map) ?v'] = await run('B', csp + map, base + '?v=' + Math.random())
+    out['C map only ?v'] = await run('C', map, base + '?v=' + Math.random())
+    out['D csp+map sdk plain'] = await run('D', csp + map, sdk)
+    out['E csp+map sdk ?v'] = await run('E', csp + map, sdk + '?v=' + Math.random())
+    out['F map only plain'] = await run('F', map, base)
+    try {
+      out.handlerSaw = await (await fetch('http://flownote-plugin.localhost/__probe/log', { cache: 'no-store' })).json()
+    } catch (e) {
+      out.handlerSaw = `threw ${e}`
+    }
+    return out
+  })
+  console.log(`  probe v2: ${JSON.stringify(r, null, 1)}`)
+  for (const line of events.splice(0)) console.log(`  ${line}`)
+})
+
 await check('spreadsheet plugin: loads after restart-equivalent reload, registers /sheet, grid renders', async () => {
   await invoke('install_plugin', { source: MANIFEST })
   await page.reload()
@@ -199,6 +244,12 @@ await check('spreadsheet plugin: loads after restart-equivalent reload, register
     if (Date.now() > deadline) throw new Error(`grid did not render; frames: ${page.frames().map((f) => f.url())}`)
     await new Promise((r) => setTimeout(r, 300))
   }
+})
+
+// TEMPORARY (issue #33): what the handler saw during the plugin check.
+await check('probe v2: handler log after the plugin check', async () => {
+  const log = await page.evaluate(async () => (await fetch('http://flownote-plugin.localhost/__probe/log', { cache: 'no-store' })).json())
+  console.log(`  handler log: ${JSON.stringify(log.slice(-25), null, 1)}`)
 })
 
 await check('the spreadsheet plugin (no network:fetch) can\'t reach the network from its grid', async () => {
