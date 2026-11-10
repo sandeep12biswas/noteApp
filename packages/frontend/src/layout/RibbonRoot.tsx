@@ -23,6 +23,7 @@ import { useThemeStore } from '../store/themeStore'
 import { MAX_ZOOM, MIN_ZOOM, RIBBON_TABS, type RibbonTab, useUIStore } from '../store/uiStore'
 import { AiSettingsDialog } from './AiSettingsDialog'
 import { ColorPickerMenu } from './ColorPickerMenu'
+import { TableRibbonGroup } from './TableRibbonGroup'
 import { PageColorButton } from './PageColorMenu'
 
 // Format Painter — DESIGN-parity with Word/OneNote's paintbrush: click to
@@ -716,7 +717,11 @@ export function RibbonRoot() {
         ) : activeTab === 'View' ? (
           <ViewToolsPanel />
         ) : activeTab === 'Insert' ? (
-          <AIInsertPanel />
+          <div className="flex items-center gap-2">
+            <TableRibbonGroup />
+            <Divider />
+            <AIInsertPanel />
+          </div>
         ) : (
           <span className="text-xs text-gray-400">{activeTab} tools</span>
         )}

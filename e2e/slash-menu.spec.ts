@@ -14,7 +14,7 @@ test('"/" at an empty line opens the block picker; choosing Heading 1 applies it
 
   const menu = page.getByRole('menu', { name: 'Insert block' })
   await expect(menu).toBeVisible()
-  await expect(menu.getByRole('menuitem')).toHaveCount(10) // 9 core block types (DESIGN.md §4.4) + Ask AI
+  await expect(menu.getByRole('menuitem')).toHaveCount(11) // 9 core block types (DESIGN.md §4.4) + Table… (#37) + Ask AI
 
   await menu.getByRole('menuitem', { name: 'Heading 1' }).click()
   await expect(menu).not.toBeVisible()
@@ -84,6 +84,8 @@ test('ArrowUp from the first item wraps to the last', async ({ page }) => {
   await editable.pressSequentially('/')
   await page.keyboard.press('ArrowUp')
   await expect(page.getByRole('menu', { name: 'Insert block' }).locator('[data-active]')).toHaveText('Ask AI…')
+  await page.keyboard.press('ArrowUp')
+  await expect(page.getByRole('menu', { name: 'Insert block' }).locator('[data-active]')).toHaveText('Table…')
   await page.keyboard.press('ArrowUp')
   await expect(page.getByRole('menu', { name: 'Insert block' }).locator('[data-active]')).toHaveText('Code block')
   await page.keyboard.press('Enter')
