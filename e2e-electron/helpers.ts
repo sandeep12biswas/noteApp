@@ -50,7 +50,9 @@ export async function launchApp(options?: { userDataDir?: string }): Promise<Lau
       `--user-data-dir=${userDataDir}`,
       APP_DIR,
     ],
-    env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' },
+    // Title-bar buttons on the right whatever the developer's desktop uses
+    // (apps/electron/src/buttonLayout.ts), so specs see the same layout everywhere.
+    env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0', FLOWNOTE_TITLEBAR_BUTTONS: ':minimize,maximize,close' },
     timeout: 60_000,
   })
   const page = await app.firstWindow()

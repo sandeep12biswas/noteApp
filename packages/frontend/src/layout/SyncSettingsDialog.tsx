@@ -31,10 +31,10 @@ export function placeOf(status: SyncStatus): string {
 }
 
 const button =
-  'rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+  'rounded bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700 disabled:cursor-not-allowed disabled:opacity-50'
 const plainButton = 'rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800'
 const input = 'w-full rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800'
-const link = 'text-xs text-blue-600 hover:underline dark:text-blue-400'
+const link = 'text-xs text-lavender-600 hover:underline dark:text-lavender-400'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

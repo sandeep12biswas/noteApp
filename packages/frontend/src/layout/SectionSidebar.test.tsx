@@ -152,6 +152,34 @@ describe('SectionSidebar', () => {
     expect(useNotebookStore.getState().folders[id!]?.icon).toBeNull()
   })
 
+  it('draws the lavender folder by default, and lavender icons from the picker', async () => {
+    const store = useNotebookStore.getState()
+    const { id } = store.createFolder(null, 'Work')
+    const user = userEvent.setup()
+    render(<SectionSidebar />)
+    const iconButton = () => screen.getByRole('button', { name: 'Change icon for Work' })
+    expect(iconButton().querySelector('[data-folder-icon]')).toHaveAttribute('data-folder-icon', 'folder')
+
+    await user.click(iconButton())
+    expect(screen.getByRole('group', { name: 'Lavender' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Emoji' })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitemradio', { name: 'Icon Work' }))
+    expect(useNotebookStore.getState().folders[id!]?.icon).toBe('lavender:briefcase')
+    expect(iconButton().querySelector('[data-folder-icon]')).toHaveAttribute('data-folder-icon', 'briefcase')
+
+    // The current choice is marked when the picker reopens.
+    await user.click(iconButton())
+    expect(screen.getByRole('menuitemradio', { name: 'Icon Work' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('still shows an emoji icon chosen before the lavender set existed', () => {
+    const store = useNotebookStore.getState()
+    const { id } = store.createFolder(null, 'Old')
+    store.setFolderIcon(id!, '💼')
+    render(<SectionSidebar />)
+    expect(screen.getByRole('button', { name: 'Change icon for Old' })).toHaveTextContent('💼')
+  })
+
   it('renders the Plugins slot', () => {
     render(<SectionSidebar />)
     expect(screen.getByTestId('plugins-tab')).toBeInTheDocument()

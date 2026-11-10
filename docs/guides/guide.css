@@ -5,9 +5,9 @@
   --ink: #111827;
   --muted: #4b5563;
   --rule: #e5e7eb;
-  --accent: #2563eb;
-  --accent-dark: #1e40af;
-  --tip-bg: #eff6ff;
+  --accent: #7650c2; /* lavender-600 */
+  --accent-dark: #4b3182; /* lavender-800 */
+  --tip-bg: #f6f3fd; /* lavender-50 */
   --warn-bg: #fffbeb;
   --warn-rule: #f59e0b;
   --code-bg: #f3f4f6;
@@ -53,7 +53,7 @@ body {
   padding: 26mm 16mm 16mm;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(160deg, #1e3a8a 0%, #2563eb 60%, #3b82f6 100%);
+  background: linear-gradient(160deg, #362463 0%, #7650c2 58%, #a98de3 100%); /* lavender 900 → 600 → 400 */
   color: #fff;
   page-break-after: always;
   break-after: page;

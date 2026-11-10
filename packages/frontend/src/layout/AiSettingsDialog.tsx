@@ -100,14 +100,14 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate font-medium">{p.name}</span>
-                  {p.isDefault && <span className="rounded bg-blue-100 px-1 text-[10px] text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">Default</span>}
+                  {p.isDefault && <span className="rounded bg-lavender-100 px-1 text-[10px] text-lavender-700 dark:bg-lavender-900/50 dark:text-lavender-300">Default</span>}
                 </div>
                 <div className="truncate text-[11px] text-gray-500">
                   {KIND_LABELS[p.kind]} · {p.model} · {p.hasApiKey ? 'key saved' : 'no key'}
                 </div>
               </div>
               {!p.isDefault && (
-                <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => void setDefault(p.id)} aria-label={`Make ${p.name} the default`}>
+                <button type="button" className="text-xs text-lavender-600 hover:underline" onClick={() => void setDefault(p.id)} aria-label={`Make ${p.name} the default`}>
                   Make default
                 </button>
               )}
@@ -179,7 +179,7 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
               <button type="button" className="text-xs text-gray-500 hover:underline" onClick={() => setForm(null)}>
                 Cancel
               </button>
-              <button type="submit" className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700">
+              <button type="submit" className="rounded bg-lavender-600 px-2 py-1 text-xs text-white hover:bg-lavender-700">
                 Save
               </button>
             </div>

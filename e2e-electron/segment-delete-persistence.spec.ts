@@ -39,7 +39,8 @@ test('undone, expired and closed-mid-window deletions are stored correctly', asy
   await addSegment(ctx.page, 100, 'undone')
   await addSegment(ctx.page, 300, 'expired')
   await addSegment(ctx.page, 500, 'closed mid-window')
-  await ctx.page.locator('body').click({ position: { x: 5, y: 5 } })
+  // Blur the editor on neutral ground (the top-left corner is the title bar).
+  await ctx.page.getByTestId('status-bar').click({ position: { x: 5, y: 5 } })
 
   // Undone: stays saved.
   await deleteSegment(ctx.page, 'undone')

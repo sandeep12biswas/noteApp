@@ -9,6 +9,39 @@
    only the activation mechanism changes. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* FlowNote's brand colour (issue #40). Registering it under @theme makes
+   Tailwind generate `bg-lavender-600`, `text-lavender-700`, … like any
+   built-in palette; every accent in the UI (selection, buttons, links,
+   focus rings) uses these instead of Tailwind's blue. The same values are
+   used by the app icon (docs/design/branding) and the guides' cover. */
+@theme {
+  --color-lavender-50: #f6f3fd;
+  --color-lavender-100: #ede7fb;
+  --color-lavender-200: #dcd0f6;
+  --color-lavender-300: #c4b1ee;
+  --color-lavender-400: #a98de3;
+  --color-lavender-500: #8e6cd6;
+  --color-lavender-600: #7650c2;
+  --color-lavender-700: #5f3da3;
+  --color-lavender-800: #4b3182;
+  --color-lavender-900: #362463;
+  --color-lavender-950: #241842;
+}
+
+/* Title bar (layout/TitleBar.tsx). The native frame is hidden in both
+   desktop shells; this bar replaces it. `app-region: drag` lets the window
+   be moved by it (Electron); Tauri uses `data-tauri-drag-region` instead.
+   Buttons inside must opt back out or they can't be clicked. */
+.flownote-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+  background: linear-gradient(90deg, var(--color-lavender-700), var(--color-lavender-500));
+}
+.flownote-titlebar button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 /* Spell-check misspelling indicator (canvas/spellcheckExtension.ts) — a
    plain custom class, not an assembled Tailwind utility string, since the
    class only ever exists as a literal inside a ProseMirror `Decoration`

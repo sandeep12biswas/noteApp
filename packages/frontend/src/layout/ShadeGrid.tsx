@@ -78,7 +78,7 @@ export function ShadeGrid({
               onClick={() => onPick(color)}
               className={
                 SWATCH_EDGE +
-                ' aspect-square w-full rounded-[3px] transition-transform hover:z-10 hover:scale-125 focus-visible:z-10 focus-visible:scale-125 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600' +
+                ' aspect-square w-full rounded-[3px] transition-transform hover:z-10 hover:scale-125 focus-visible:z-10 focus-visible:scale-125 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-lavender-600' +
                 (active ? ' z-10 ' + SWATCH_ACTIVE : '')
               }
               style={{ backgroundColor: color }}

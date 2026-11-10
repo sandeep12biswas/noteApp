@@ -10,7 +10,7 @@
 // to a real trpc call.
 import { initTRPC } from '@trpc/server'
 import { observable } from '@trpc/server/observable'
-import type { Folder, Segment } from '@flownote/ipc-adapter'
+import type { ButtonLayout, ButtonTheme, Folder, Segment } from '@flownote/ipc-adapter'
 import type { SidecarSupervisor } from '../sidecarSupervisor'
 
 export interface Context {
@@ -19,12 +19,37 @@ export interface Context {
   openPath: (path: string) => Promise<string>
   /** The native "choose a folder" dialog (main.ts); `null` if cancelled. */
   pickFolder: () => Promise<string | null>
+  /** The calling window, for the frameless title bar (packages/frontend/src/layout/TitleBar.tsx). */
+  window: {
+    /** True when the native frame is hidden and the renderer must draw the buttons. */
+    frameless: boolean
+    /** The desktop's button placement (buttonLayout.ts). */
+    buttonLayout: () => ButtonLayout
+    /** The desktop theme's button artwork, or null (windowTheme.ts). */
+    buttonTheme: () => ButtonTheme | null
+    isMaximized: () => boolean
+    minimize: () => void
+    toggleMaximize: () => void
+    close: () => void
+  }
 }
 
 const t = initTRPC.context<Context>().create()
 
 export const appRouter = t.router({
   ping: t.procedure.query(({ ctx }) => ctx.sidecar.request('ping')),
+
+  // Window controls for the renderer-drawn title bar — main-process only,
+  // never forwarded to the sidecar.
+  windowChrome: t.procedure.query(({ ctx }) => ({
+    frameless: ctx.window.frameless,
+    layout: ctx.window.buttonLayout(),
+    theme: ctx.window.frameless ? ctx.window.buttonTheme() : null,
+  })),
+  windowIsMaximized: t.procedure.query(({ ctx }) => ctx.window.isMaximized()),
+  windowMinimize: t.procedure.mutation(({ ctx }) => ctx.window.minimize()),
+  windowToggleMaximize: t.procedure.mutation(({ ctx }) => ctx.window.toggleMaximize()),
+  windowClose: t.procedure.mutation(({ ctx }) => ctx.window.close()),
 
   getPage: t.procedure
     .input((pageId: unknown): string => {

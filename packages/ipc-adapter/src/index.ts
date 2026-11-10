@@ -34,3 +34,5 @@ export async function resolveIPCAdapter(): Promise<IPCAdapter> {
   if (typeof window !== 'undefined' && window.electronTRPC) return new ElectronIPCAdapter()
   throw new Error('No IPC transport found')
 }
+
+export { DEFAULT_BUTTON_LAYOUT, resolveWindowChrome, type ButtonLayout, type ButtonTheme, type WindowButton, type WindowChrome, type WindowControls } from './windowChrome'

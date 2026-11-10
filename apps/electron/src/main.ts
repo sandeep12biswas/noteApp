@@ -5,9 +5,12 @@
 import { createIPCHandler } from 'electron-trpc/main'
 import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { appRouter, type Context } from './trpc/router'
+import { systemButtonLayout } from './buttonLayout'
+import { systemButtonTheme } from './windowTheme'
 import { SidecarSupervisor, type SupervisedProcess } from './sidecarSupervisor'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -70,6 +73,11 @@ function spawnSidecar(): SupervisedProcess {
   return child as unknown as SupervisedProcess
 }
 
+const DEV_ICON = join(__dirname, '..', 'build', 'icons', '512x512.png')
+
+/** The renderer draws the title bar on Linux (the only platform this shell ships on); elsewhere the native frame stays. */
+const FRAMELESS = process.platform === 'linux'
+
 function createWindow(sidecar: SidecarSupervisor): void {
   // Theme (light/dark/system) is renderer-owned and localStorage-persisted
   // (packages/frontend/src/store/themeStore.ts) — nativeTheme.themeSource
@@ -78,6 +86,17 @@ function createWindow(sidecar: SidecarSupervisor): void {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    // Lavender title bar (issue #40): on Linux the native frame is hidden
+    // and the renderer draws the whole bar, window buttons included
+    // (packages/frontend/src/layout/TitleBar.tsx), placed where the desktop
+    // puts them (buttonLayout.ts). Electron's titleBarOverlay isn't used: it
+    // always draws its buttons on the right, ignoring e.g. KDE/GNOME set up
+    // with close-minimise-maximise on the left.
+    ...(FRAMELESS ? { titleBarStyle: 'hidden' as const } : {}),
+    backgroundColor: '#ffffff',
+    // Packaged builds get their icon from the .desktop file (build/ isn't
+    // shipped); in dev runs the window sets it itself.
+    ...(existsSync(DEV_ICON) ? { icon: DEV_ICON } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       // Electron's default sandboxed preload can only resolve Node/Electron
@@ -104,6 +123,15 @@ function createWindow(sidecar: SidecarSupervisor): void {
       pickFolder: async () => {
         const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
         return result.canceled ? null : (result.filePaths[0] ?? null)
+      },
+      window: {
+        frameless: FRAMELESS,
+        buttonLayout: systemButtonLayout,
+        buttonTheme: systemButtonTheme,
+        isMaximized: () => win.isMaximized(),
+        minimize: () => win.minimize(),
+        toggleMaximize: () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
+        close: () => win.close(),
       },
     }),
   })

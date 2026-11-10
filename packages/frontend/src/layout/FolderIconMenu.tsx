@@ -1,13 +1,44 @@
-// Folder icon picker — DESIGN.md §2.1 "changeable folder icons (built-in
-// set + external import)". Built-in set only for now: importing a custom
+// Folder icon picker — DESIGN.md §2.1. Two groups: the lavender icons
+// (issue #40; the default is the plain lavender folder) and the original
+// emoji. See lib/folderIcons.ts for how each is stored.
+// "Changeable folder icons (built-in set + external import)": built-in set only for now: importing a custom
 // icon would need new asset storage (there's nowhere to persist an
 // uploaded image today — `Folder.icon` is a single string field, fine for
 // an emoji, not for arbitrary image data) and is real follow-up work, not
 // this pass's scope. Same popover pattern as `SegmentColorMenu.tsx`
 // (outside-click/Escape to close, roving keyboard nav).
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useMenuKeyboardNav } from '../lib/useMenuKeyboardNav'
-import { DEFAULT_FOLDER_ICON, FOLDER_ICONS } from '../lib/folderIcons'
+import { EMOJI_FOLDER_ICONS, LAVENDER_FOLDER_ICONS, LAVENDER_PREFIX } from '../lib/folderIcons'
+import { FolderIcon } from './FolderIcon'
+
+function IconGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-label={label}>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="grid grid-cols-6 gap-1">{children}</div>
+    </div>
+  )
+}
+
+function IconChoice({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={active}
+      aria-label={label}
+      title={label.replace(/^Icon /, '')}
+      onClick={onClick}
+      className={
+        'flex h-7 w-7 items-center justify-center rounded text-base hover:bg-lavender-50 dark:hover:bg-gray-800 ' +
+        (active ? 'ring-2 ring-offset-1 ring-lavender-500 dark:ring-offset-gray-900' : '')
+      }
+    >
+      {children}
+    </button>
+  )
+}
 
 export function FolderIconMenu({
   x,
@@ -24,6 +55,10 @@ export function FolderIconMenu({
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
   useMenuKeyboardNav(ref)
+  const pick = (icon: string | null) => {
+    onPick(icon)
+    onClose()
+  }
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -49,40 +84,30 @@ export function FolderIconMenu({
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="grid grid-cols-4 gap-1" role="group" aria-label="Icons">
-        {FOLDER_ICONS.map((icon) => {
-          const active = activeIcon === icon
+      <IconGroup label="Lavender">
+        {LAVENDER_FOLDER_ICONS.map(({ name, label }) => {
+          const value = `${LAVENDER_PREFIX}${name}`
           return (
-            <button
-              key={icon}
-              type="button"
-              role="menuitemradio"
-              aria-checked={active}
-              aria-label={`Icon ${icon}`}
-              onClick={() => {
-                onPick(icon)
-                onClose()
-              }}
-              className={
-                'flex h-7 w-7 items-center justify-center rounded text-base hover:bg-gray-100 dark:hover:bg-gray-800 ' +
-                (active ? 'ring-2 ring-offset-1 ring-blue-500' : '')
-              }
-            >
-              {icon}
-            </button>
+            <IconChoice key={value} label={`Icon ${label}`} active={activeIcon === value} onClick={() => pick(value)}>
+              <FolderIcon icon={value} className="!h-5 !w-5" />
+            </IconChoice>
           )
         })}
-      </div>
+      </IconGroup>
+      <IconGroup label="Emoji">
+        {EMOJI_FOLDER_ICONS.map((icon) => (
+          <IconChoice key={icon} label={`Icon ${icon}`} active={activeIcon === icon} onClick={() => pick(icon)}>
+            {icon}
+          </IconChoice>
+        ))}
+      </IconGroup>
       <button
         type="button"
         role="menuitem"
-        onClick={() => {
-          onPick(null)
-          onClose()
-        }}
-        className="rounded px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        onClick={() => pick(null)}
+        className="flex items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
       >
-        Default ({DEFAULT_FOLDER_ICON})
+        <FolderIcon icon={null} /> Default
       </button>
     </div>
   )

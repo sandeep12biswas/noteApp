@@ -125,7 +125,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
             <button type="button" onClick={onClose} className="text-sm text-gray-500">
               Cancel
             </button>
-            <button type="submit" className="rounded bg-blue-600 px-2 py-1 text-sm text-white">
+            <button type="submit" className="rounded bg-lavender-600 px-2 py-1 text-sm text-white">
               Next
             </button>
           </div>
@@ -150,7 +150,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
             <button type="button" onClick={onClose} className="text-sm text-gray-500">
               Cancel
             </button>
-            <button type="submit" className="rounded bg-blue-600 px-2 py-1 text-sm text-white">
+            <button type="submit" className="rounded bg-lavender-600 px-2 py-1 text-sm text-white">
               Create
             </button>
           </div>
@@ -251,7 +251,7 @@ export function PageList() {
         <button
           type="button"
           aria-label="New page"
-          className="text-xs text-blue-600 hover:underline"
+          className="text-xs text-lavender-600 hover:underline"
           onClick={() => setShowNewPage(true)}
         >
           +
@@ -301,7 +301,7 @@ export function PageList() {
               className={
                 'w-full truncate rounded px-1 py-1 text-left text-sm ' +
                 (file.id === selectedFileId
-                  ? 'border-l-2 border-blue-600 bg-blue-50 dark:bg-blue-900/30'
+                  ? 'border-l-2 border-lavender-600 bg-lavender-50 dark:bg-lavender-900/30'
                   : 'border-l-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-800')
               }
             >
