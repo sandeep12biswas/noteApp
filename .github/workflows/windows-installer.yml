@@ -170,6 +170,8 @@ jobs:
 
           # Test hook in apps/tauri/src-tauri/src/lib.rs (create_main_window).
           $env:FLOWNOTE_WEBVIEW_DEBUG_PORT = '9222'
+          # TEMPORARY (issue #33): CORS diagnostics in the plugin protocol handler.
+          $env:FLOWNOTE_PROTOCOL_PROBE = '1'
           $app = Start-Process $exe -PassThru
           try {
             node e2e-tauri/windows-smoke.mjs http://127.0.0.1:9222

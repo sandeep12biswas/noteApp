@@ -157,7 +157,7 @@ await check('flownote-attachment serves an image that renders', async () => {
 // script load from flownote-plugin fail CORS on WebView2?
 await check('probe: plugin file fetch from the page and from iframes', async () => {
   const r = await page.evaluate(async () => {
-    const url = 'http://flownote-plugin.localhost/plugins/com.sandeep.spreadsheet/index.js'
+    let url = 'http://flownote-plugin.localhost/plugins/com.sandeep.spreadsheet/index.js'
     const out = {}
     try {
       const res = await fetch(url, { cache: 'no-store' })
@@ -189,6 +189,41 @@ await check('probe: plugin file fetch from the page and from iframes', async () 
     out.sandboxedNoCors = await inFrame('allow-scripts', 'no-cors')
     out.sameOriginCors = await inFrame('allow-scripts allow-same-origin', 'cors')
     out.unsandboxedCors = await inFrame(null, 'cors')
+    // Issue #33 variants (the app answers these only with FLOWNOTE_PROTOCOL_PROBE set).
+    const base = url
+    for (const q of ['acao=null', 'acao=echo', 'acao=echo&pna=1', 'pna=1']) {
+      url = `${base}?${q}`
+      out[`sandboxedCors ${q}`] = await inFrame('allow-scripts', 'cors')
+    }
+    url = base
+    // A real module import (what the plugin does), with the most permissive variant.
+    out.sandboxedImport = await new Promise((resolve) => {
+      const id = Math.random().toString(36).slice(2)
+      const f = document.createElement('iframe')
+      f.setAttribute('sandbox', 'allow-scripts')
+      const onMsg = (e) => {
+        if (e.data?.probe !== id) return
+        window.removeEventListener('message', onMsg)
+        f.remove()
+        resolve(e.data.result)
+      }
+      window.addEventListener('message', onMsg)
+      setTimeout(() => resolve('timeout'), 10_000)
+      f.srcdoc = `<script type="module">
+        const tries = ['', '?acao=null', '?acao=echo&pna=1']
+        const res = []
+        for (const t of tries) {
+          try { await import(${JSON.stringify(base)} + t + (t ? '&' : '?') + 'm=' + Math.random()); res.push(t + ':ok') } catch (e) { res.push(t + ':' + e) }
+        }
+        parent.postMessage({ probe: ${JSON.stringify(id)}, result: res.join(' | ') }, '*')
+      </script>`
+      document.body.appendChild(f)
+    })
+    try {
+      out.handlerSaw = await (await fetch('http://flownote-plugin.localhost/__probe/log', { cache: 'no-store' })).json()
+    } catch (e) {
+      out.handlerSaw = `threw ${e}`
+    }
     return out
   })
   console.log(`  probe: ${JSON.stringify(r, null, 1)}`)
