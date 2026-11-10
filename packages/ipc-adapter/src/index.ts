@@ -35,4 +35,4 @@ export async function resolveIPCAdapter(): Promise<IPCAdapter> {
   throw new Error('No IPC transport found')
 }
 
-export { resolveWindowChrome, type WindowChrome, type WindowControls } from './windowChrome'
+export { DEFAULT_BUTTON_LAYOUT, resolveWindowChrome, type ButtonLayout, type WindowButton, type WindowChrome, type WindowControls } from './windowChrome'

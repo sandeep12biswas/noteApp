@@ -35,8 +35,6 @@
 .flownote-titlebar {
   -webkit-app-region: drag;
   app-region: drag;
-  /* Ends on lavender-500: Electron paints its window buttons on that
-     colour (main.ts TITLE_BAR_OVERLAY), so the bar runs into them seamlessly. */
   background: linear-gradient(90deg, var(--color-lavender-700), var(--color-lavender-500));
 }
 .flownote-titlebar button {

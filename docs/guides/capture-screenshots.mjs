@@ -35,7 +35,9 @@ const app = await electron.launch({
   executablePath: electronBin,
   // Same flags as e2e-electron/helpers.ts (GPU init hangs without them).
   args: ['--no-sandbox', '--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage', `--user-data-dir=${userDataDir}`, path.join(REPO, 'apps/electron')],
-  env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' },
+  // Window buttons on the right, as most readers (Windows, default Linux
+  // desktops) see them — not wherever this machine's desktop puts them.
+  env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0', FLOWNOTE_TITLEBAR_BUTTONS: ':minimize,maximize,close' },
   timeout: 60_000,
 })
 const page = await app.firstWindow()

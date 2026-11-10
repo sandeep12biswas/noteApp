@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { appRouter, type Context } from './trpc/router'
+import { systemButtonLayout } from './buttonLayout'
 import { SidecarSupervisor, type SupervisedProcess } from './sidecarSupervisor'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -73,8 +74,8 @@ function spawnSidecar(): SupervisedProcess {
 
 const DEV_ICON = join(__dirname, '..', 'build', 'icons', '512x512.png')
 
-/** Window buttons drawn over the title bar. `height` must equal TITLE_BAR_HEIGHT in packages/frontend/src/layout/TitleBar.tsx. */
-const TITLE_BAR_OVERLAY = { color: '#8e6cd6', symbolColor: '#ffffff', height: 36 }
+/** The renderer draws the title bar on Linux (the only platform this shell ships on); elsewhere the native frame stays. */
+const FRAMELESS = process.platform === 'linux'
 
 function createWindow(sidecar: SidecarSupervisor): void {
   // Theme (light/dark/system) is renderer-owned and localStorage-persisted
@@ -84,12 +85,13 @@ function createWindow(sidecar: SidecarSupervisor): void {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    // Lavender title bar (issue #40): hide the native frame and let the
-    // renderer draw the bar (packages/frontend/src/layout/TitleBar.tsx);
-    // the OS window buttons stay, drawn over it on lavender-500 — the colour
-    // the bar's gradient ends on.
-    titleBarStyle: 'hidden',
-    titleBarOverlay: TITLE_BAR_OVERLAY,
+    // Lavender title bar (issue #40): on Linux the native frame is hidden
+    // and the renderer draws the whole bar, window buttons included
+    // (packages/frontend/src/layout/TitleBar.tsx), placed where the desktop
+    // puts them (buttonLayout.ts). Electron's titleBarOverlay isn't used: it
+    // always draws its buttons on the right, ignoring e.g. KDE/GNOME set up
+    // with close-minimise-maximise on the left.
+    ...(FRAMELESS ? { titleBarStyle: 'hidden' as const } : {}),
     backgroundColor: '#ffffff',
     // Packaged builds get their icon from the .desktop file (build/ isn't
     // shipped); in dev runs the window sets it itself.
@@ -120,6 +122,13 @@ function createWindow(sidecar: SidecarSupervisor): void {
       pickFolder: async () => {
         const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
         return result.canceled ? null : (result.filePaths[0] ?? null)
+      },
+      window: {
+        frameless: FRAMELESS,
+        buttonLayout: systemButtonLayout,
+        minimize: () => win.minimize(),
+        toggleMaximize: () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
+        close: () => win.close(),
       },
     }),
   })

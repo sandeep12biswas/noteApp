@@ -1,6 +1,7 @@
 import { createTRPCProxyClient } from '@trpc/client'
 import { ipcLink } from 'electron-trpc/renderer'
 import { pushIterator } from './pushIterator'
+import type { ButtonLayout } from './windowChrome'
 import type {
   AiProvider,
   AiProviderInput,
@@ -77,6 +78,10 @@ interface ElectronRouter {
   saveAiProvider: { mutate: (input: AiProviderInput) => Promise<AiProvider> }
   deleteAiProvider: { mutate: (id: string) => Promise<void> }
   setDefaultAiProvider: { mutate: (id: string) => Promise<void> }
+  windowChrome: { query: () => Promise<{ frameless: boolean; layout: ButtonLayout }> }
+  windowMinimize: { mutate: () => Promise<void> }
+  windowToggleMaximize: { mutate: () => Promise<void> }
+  windowClose: { mutate: () => Promise<void> }
   aiComplete: {
     subscribe: (
       input: { prompt: string; context: string; providerId?: string },
@@ -98,6 +103,11 @@ function getClient(): ElectronRouter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client ??= createTRPCProxyClient<any>({ links: [ipcLink()] }) as unknown as ElectronRouter
   return client
+}
+
+/** The window-control procedures, for windowChrome.ts (they aren't part of IPCAdapter: the title bar isn't app data). */
+export function electronWindowApi(): Pick<ElectronRouter, 'windowChrome' | 'windowMinimize' | 'windowToggleMaximize' | 'windowClose'> {
+  return getClient()
 }
 
 // Backed by electron-trpc, exposed on window.electronTRPC by the Electron
