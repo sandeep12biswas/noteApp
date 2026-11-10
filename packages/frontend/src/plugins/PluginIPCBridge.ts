@@ -36,6 +36,8 @@ export interface PluginIframeEntry {
   kind: IframeKind
   /** Only for `kind: 'block'` — routes a `block:update` message to that block instance's own NodeView, without the bridge needing to know anything about TipTap. */
   onBlockUpdate?: (msg: Pick<BlockUpdateMessage, 'attrs' | 'height'>) => void
+  /** Only for `kind: 'block'` — the block's script says it's listening (`block:ready`); the NodeView answers with `block:init`. */
+  onBlockReady?: () => void
 }
 
 const iframeRegistry = new Map<Window, PluginIframeEntry>()
@@ -166,6 +168,9 @@ function onMessage(e: MessageEvent): void {
       break
     case 'block:update':
       entry.onBlockUpdate?.({ attrs: e.data.attrs, height: e.data.height })
+      break
+    case 'block:ready':
+      entry.onBlockReady?.()
       break
   }
 }

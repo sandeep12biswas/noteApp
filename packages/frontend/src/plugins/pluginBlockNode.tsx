@@ -39,6 +39,10 @@ function PluginBlockView({ node, updateAttributes }: NodeViewProps) {
     const onLoad = () => {
       const win = iframe.contentWindow
       if (!win) return
+      // Sent on load, and again if the block says it's ready later (its
+      // script may start after `load`, e.g. via `import()` — issue #33);
+      // the SDK acts on the first one it receives.
+      const sendInit = () => win.postMessage({ source: 'flownote-host', type: 'block:init', blockId, attrs }, '*')
       registerPluginIframe(win, {
         pluginId,
         // A block instance only ever needs to persist its own data — it
@@ -53,8 +57,9 @@ function PluginBlockView({ node, updateAttributes }: NodeViewProps) {
           if (msg.attrs) updateAttributes({ attrs: { ...attrs, ...msg.attrs } })
           if (msg.height) setHeightState(msg.height)
         },
+        onBlockReady: sendInit,
       })
-      win.postMessage({ source: 'flownote-host', type: 'block:init', blockId, attrs }, '*')
+      sendInit()
     }
     iframe.addEventListener('load', onLoad)
     return () => {

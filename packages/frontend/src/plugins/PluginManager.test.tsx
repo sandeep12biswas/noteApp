@@ -7,7 +7,7 @@
 // tests and by manual QA — jsdom doesn't drive that.
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PluginManager } from './PluginManager'
+import { buildEntryDocumentHtml, PluginManager } from './PluginManager'
 import { usePluginStore } from '../store/pluginStore'
 import { setIPCAdapter } from '../store/notebookStore'
 
@@ -204,5 +204,21 @@ describe('PluginManager registration race (regression)', () => {
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
     expect(iframes()[0]?.srcdoc ?? '').toBe('')
     errorSpy.mockRestore()
+  })
+})
+
+describe('buildEntryDocumentHtml (issue #33)', () => {
+  it('loads the entry with import() from an inline module, after the CSP and import map', () => {
+    const html = buildEntryDocumentHtml('http://flownote-plugin.localhost/plugins/p/index.js', "default-src 'none'")
+    expect(html).not.toMatch(/<script[^>]*\bsrc=/)
+    expect(html).toContain('<script type="module">import("http://flownote-plugin.localhost/plugins/p/index.js")')
+    expect(html.indexOf('Content-Security-Policy')).toBeLessThan(html.indexOf('importmap'))
+    expect(html.indexOf('importmap')).toBeLessThan(html.indexOf('import("'))
+  })
+
+  it("can't be broken out of by a URL containing </script>", () => {
+    const html = buildEntryDocumentHtml('http://x/a</script><script>alert(1)</script>.js', '')
+    expect(html.match(/<\/script>/g)).toHaveLength(2) // the import map's and the loader's own
+    expect(html).toContain('\\u003c/script>')
   })
 })

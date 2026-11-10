@@ -98,7 +98,18 @@ export interface BlockUpdateMessage {
   height?: number
 }
 
-export type PluginToHostMessage = RegisterMessage | StorageRequestMessage | BlockUpdateMessage
+/**
+ * Block iframe → host: the block's script is running and listening, so send
+ * `block:init` now. The host also sends it on the iframe's `load` event;
+ * this covers a block whose script starts after that (e.g. loaded with
+ * `import()`, issue #33). `FlowNoteBlock` sends it and ignores a second init.
+ */
+export interface BlockReadyMessage {
+  source: 'flownote-plugin'
+  type: 'block:ready'
+}
+
+export type PluginToHostMessage = RegisterMessage | StorageRequestMessage | BlockUpdateMessage | BlockReadyMessage
 
 /** Host → plugin iframe: reply to a `StorageRequestMessage`. */
 export interface StorageResponseMessage {
@@ -118,7 +129,7 @@ export interface RibbonActionMessage {
   buttonId: string
 }
 
-/** Host → block iframe: this block instance's id and current attrs, sent once on load. */
+/** Host → block iframe: this block instance's id and current attrs, sent on load and in answer to `block:ready` (the block acts on the first). */
 export interface BlockInitMessage {
   source: 'flownote-host'
   type: 'block:init'

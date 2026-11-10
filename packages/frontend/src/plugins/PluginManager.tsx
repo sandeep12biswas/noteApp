@@ -62,7 +62,16 @@ export function buildEntryDocumentHtml(entryAbsoluteUrl: string, csp: string): s
   // bundler/dev-server of its own.
   const sdkUrl = sdkAssetUrl('index.js')
   const escapedCsp = csp.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
-  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${escapedCsp}"><script type="importmap">{"imports":{"@flownote/sdk":"${sdkUrl}"}}</script><script type="module" src="${entryAbsoluteUrl}"></script>`
+  // The entry is loaded with `import()` from an inline module, not a
+  // `<script type="module" src>` (issue #33). On Windows (Tauri/WebView2),
+  // requests a sandboxed srcdoc iframe makes while its document is still
+  // being parsed never reach the app's `flownote-plugin` handler — they go
+  // to the network and fail, reported as a CORS error. An inline module
+  // runs after parsing, and its `import()` is routed to the handler like
+  // any later request. Same behaviour everywhere else. `\u003c` keeps a
+  // `<` in the URL from closing the script element.
+  const entryLiteral = JSON.stringify(entryAbsoluteUrl).replace(/</g, '\\u003c')
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${escapedCsp}"><script type="importmap">{"imports":{"@flownote/sdk":"${sdkUrl}"}}</script><script type="module">import(${entryLiteral}).catch((e) => console.error('FlowNote plugin failed to load:', e))</script>`
 }
 
 function PluginFrame({ manifest }: { manifest: PluginManifest }) {

@@ -24,6 +24,12 @@
   </head>
   <body>
     <div id="grid"></div>
-    <script type="module" src="./grid.js"></script>
+    <!-- import() after parsing rather than <script src>: on Windows (WebView2),
+         a sandboxed frame's requests made while it's still parsing don't
+         reach FlowNote's plugin handler (issue #33). Plugins with their own
+         pages should do the same. -->
+    <script type="module">
+      import('./grid.js').catch((e) => console.error('Spreadsheet grid failed to load:', e))
+    </script>
   </body>
 </html>

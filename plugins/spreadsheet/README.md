@@ -33,3 +33,21 @@ cp plugins/spreadsheet/dist/*.js plugins/spreadsheet/src/grid.html plugins/sprea
 Then, in the running app: Plugins (left sidebar) → Install… → paste the
 contents of `flownote-plugin.json` → Install. `/sheet` in any segment then
 inserts a spreadsheet block.
+
+## Loading scripts in a block page (Windows)
+
+A block's `render` page (here `grid.html`) runs in a sandboxed iframe. On
+Windows (Tauri/WebView2), requests such a frame makes **while its HTML is
+still being parsed** don't reach FlowNote's plugin handler and fail with a
+misleading CORS error (issue #33). So load your code with `import()` from an
+inline module instead of `<script type="module" src="…">`:
+
+```html
+<script type="module">
+  import('./grid.js').catch((e) => console.error('grid failed to load:', e))
+</script>
+```
+
+`FlowNoteBlock` tells the host it's ready when it's created, so a script that
+starts after the page's `load` event still gets its `block:init`. Imports
+inside your modules (including `@flownote/sdk` via the import map) are fine.

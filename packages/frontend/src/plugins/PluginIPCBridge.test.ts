@@ -185,6 +185,29 @@ describe('block:update messages', () => {
   })
 })
 
+describe('block:ready messages (issue #33)', () => {
+  it("calls that block iframe's onBlockReady, so its NodeView can (re)send block:init", () => {
+    const winA = fakeWindow()
+    const winB = fakeWindow()
+    let readyA = 0
+    let readyB = 0
+    registerPluginIframe(winA, { pluginId: 'p', permissions: new Set(), extensionPoints: new Set(), kind: 'block', onBlockReady: () => readyA++ })
+    registerPluginIframe(winB, { pluginId: 'p', permissions: new Set(), extensionPoints: new Set(), kind: 'block', onBlockReady: () => readyB++ })
+
+    dispatchFrom(winA, { source: 'flownote-plugin', type: 'block:ready' })
+
+    expect(readyA).toBe(1)
+    expect(readyB).toBe(0)
+  })
+
+  it('is ignored from a window that was never registered', () => {
+    let ready = 0
+    registerPluginIframe(fakeWindow(), { pluginId: 'p', permissions: new Set(), extensionPoints: new Set(), kind: 'block', onBlockReady: () => ready++ })
+    dispatchFrom(fakeWindow(), { source: 'flownote-plugin', type: 'block:ready' })
+    expect(ready).toBe(0)
+  })
+})
+
 describe('unregisterPluginIframe', () => {
   it('a message from a window that has since been unregistered is ignored', () => {
     const win = fakeWindow()
