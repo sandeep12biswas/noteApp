@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { appRouter, type Context } from './trpc/router'
 import { systemButtonLayout } from './buttonLayout'
+import { systemButtonTheme } from './windowTheme'
 import { SidecarSupervisor, type SupervisedProcess } from './sidecarSupervisor'
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -126,6 +127,8 @@ function createWindow(sidecar: SidecarSupervisor): void {
       window: {
         frameless: FRAMELESS,
         buttonLayout: systemButtonLayout,
+        buttonTheme: systemButtonTheme,
+        isMaximized: () => win.isMaximized(),
         minimize: () => win.minimize(),
         toggleMaximize: () => (win.isMaximized() ? win.unmaximize() : win.maximize()),
         close: () => win.close(),
