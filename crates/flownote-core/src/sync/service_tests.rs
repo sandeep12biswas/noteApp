@@ -464,15 +464,22 @@ fn a_device_that_joins_without_notes_shows_up_and_its_rename_follows() {
     assert!(a.sync().status().unwrap()["peers"][0]["lastSeenAt"].is_i64());
 
     b.sync().configure(&json!({ "deviceName": "Work phone" })).unwrap();
+    // Let B's upload finish before A looks: `upload_seq` is recorded only
+    // after the change file is stored (B's outbox empties earlier, when its
+    // edits are turned into document changes). A used to call sync_now() on
+    // every 20 ms poll instead — ~1,000 syncs in 10 s on CI, which kept the
+    // shared folder busy — so it now nudges A at most every 500 ms.
+    let upload_seq = |app: &App| app.conn().query_row("SELECT upload_seq FROM sync_settings", [], |r| r.get::<_, i64>(0)).unwrap();
+    let before = upload_seq(&b);
     write_note(&b.conn(), "p1", "s2", "from the phone"); // uploads by itself, with the new name
-    // Let B's upload finish before A looks. A used to call sync_now() on
-    // every 20 ms poll while waiting — ~1,000 syncs in 10 s on CI, keeping
-    // the shared folder busy so B's upload never got in (failed on every
-    // Windows run, sometimes on Linux).
-    b.wait_for("B to upload its edit", |b| b.conn().query_row("SELECT COUNT(*) FROM sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap() == 0);
-    a.sync().sync_now().unwrap();
+    b.wait_for("B to upload its edit", |b| upload_seq(b) > before);
     let start = Instant::now();
+    let mut nudged: Option<Instant> = None;
     while peer_names(&a) != ["Work phone"] {
+        if nudged.is_none_or(|at| at.elapsed() >= Duration::from_millis(500)) {
+            let _ = a.sync().sync_now();
+            nudged = Some(Instant::now());
+        }
         if start.elapsed() > Duration::from_secs(10) {
             let mut files: Vec<String> = Vec::new();
             for entry in walk(&cloud) {
@@ -480,11 +487,11 @@ fn a_device_that_joins_without_notes_shows_up_and_its_rename_follows() {
                 files.push(format!("{} ({} bytes)", entry.strip_prefix(&cloud).unwrap().display(), meta.map(|m| m.len()).unwrap_or(0)));
             }
             panic!(
-                "timed out waiting for the rename on A\nA peers: {:?}\nB status: {:#}\ncloud files: {:#?}\nB events: {:#?}",
+                "timed out waiting for the rename on A\nA peers: {:?}\nA texts: {:?}\nB status: {:#}\ncloud files: {:#?}",
                 peer_names(&a),
+                texts(&a.conn(), "p1"),
                 b.sync().status().unwrap(),
                 files,
-                b.events.lock().unwrap()
             );
         }
         std::thread::sleep(Duration::from_millis(50));
