@@ -23,6 +23,8 @@ export interface Context {
   window: {
     /** True when the native frame is hidden and the renderer must draw the buttons. */
     frameless: boolean
+    /** True when the window is transparent so the renderer can round its corners (main.ts ROUNDED_WINDOW). */
+    rounded: boolean
     /** The desktop's button placement (buttonLayout.ts). */
     buttonLayout: () => ButtonLayout
     /** The desktop theme's button artwork, or null (windowTheme.ts). */
@@ -43,6 +45,7 @@ export const appRouter = t.router({
   // never forwarded to the sidecar.
   windowChrome: t.procedure.query(({ ctx }) => ({
     frameless: ctx.window.frameless,
+    rounded: ctx.window.frameless && ctx.window.rounded,
     layout: ctx.window.buttonLayout(),
     theme: ctx.window.frameless ? ctx.window.buttonTheme() : null,
   })),

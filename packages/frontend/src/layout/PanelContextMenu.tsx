@@ -48,7 +48,7 @@ export function PanelContextMenu({
       ref={ref}
       role="menu"
       aria-label={label}
-      className="fixed z-50 flex flex-col rounded border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="fixed z-50 flex flex-col rounded-menu border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
@@ -62,7 +62,7 @@ export function PanelContextMenu({
             onClose()
             item.onSelect()
           }}
-          className="rounded px-2 py-1 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+          className="rounded-control px-2 py-1 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
         >
           {item.label}
         </button>

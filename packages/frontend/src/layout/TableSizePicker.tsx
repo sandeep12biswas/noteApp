@@ -52,7 +52,7 @@ export function TableSizePicker({
       ref={ref}
       role="dialog"
       aria-label="Insert table"
-      className="fixed z-50 rounded border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="fixed z-50 rounded-menu border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}
@@ -107,7 +107,7 @@ export function TableSizePicker({
                   type="button"
                   aria-label={`Insert template ${t.name}`}
                   onClick={() => onPickTemplate(t)}
-                  className="flex w-44 items-center justify-between gap-2 rounded px-1.5 py-1 text-left text-xs text-gray-700 hover:bg-lavender-50 focus-visible:bg-lavender-50 focus-visible:outline-none dark:text-gray-200 dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
+                  className="flex w-44 items-center justify-between gap-2 rounded-control px-1.5 py-1 text-left text-xs text-gray-700 hover:bg-lavender-50 focus-visible:bg-lavender-50 focus-visible:outline-none dark:text-gray-200 dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
                 >
                   <span className="truncate">{t.name}</span>
                   <span className="shrink-0 text-[10px] text-gray-400">

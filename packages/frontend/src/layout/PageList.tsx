@@ -81,7 +81,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
   }
 
   return (
-    <div role="dialog" aria-label="New page" className="absolute inset-x-2 top-10 z-10 rounded border border-gray-300 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+    <div role="dialog" aria-label="New page" className="absolute inset-x-2 top-10 z-10 rounded-menu border border-gray-300 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
       {step === 'folder' && (
         <form onSubmit={confirmFolder} className="flex flex-col gap-2">
           <p className="text-sm font-medium">Choose a folder</p>
@@ -96,7 +96,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
           {folderChoice === 'existing' && (
             <select
               aria-label="Existing folder"
-              className="rounded border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800"
+              className="rounded-control border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800"
               value={existingFolderId}
               onChange={(e) => setExistingFolderId(e.target.value)}
             >
@@ -115,7 +115,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
           {folderChoice === 'new' && (
             <input
               aria-label="New folder name"
-              className="rounded border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800"
+              className="rounded-control border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800"
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
             />
@@ -125,7 +125,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
             <button type="button" onClick={onClose} className="text-sm text-gray-500">
               Cancel
             </button>
-            <button type="submit" className="rounded bg-lavender-600 px-2 py-1 text-sm text-white">
+            <button type="submit" className="rounded-control bg-lavender-600 px-2 py-1 text-sm text-white">
               Next
             </button>
           </div>
@@ -138,7 +138,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
           <input
             autoFocus
             aria-label="File name"
-            className="rounded border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800"
+            className="rounded-control border border-gray-300 px-1 py-0.5 text-sm dark:border-gray-700 dark:bg-gray-800"
             value={fileName}
             onChange={(e) => {
               setFileName(e.target.value)
@@ -150,7 +150,7 @@ function NewPageFlow({ initialFolderId, onClose }: { initialFolderId: string | n
             <button type="button" onClick={onClose} className="text-sm text-gray-500">
               Cancel
             </button>
-            <button type="submit" className="rounded bg-lavender-600 px-2 py-1 text-sm text-white">
+            <button type="submit" className="rounded-control bg-lavender-600 px-2 py-1 text-sm text-white">
               Create
             </button>
           </div>
@@ -241,7 +241,7 @@ export function PageList() {
 
   return (
     <section
-      className="relative flex shrink-0 flex-col border-r border-gray-200 dark:border-gray-800"
+      className="relative flex shrink-0 flex-col rounded-panel overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950"
       style={{ width }}
       data-testid="page-list"
       aria-label="Pages"
@@ -262,13 +262,13 @@ export function PageList() {
         <input
           aria-label="Search pages"
           placeholder="Search…"
-          className="min-w-0 flex-1 rounded border border-gray-300 px-1 py-0.5 text-xs dark:border-gray-700 dark:bg-gray-800"
+          className="min-w-0 flex-1 rounded-control border border-gray-300 px-1 py-0.5 text-xs dark:border-gray-700 dark:bg-gray-800"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <select
           aria-label="Search mode"
-          className="rounded border border-gray-300 px-0.5 py-0.5 text-xs dark:border-gray-700 dark:bg-gray-800"
+          className="rounded-control border border-gray-300 px-0.5 py-0.5 text-xs dark:border-gray-700 dark:bg-gray-800"
           value={searchMode}
           onChange={(e) => setSearchMode(e.target.value as SearchMode)}
         >
@@ -299,7 +299,7 @@ export function PageList() {
                 setContextMenu({ x: e.clientX, y: e.clientY, fileId: file.id, fileName: file.name })
               }}
               className={
-                'w-full truncate rounded px-1 py-1 text-left text-sm ' +
+                'w-full truncate rounded-control px-1 py-1 text-left text-sm ' +
                 (file.id === selectedFileId
                   ? 'border-l-2 border-lavender-600 bg-lavender-50 dark:bg-lavender-900/30'
                   : 'border-l-2 border-transparent hover:bg-gray-100 dark:hover:bg-gray-800')

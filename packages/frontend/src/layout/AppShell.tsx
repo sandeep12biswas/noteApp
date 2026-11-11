@@ -33,7 +33,7 @@ export function AppShell() {
   }, [reclampPanelWidths])
 
   return (
-    <div className="flex h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+    <div className="app-root flex h-screen flex-col bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       {/* Renders no UI of its own — mounts one sandboxed iframe per enabled
           plugin (DESIGN.md §9.8) regardless of which main view is active,
           so a plugin's block types/ribbon groups stay live while browsing
@@ -42,7 +42,9 @@ export function AppShell() {
       <TitleBar />
       <RibbonRoot />
       <MassDeleteBanner />
-      <div className="flex min-h-0 flex-1">
+      {/* The panes are soft cards on a light backdrop; the resize handles
+          between them are the gaps (lib/panelWidths.ts PANEL_CHROME_WIDTH). */}
+      <div className="flex min-h-0 flex-1 bg-gray-100 p-1.5 dark:bg-gray-900">
         <SectionSidebar />
         <PanelResizeHandle panel="folders" label="Resize folder panel" />
         {activeView === 'plugins' ? (

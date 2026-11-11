@@ -52,7 +52,7 @@ export function AttachmentChoiceMenu({
       ref={ref}
       role="menu"
       aria-label="Attach file"
-      className="fixed z-50 flex flex-col gap-1 rounded border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+      className="fixed z-50 flex flex-col gap-1 rounded-menu border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
@@ -65,7 +65,7 @@ export function AttachmentChoiceMenu({
           onChoose('file')
           onClose()
         }}
-        className="rounded px-2 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="rounded-control px-2 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         Attach as file
       </button>
@@ -76,7 +76,7 @@ export function AttachmentChoiceMenu({
           onChoose('embed')
           onClose()
         }}
-        className="rounded px-2 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="rounded-control px-2 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         Embed in note
       </button>

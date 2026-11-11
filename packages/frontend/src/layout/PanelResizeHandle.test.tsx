@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DEFAULT_PANEL_WIDTHS, MAX_PANEL_WIDTH, MIN_PANEL_WIDTH } from '../lib/panelWidths'
+import { DEFAULT_PANEL_WIDTHS, MAX_PANEL_WIDTH, MIN_PANEL_WIDTH, PANEL_CHROME_WIDTH } from '../lib/panelWidths'
 import { useUIStore } from '../store/uiStore'
 import { PanelResizeHandle } from './PanelResizeHandle'
 
@@ -54,7 +54,7 @@ describe('PanelResizeHandle', () => {
     useUIStore.setState({ panelWidths: { folders: 400, pages: 170 } })
     render(<PanelResizeHandle panel="pages" label="Resize page panel" />)
     fireEvent.keyDown(screen.getByRole('separator'), { key: 'End' })
-    // 1024 (jsdom window) - 400 (folders) - 320 (editor minimum)
-    expect(useUIStore.getState().panelWidths.pages).toBe(1024 - 400 - 320)
+    // 1024 (jsdom window) - the cards' padding, gaps and borders - 400 (folders) - 320 (editor minimum)
+    expect(useUIStore.getState().panelWidths.pages).toBe(1024 - PANEL_CHROME_WIDTH - 400 - 320)
   })
 })

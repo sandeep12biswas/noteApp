@@ -31,7 +31,7 @@ function IconChoice({ label, active, onClick, children }: { label: string; activ
       title={label.replace(/^Icon /, '')}
       onClick={onClick}
       className={
-        'flex h-7 w-7 items-center justify-center rounded text-base hover:bg-lavender-50 dark:hover:bg-gray-800 ' +
+        'flex h-7 w-7 items-center justify-center rounded-control text-base hover:bg-lavender-50 dark:hover:bg-gray-800 ' +
         (active ? 'ring-2 ring-offset-1 ring-lavender-500 dark:ring-offset-gray-900' : '')
       }
     >
@@ -80,7 +80,7 @@ export function FolderIconMenu({
       ref={ref}
       role="menu"
       aria-label="Folder icon"
-      className="fixed z-50 flex flex-col gap-2 rounded border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="fixed z-50 flex flex-col gap-2 rounded-menu border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -105,7 +105,7 @@ export function FolderIconMenu({
         type="button"
         role="menuitem"
         onClick={() => pick(null)}
-        className="flex items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+        className="flex items-center gap-1.5 rounded-control px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
       >
         <FolderIcon icon={null} /> Default
       </button>

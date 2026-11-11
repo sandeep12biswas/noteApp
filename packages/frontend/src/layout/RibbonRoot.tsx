@@ -74,7 +74,7 @@ function FormatPainterButton() {
         arm(true)
       }}
       className={
-        'rounded px-1.5 py-1 text-sm font-medium ' +
+        'rounded-control px-1.5 py-1 text-sm font-medium ' +
         (armed
           ? 'bg-lavender-100 text-lavender-700 dark:bg-lavender-900/40 dark:text-lavender-300'
           : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800')
@@ -120,10 +120,10 @@ function ColorDropdownButton({
         title={`${label}: ${current}`}
         onMouseDown={(e) => e.preventDefault()} // keep editor focus (issue #4, see RibbonButton)
         onClick={() => onApply(current)}
-        className="flex flex-col items-center rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="flex flex-col items-center rounded-control px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         <span>{letter}</span>
-        <span className="mt-0.5 h-0.5 w-4 rounded" style={{ backgroundColor: current }} />
+        <span className="mt-0.5 h-0.5 w-4 rounded-full" style={{ backgroundColor: current }} />
       </button>
       <button
         ref={caretRef}
@@ -133,7 +133,7 @@ function ColorDropdownButton({
           const rect = caretRef.current?.getBoundingClientRect()
           setMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: 0, y: 0 })
         }}
-        className="rounded px-0.5 py-1 text-[10px] text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+        className="rounded-control px-0.5 py-1 text-[10px] text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
       >
         ▾
       </button>
@@ -188,7 +188,7 @@ function RibbonButton({
       // typed straight after (issue #4 — same bug as the slash menu).
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+      className="rounded-control px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
     >
       {children}
     </button>
@@ -200,7 +200,7 @@ function Divider() {
 }
 
 const SELECT_CLASSNAME =
-  'rounded border border-gray-200 bg-white px-1 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
+  'rounded-control border border-gray-200 bg-white px-1 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
 
 // FONT_FAMILIES is a flat list ordered Generic -> Windows -> Linux -> Web
 // fonts (lib/fontFamilies.ts's own doc comment); grouped here into
@@ -480,7 +480,7 @@ function DrawToolsPanel() {
             aria-pressed={t === tool}
             onClick={() => setTool(t)}
             className={
-              'rounded px-2 py-1 text-xs capitalize ' +
+              'rounded-control px-2 py-1 text-xs capitalize ' +
               (t === tool
                 ? 'bg-lavender-600 text-white'
                 : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800')
@@ -543,7 +543,7 @@ function ZoomControls() {
         aria-label="Reset zoom"
         title="Reset zoom"
         onClick={resetZoom}
-        className="min-w-[3.5rem] rounded px-1.5 py-1 text-center text-xs text-gray-700 tabular-nums hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="min-w-[3.5rem] rounded-control px-1.5 py-1 text-center text-xs text-gray-700 tabular-nums hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         {Math.round(zoom * 100)}%
       </button>
@@ -644,7 +644,7 @@ function AIInsertPanel() {
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !streaming) void generate()
         }}
-        className="w-40 rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
+        className="w-40 rounded-control border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
       />
       {streaming ? (
         <RibbonButton label="Stop AI" onClick={stop}>
@@ -692,7 +692,7 @@ export function RibbonRoot() {
             aria-selected={tab === activeTab}
             onClick={() => setActiveTab(tab)}
             className={
-              'rounded-t border-b-2 px-3 py-1 text-sm font-medium ' +
+              'rounded-t-control border-b-2 px-3 py-1 text-sm font-medium ' +
               (tab === activeTab
                 ? 'border-lavender-600 bg-white text-lavender-700 dark:border-lavender-400 dark:bg-gray-900 dark:text-lavender-200'
                 : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200')

@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import type { CapturedFormat } from '../lib/formatPainter'
 import {
   clampPanelWidth,
+  PANEL_CHROME_WIDTH,
   DEFAULT_PANEL_WIDTHS,
   loadPanelWidths,
   type PanelWidths,
@@ -74,7 +75,7 @@ function otherPanelWidth(s: Pick<UIState, 'panelWidths' | 'activeView'>, panel: 
 }
 
 function windowWidth(): number {
-  return typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth
+  return typeof window === 'undefined' ? Number.POSITIVE_INFINITY : window.innerWidth - PANEL_CHROME_WIDTH
 }
 
 export const useUIStore = create<UIState>((set, get) => ({

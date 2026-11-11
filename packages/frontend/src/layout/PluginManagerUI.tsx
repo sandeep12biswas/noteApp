@@ -30,13 +30,13 @@ function InstallForm({ onClose }: { onClose: () => void }) {
       onSubmit={submit}
       role="dialog"
       aria-label="Install plugin"
-      className="absolute inset-x-4 top-14 z-10 flex flex-col gap-2 rounded border border-gray-300 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="absolute inset-x-4 top-14 z-10 flex flex-col gap-2 rounded-menu border border-gray-300 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900"
     >
       <p className="text-sm font-medium">Install from manifest</p>
       <textarea
         aria-label="Plugin manifest JSON"
         rows={8}
-        className="rounded border border-gray-300 p-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-800"
+        className="rounded-control border border-gray-300 p-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-800"
         value={manifestText}
         onChange={(e) => setManifestText(e.target.value)}
         placeholder='{"id": "com.example.plugin", "name": "...", "version": "1.0.0", ...}'
@@ -50,7 +50,7 @@ function InstallForm({ onClose }: { onClose: () => void }) {
         <button type="button" onClick={onClose} className="text-sm text-gray-500">
           Cancel
         </button>
-        <button type="submit" disabled={busy} className="rounded bg-lavender-600 px-2 py-1 text-sm text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className="rounded-control bg-lavender-600 px-2 py-1 text-sm text-white disabled:opacity-50">
           {busy ? 'Installing…' : 'Install'}
         </button>
       </div>
@@ -115,13 +115,13 @@ export function PluginManagerUI() {
   }, [loadPlugins])
 
   return (
-    <section className="relative flex-1 overflow-y-auto p-4" data-testid="plugin-manager-ui" aria-label="Plugin Manager">
+    <section className="relative min-w-0 flex-1 overflow-y-auto p-4 rounded-panel overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950" data-testid="plugin-manager-ui" aria-label="Plugin Manager">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-medium">Plugins</h2>
         <button
           type="button"
           onClick={() => setShowInstall(true)}
-          className="rounded bg-lavender-600 px-2 py-1 text-sm text-white"
+          className="rounded-control bg-lavender-600 px-2 py-1 text-sm text-white"
         >
           Install…
         </button>

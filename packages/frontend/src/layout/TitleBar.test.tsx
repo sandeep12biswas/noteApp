@@ -28,7 +28,7 @@ function controls() {
 }
 
 function custom(layout: ButtonLayout = DEFAULT_BUTTON_LAYOUT, c = controls()) {
-  return { kind: 'custom' as const, layout, theme: null, controls: c }
+  return { kind: 'custom' as const, layout, theme: null, rounded: false, controls: c }
 }
 
 /** Accessible names of the bar's children, left to right: buttons by label, the title as "title". */
@@ -84,7 +84,7 @@ describe('TitleBar', () => {
   })
 
   describe('with the desktop theme\'s button art (KDE Aurorae)', () => {
-    const themed = (c = controls()) => ({ kind: 'custom' as const, layout: { left: ['close', 'minimize', 'maximize'] as const, right: [] as const } as unknown as ButtonLayout, theme: THEME, controls: c })
+    const themed = (c = controls()) => ({ kind: 'custom' as const, layout: { left: ['close', 'minimize', 'maximize'] as const, right: [] as const } as unknown as ButtonLayout, theme: THEME, rounded: false, controls: c })
     const img = (name: string) => screen.getByRole('button', { name }).querySelector('img')?.getAttribute('src')
     // jsdom's document never has focus; a real app window starts focused.
     beforeEach(() => {

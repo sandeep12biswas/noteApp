@@ -71,7 +71,7 @@ export function ContrastNotice({ pageId, background }: { pageId: string; backgro
   }
 
   const button =
-    'rounded px-2 py-0.5 text-xs font-medium hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600'
+    'rounded-control px-2 py-0.5 text-xs font-medium hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600'
 
   return (
     <div

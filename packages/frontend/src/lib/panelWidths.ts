@@ -17,6 +17,13 @@ export const MIN_PANEL_WIDTH = 120
 export const MAX_PANEL_WIDTH = 480
 /** However the side panels are sized, the editor keeps at least this much. */
 export const MIN_EDITOR_WIDTH = 320
+/**
+ * Width the card layout (AppShell) takes besides the panels themselves: the
+ * 6px padding on each side, the two 6px resize-handle gaps, and each of the
+ * three cards' 1px left and right borders. Subtracted from the window width
+ * before clamping.
+ */
+export const PANEL_CHROME_WIDTH = 2 * 6 + 2 * 6 + 3 * 2
 
 const KEY = 'flownote:panelWidths'
 
