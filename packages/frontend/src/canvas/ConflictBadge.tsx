@@ -21,7 +21,7 @@ export function ConflictBadge({ segmentId, floating }: { segmentId: string; floa
       // Not a place to start typing or dragging.
       onMouseDown={(e) => e.stopPropagation()}
       className={
-        'select-none rounded bg-orange-100 px-1 text-[10px] font-medium text-orange-800 dark:bg-orange-900/50 dark:text-orange-200 ' +
+        'select-none rounded-control bg-orange-100 px-1 text-[10px] font-medium text-orange-800 dark:bg-orange-900/50 dark:text-orange-200 ' +
         (floating ? 'absolute -top-2.5 right-1 z-10' : 'mb-0.5 inline-block')
       }
     >

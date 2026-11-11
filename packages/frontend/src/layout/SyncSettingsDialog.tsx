@@ -31,9 +31,9 @@ export function placeOf(status: SyncStatus): string {
 }
 
 const button =
-  'rounded bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700 disabled:cursor-not-allowed disabled:opacity-50'
-const plainButton = 'rounded border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800'
-const input = 'w-full rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800'
+  'rounded-control bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700 disabled:cursor-not-allowed disabled:opacity-50'
+const plainButton = 'rounded-control border border-gray-300 px-3 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800'
+const input = 'w-full rounded-control border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800'
 const link = 'text-xs text-lavender-600 hover:underline dark:text-lavender-400'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -92,7 +92,7 @@ export function SyncSettingsDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-label="Sync settings"
         aria-modal="true"
-        className="flex max-h-[80vh] w-[480px] flex-col gap-4 overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        className="flex max-h-[80vh] w-[480px] flex-col gap-4 overflow-y-auto rounded-dialog border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Sync</h2>
@@ -155,7 +155,7 @@ function ChooseTarget({ status, busy, act, onChosen, onCancel }: { status: SyncS
         <p className="text-xs text-gray-500">Your notes are encrypted on this device before they leave it; only your devices can read them.</p>
         <div role="radiogroup" aria-label="Where to sync" className="flex flex-col gap-1">
           {(Object.keys(TARGET_LABELS) as Array<Exclude<SyncTarget, 'none'>>).map((t) => (
-            <label key={t} className="flex cursor-pointer items-start gap-2 rounded border border-gray-200 px-2 py-1.5 dark:border-gray-700">
+            <label key={t} className="flex cursor-pointer items-start gap-2 rounded-menu border border-gray-200 px-2 py-1.5 dark:border-gray-700">
               <input type="radio" name="sync-target" value={t} checked={target === t} onChange={() => setTarget(t)} className="mt-0.5" />
               <span>
                 <span className="block text-xs font-medium">{TARGET_LABELS[t]}</span>
@@ -285,7 +285,7 @@ function Passphrase({ status, busy, act }: { status: SyncStatus; busy: boolean; 
         {!joining && (
           <input type="password" aria-label="Confirm passphrase" className={input} placeholder="Again, to be sure" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         )}
-        <p className="rounded bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+        <p className="rounded-control bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
           There's no way to recover a lost passphrase: the synced copy can't be read without it. The notes on this device are kept either way.
         </p>
         {mismatch && (
@@ -328,7 +328,7 @@ function Connected({ status, busy, act }: { status: SyncStatus; busy: boolean; a
         </p>
       )}
       {status.heldBack && (
-        <div className="flex flex-col gap-1.5 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs dark:border-amber-700 dark:bg-amber-900/30">
+        <div className="flex flex-col gap-1.5 rounded-menu border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs dark:border-amber-700 dark:bg-amber-900/30">
           <span>{massDeleteText(status.heldBack)}</span>
           <div>
             <button type="button" className={button} disabled={busy} onClick={() => void act(() => confirmMassDelete())}>

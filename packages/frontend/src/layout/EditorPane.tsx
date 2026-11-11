@@ -98,7 +98,7 @@ export function EditorPane() {
 
   return (
     <main
-      className="flex flex-1 flex-col overflow-hidden"
+      className="flex min-w-0 flex-1 flex-col rounded-panel overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950"
       data-testid="editor-pane"
       aria-label="Editor"
       data-editor-bg={background ?? ''}

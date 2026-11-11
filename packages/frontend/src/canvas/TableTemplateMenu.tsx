@@ -26,7 +26,7 @@ export function TableTemplateMenu({
     <div
       role="menu"
       aria-label="Table templates"
-      className="fixed z-50 w-60 rounded border border-gray-200 bg-white py-1 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+      className="fixed z-50 w-60 rounded-menu border border-gray-200 bg-white py-1 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
       style={{ left: x, top: y }}
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}

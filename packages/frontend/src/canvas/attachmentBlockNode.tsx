@@ -56,7 +56,7 @@ function FileChip({ fileName, size, attachmentId }: { fileName: string; size: nu
     <button
       type="button"
       onClick={() => void getIPCAdapter()?.openAttachment(attachmentId)}
-      className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+      className="inline-flex items-center gap-1.5 rounded-control border border-gray-200 bg-gray-50 px-2 py-1 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
     >
       <span aria-hidden>📎</span>
       <span className="max-w-[200px] truncate">{fileName}</span>
@@ -115,10 +115,10 @@ function ResizableEmbed({
         <img
           src={customProtocolUrl('flownote-attachment', attachmentId)}
           alt={fileName}
-          className="block w-full rounded border border-gray-200 dark:border-gray-700"
+          className="block w-full rounded-menu border border-gray-200 dark:border-gray-700"
         />
       ) : (
-        <div className="flex w-full flex-col items-center gap-1 rounded border border-gray-200 bg-gray-50 p-4 text-center dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex w-full flex-col items-center gap-1 rounded-menu border border-gray-200 bg-gray-50 p-4 text-center dark:border-gray-700 dark:bg-gray-800">
           <span aria-hidden className="text-2xl">
             📄
           </span>
@@ -129,7 +129,7 @@ function ResizableEmbed({
         role="button"
         aria-label={`Resize ${fileName}`}
         onPointerDown={startResize}
-        className="absolute top-1/2 -right-1 h-6 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-sm bg-gray-300 dark:bg-gray-600"
+        className="absolute top-1/2 -right-1 h-6 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-handle bg-gray-300 dark:bg-gray-600"
       />
     </div>
   )

@@ -102,7 +102,7 @@ export function SegmentColorMenu({
               type="button"
               role="menuitem"
               onClick={onDelete}
-              className="flex items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+              className="flex items-center gap-1.5 rounded-control px-2 py-1 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
             >
               <TrashIcon />
               Delete segment

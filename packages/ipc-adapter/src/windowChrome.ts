@@ -51,6 +51,13 @@ export type WindowChrome =
       layout: ButtonLayout
       /** null → the bar's own simple buttons. */
       theme: ButtonTheme | null
+      /**
+       * The window is transparent, so the renderer draws rounded corners
+       * (squared again while maximised). False where the shell keeps an
+       * opaque window: Tauri (Windows 11 rounds undecorated windows itself)
+       * or Electron started with FLOWNOTE_SQUARE_WINDOW=1.
+       */
+      rounded: boolean
       controls: WindowControls
     }
 
@@ -68,6 +75,7 @@ export async function resolveWindowChrome(): Promise<WindowChrome> {
       kind: 'custom',
       layout: DEFAULT_BUTTON_LAYOUT,
       theme: null,
+      rounded: false,
       controls: {
         minimize: () => win.minimize(),
         toggleMaximize: () => win.toggleMaximize(),
@@ -84,6 +92,7 @@ export async function resolveWindowChrome(): Promise<WindowChrome> {
       kind: 'custom',
       layout: info.layout,
       theme: info.theme,
+      rounded: info.rounded === true,
       controls: {
         minimize: () => api.windowMinimize.mutate(),
         toggleMaximize: () => api.windowToggleMaximize.mutate(),

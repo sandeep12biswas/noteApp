@@ -68,7 +68,7 @@ function PluginBlockView({ node, updateAttributes }: NodeViewProps) {
     return (
       <NodeViewWrapper
         data-testid={`plugin-block-${blockId}`}
-        className="rounded border border-dashed border-gray-300 px-3 py-4 text-center text-xs text-gray-400 dark:border-gray-700"
+        className="rounded-menu border border-dashed border-gray-300 px-3 py-4 text-center text-xs text-gray-400 dark:border-gray-700"
       >
         Plugin inactive
       </NodeViewWrapper>
@@ -76,7 +76,7 @@ function PluginBlockView({ node, updateAttributes }: NodeViewProps) {
   }
 
   return (
-    <NodeViewWrapper data-testid={`plugin-block-${blockId}`} className="overflow-hidden rounded border border-gray-200 dark:border-gray-700">
+    <NodeViewWrapper data-testid={`plugin-block-${blockId}`} className="overflow-hidden rounded-menu border border-gray-200 dark:border-gray-700">
       <iframe
         ref={iframeRef}
         title={entry.label}

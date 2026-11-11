@@ -170,7 +170,17 @@ export function TitleBar({ chrome: chromeProp }: { chrome?: WindowChrome } = {})
     }
   }, [theme])
   const focused = useWindowFocused()
-  const maximized = useMaximized(theme ? (custom?.controls ?? null) : null)
+  const maximized = useMaximized(custom?.controls ?? null)
+  const rounded = !!custom?.rounded && !maximized
+
+  // Rounded window corners (index.css `[data-window-shape='rounded']`):
+  // only for a transparent window, and square again while maximised so no
+  // see-through gaps show at the screen's edges.
+  useEffect(() => {
+    const root = document.documentElement
+    if (rounded) root.dataset.windowShape = 'rounded'
+    else delete root.dataset.windowShape
+  }, [rounded])
 
   if (!custom) return null
   const { layout, controls } = custom
@@ -181,21 +191,27 @@ export function TitleBar({ chrome: chromeProp }: { chrome?: WindowChrome } = {})
       <SimpleButtons buttons={list} controls={controls} />
     )
 
+  // Three columns: buttons | icon + name | buttons. The two side columns
+  // share the leftover width equally, so the icon and name sit in the
+  // middle of the window whichever side the buttons are on; the name
+  // column shrinks (and truncates) before the buttons ever do.
   return (
     <div
-      className={'flownote-titlebar flex shrink-0 select-none items-center gap-2 text-white ' + (layout.left.length ? '' : 'pl-3')}
+      className="flownote-titlebar grid shrink-0 select-none items-center text-white"
       data-button-theme={theme && art ? theme.name : 'simple'}
-      style={{ height: TITLE_BAR_HEIGHT }}
+      style={{ height: TITLE_BAR_HEIGHT, gridTemplateColumns: '1fr minmax(0, max-content) 1fr' }}
       // Dragging — and double-click to maximise — is handled by the shell
       // itself: Electron via `app-region: drag` (index.css), Tauri via this.
       data-tauri-drag-region=""
       data-testid="title-bar"
       data-buttons-side={layout.left.length ? 'left' : 'right'}
     >
-      {buttons(layout.left, 'left')}
-      <img src={iconUrl} alt="" className="pointer-events-none h-5 w-5" />
-      <span className="pointer-events-none flex-1 truncate text-[13px] font-semibold tracking-wide">{title}</span>
-      {buttons(layout.right, 'right')}
+      <div className="flex h-full justify-start">{buttons(layout.left, 'left')}</div>
+      <div className="pointer-events-none flex min-w-0 items-center justify-center gap-2 px-3">
+        <img src={iconUrl} alt="" className="h-5 w-5 shrink-0" />
+        <span className="truncate text-[13px] font-semibold tracking-wide">{title}</span>
+      </div>
+      <div className="flex h-full justify-end">{buttons(layout.right, 'right')}</div>
     </div>
   )
 }

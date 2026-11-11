@@ -14,7 +14,7 @@ function Preview({ template }: { template: TableTemplate }) {
   return (
     <div className="flex flex-col gap-1">
       {headers.length > 0 && (
-        <div className="flex overflow-hidden rounded-sm border border-lavender-300 text-[11px] font-bold" style={{ background: firstHeader, color: headerTextOn(firstHeader) }}>
+        <div className="flex overflow-hidden rounded-handle border border-lavender-300 text-[11px] font-bold" style={{ background: firstHeader, color: headerTextOn(firstHeader) }}>
           {headers.map((h, i) => (
             <span key={i} className="min-w-0 flex-1 truncate border-r border-white/30 px-1 py-0.5 last:border-r-0">
               {h || ' '}
@@ -46,7 +46,7 @@ function Row({ template }: { template: TableTemplate }) {
   }
 
   return (
-    <li className="flex flex-col gap-1 rounded border border-gray-200 p-2 dark:border-gray-700" aria-label={`Template ${template.name}`}>
+    <li className="flex flex-col gap-1 rounded-menu border border-gray-200 p-2 dark:border-gray-700" aria-label={`Template ${template.name}`}>
       <div className="flex items-center gap-2">
         {editing ? (
           <input
@@ -66,7 +66,7 @@ function Row({ template }: { template: TableTemplate }) {
                 setDraft(template.name)
               }
             }}
-            className="min-w-0 flex-1 rounded border border-gray-300 px-1 py-0.5 dark:border-gray-700 dark:bg-gray-800"
+            className="min-w-0 flex-1 rounded-control border border-gray-300 px-1 py-0.5 dark:border-gray-700 dark:bg-gray-800"
           />
         ) : (
           <span className="min-w-0 flex-1 truncate font-medium">{template.name}</span>
@@ -118,12 +118,12 @@ export function TableTemplatesDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-label="Table templates"
         aria-modal="true"
-        className="flex max-h-[80vh] w-[420px] flex-col gap-3 overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        className="flex max-h-[80vh] w-[420px] flex-col gap-3 overflow-y-auto rounded-dialog border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
         onKeyDown={(e) => e.key === 'Escape' && onClose()}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Table templates</h2>
-          <button type="button" aria-label="Close" className="rounded px-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={onClose}>
+          <button type="button" aria-label="Close" className="rounded-control px-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={onClose}>
             ✕
           </button>
         </div>

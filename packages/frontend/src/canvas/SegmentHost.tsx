@@ -692,7 +692,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
         // `flex flex-col` lets the editor (`segment-editor`, index.css) stretch
         // to the full `minHeight` box instead of just its one empty line —
         // see the `onMouseDown` comment below for why that matters (issue #3).
-        'absolute flex flex-col rounded px-2 py-1 transition-colors ' +
+        'absolute flex flex-col rounded-menu px-2 py-1 transition-colors ' +
         (revealed ? 'border' : 'editor-hover-border border border-transparent hover:border-gray-200 dark:hover:border-gray-700')
       }
       style={{
@@ -742,7 +742,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           data-testid={`segment-${segment.id}-drag-handle`}
           role="button"
           aria-label="Move segment"
-          className="editor-drag-handle absolute -top-2 -left-2 h-3 w-3 cursor-move rounded-sm border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
+          className="editor-drag-handle absolute -top-2 -left-2 h-3 w-3 cursor-move rounded-handle border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
           onPointerDown={startDrag}
         />
       )}
@@ -753,7 +753,7 @@ export function SegmentHost({ segment, onTextChange }: { segment: Segment; onTex
           data-testid={`segment-${segment.id}-resize-handle`}
           role="button"
           aria-label="Resize segment"
-          className="editor-resize-handle absolute top-1/2 -right-1 h-4 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-sm bg-gray-300 dark:bg-gray-600"
+          className="editor-resize-handle absolute top-1/2 -right-1 h-4 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-handle bg-gray-300 dark:bg-gray-600"
           onPointerDown={startResize}
         />
       )}

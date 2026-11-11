@@ -41,7 +41,7 @@ export function FileContextMenu({
       ref={ref}
       role="menu"
       aria-label="File actions"
-      className="fixed z-50 flex flex-col rounded border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="fixed z-50 flex flex-col rounded-menu border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
@@ -70,7 +70,7 @@ export function FileContextMenu({
           type="button"
           role="menuitem"
           onClick={() => setConfirmingDelete(true)}
-          className="rounded px-2 py-1 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          className="rounded-control px-2 py-1 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
         >
           Delete File “{fileName}”
         </button>

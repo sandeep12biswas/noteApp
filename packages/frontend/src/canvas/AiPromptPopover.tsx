@@ -9,7 +9,7 @@ import { AI_NO_BACKEND } from '../lib/aiStream'
 import { useAIStore } from '../store/aiStore'
 import { getIPCAdapter } from '../store/notebookStore'
 
-const BUTTON = 'rounded px-2 py-1 text-xs font-medium'
+const BUTTON = 'rounded-control px-2 py-1 text-xs font-medium'
 
 export function AiPromptPopover({
   x,
@@ -52,7 +52,7 @@ export function AiPromptPopover({
     <div
       role="dialog"
       aria-label="Ask AI"
-      className="fixed z-50 w-80 rounded border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+      className="fixed z-50 w-80 rounded-menu border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
@@ -76,14 +76,14 @@ export function AiPromptPopover({
               generate()
             }
           }}
-          className="min-w-0 flex-1 rounded border border-gray-300 px-1.5 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          className="min-w-0 flex-1 rounded-control border border-gray-300 px-1.5 py-1 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         />
         {providers.length > 1 && (
           <select
             aria-label="AI provider for this segment"
             value={chosen?.id ?? ''}
             onChange={(e) => setProviderId(e.target.value)}
-            className="max-w-[90px] rounded border border-gray-300 px-1 py-1 text-xs dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            className="max-w-[90px] rounded-control border border-gray-300 px-1 py-1 text-xs dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id}>

@@ -362,6 +362,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
     <li><strong>Many more colours.</strong> The Page colour and segment colour menus offer a grid of shades for ten colour families, your recently used colours, and a built-in colour wheel under <em>More colours…</em>.</li>
     <li><strong>Delete a segment directly</strong> from its right-click menu, with a few seconds to <em>Undo</em>.</li>
     <li><strong>Page names can start with a lowercase letter</strong>, and keep the case you type.</li>
+    <li><strong>A softer look.</strong> The folder, page and editor panels are rounded cards, menus, dialogs, notes and tables have rounded corners, and the app name sits in the middle of the title bar. On Linux the window's own corners are rounded too.</li>
   </ul>
 </div>
 
@@ -722,7 +723,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
 <div class="feature">
 <h3>Zoom and resizable panels</h3>
 <p class="what"><span class="label">What it does.</span> Zoom the canvas from 50% to 200%, and give each panel the room you need.</p>
-<p class="how"><span class="label">How to use it.</span> On the <strong>View</strong> tab, use zoom out (−), zoom in (+), or the reset button that shows the current zoom level. Drag the borders between the folder, page and editor panels to resize them.</p>
+<p class="how"><span class="label">How to use it.</span> On the <strong>View</strong> tab, use zoom out (−), zoom in (+), or the reset button that shows the current zoom level. Drag the gap between the folder, page and editor panels to resize them; a lavender bar shows when the pointer is over it. Double-click the gap to go back to the default width.</p>
 </div>
 
 <div class="feature">
@@ -881,6 +882,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
     <tr><td>The table buttons on the Insert tab are greyed out</td><td>They act on the table the cursor is in. Click inside a table cell first.</td></tr>
     <tr><td>My table template isn't on my other computer</td><td>Templates aren't synced yet. Save the template again on the other computer.</td></tr>
     <tr><td>The Spreadsheet plugin doesn't appear in the "/" menu on Windows</td><td>A known issue in this version: plugins don't load yet in the Windows app. It works on Linux. A fix is planned.</td></tr>
+    <tr><td>On Linux the window has black corners, or its edges can't be dragged to resize it</td><td>Your desktop isn't drawing see-through windows. Start FlowNote with square corners from a terminal: <code>flownote --square-window</code> (or set <code>FLOWNOTE_SQUARE_WINDOW=1</code>).</td></tr>
     <tr><td>Sync says it needs attention</td><td>Open <strong>View → Sync…</strong> to see what's wrong. Often you just need to sign in again.</td></tr>
     <tr><td>FlowNote takes several seconds to start (Linux, just-for-me install)</td><td>Install FUSE 2: <code>sudo apt install libfuse2t64</code> (or <code>libfuse2</code>), then run the installer again.</td></tr>
   </tbody>

@@ -66,7 +66,7 @@ function PageColorPopover({ x, y, onClose }: { x: number; y: number; onClose: ()
       {fileId ? (
         <div role="group" aria-label="Apply to" className="flex flex-col gap-1">
           <span className={SECTION_HEADING}>Apply to</span>
-          <div className="grid grid-cols-2 gap-0.5 rounded bg-gray-100 p-0.5 dark:bg-gray-800">
+          <div className="grid grid-cols-2 gap-0.5 rounded-control bg-gray-100 p-0.5 dark:bg-gray-800">
             {(['page', 'default'] as const).map((t) => (
               <button
                 key={t}
@@ -75,7 +75,7 @@ function PageColorPopover({ x, y, onClose }: { x: number; y: number; onClose: ()
                 aria-checked={target === t}
                 onClick={() => setTarget(t)}
                 className={
-                  'rounded px-2 py-1 text-xs ' +
+                  'rounded-control px-2 py-1 text-xs ' +
                   (target === t
                     ? 'bg-white font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
                     : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100')
@@ -144,11 +144,11 @@ export function PageColorButton() {
           const rect = buttonRef.current?.getBoundingClientRect()
           setMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: 0, y: 0 })
         }}
-        className="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="flex items-center gap-1.5 rounded-control px-1.5 py-1 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         <span
           data-testid="page-colour-swatch"
-          className="h-4 w-4 rounded border border-gray-300 dark:border-gray-600"
+          className="h-4 w-4 rounded-control border border-gray-300 dark:border-gray-600"
           style={{ backgroundColor: background }}
         />
         Page colour

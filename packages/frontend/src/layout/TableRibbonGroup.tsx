@@ -49,7 +49,7 @@ function ToolButton({ label, disabled, onClick, children }: { label: string; dis
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-gray-800"
+      className="rounded-control px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-gray-800"
     >
       {children}
     </button>
@@ -85,7 +85,7 @@ export function TableRibbonGroup() {
         aria-haspopup="dialog"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setPicker(below(insertRef.current))}
-        className="flex items-center gap-1 rounded px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="flex items-center gap-1 rounded-control px-1.5 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
       >
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
           <rect x=".5" y=".5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor" />
@@ -110,9 +110,9 @@ export function TableRibbonGroup() {
         disabled={!inTable}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setColorMenu(below(colorRef.current))}
-        className="flex items-center gap-1 rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-200 dark:hover:bg-gray-800"
+        className="flex items-center gap-1 rounded-control px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-200 dark:hover:bg-gray-800"
       >
-        <span className="inline-block h-3 w-3 rounded-sm border border-black/20" style={{ background: DEFAULT_HEADER_BACKGROUND }} />▾
+        <span className="inline-block h-3 w-3 rounded-handle border border-black/20" style={{ background: DEFAULT_HEADER_BACKGROUND }} />▾
       </button>
       <ToolButton label="Delete table" disabled={!inTable} onClick={() => run((c) => c.deleteTable())}>✕ Table</ToolButton>
       <ToolButton

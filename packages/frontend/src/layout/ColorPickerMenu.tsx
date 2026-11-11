@@ -49,10 +49,10 @@ export function useClampToViewport(ref: RefObject<HTMLElement | null>, x: number
 }
 
 export const POPOVER_CLASSNAME =
-  'fixed z-50 flex flex-col gap-2 rounded border border-gray-200 bg-white p-2 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100'
+  'fixed z-50 flex flex-col gap-2 rounded-menu border border-gray-200 bg-white p-2 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100'
 
 export const MENU_TEXT_BUTTON_CLASSNAME =
-  'rounded px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+  'rounded-control px-2 py-1 text-left text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
 
 /**
  * Every swatch gets a neutral edge, whatever its fill. Pale swatches (the
@@ -119,13 +119,13 @@ export function CustomColorInput({
 }) {
   return (
     <div className="flex flex-col">
-      <label className="flex items-center gap-1.5 rounded px-1 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
+      <label className="flex items-center gap-1.5 rounded-control px-1 py-1 text-xs text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
         <input
           type="color"
           aria-label={label}
           value={value}
           onChange={(e) => onPick(e.target.value)}
-          className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
+          className="h-5 w-5 cursor-pointer rounded-control border-0 bg-transparent p-0"
         />
         Custom…
       </label>

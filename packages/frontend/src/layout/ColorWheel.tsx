@@ -110,7 +110,7 @@ export function ColorWheel({
       </label>
 
       <div className="flex w-full items-center gap-2">
-        <div className="flex overflow-hidden rounded border border-black/30" title="Current / new">
+        <div className="flex overflow-hidden rounded-control border border-black/30" title="Current / new">
           <span data-testid="colour-wheel-current" className="h-7 w-7" style={{ backgroundColor: initialColor }} />
           <span data-testid="colour-wheel-preview" className="h-7 w-7" style={{ backgroundColor: color }} />
         </div>
@@ -130,7 +130,7 @@ export function ColorWheel({
             if (e.key === 'Enter' && hexValid) onApply(color)
           }}
           className={
-            'w-full min-w-0 rounded border px-1.5 py-1 font-mono text-xs dark:bg-gray-800 ' +
+            'w-full min-w-0 rounded-control border px-1.5 py-1 font-mono text-xs dark:bg-gray-800 ' +
             (hexValid ? 'border-gray-300 dark:border-gray-600' : 'border-red-500')
           }
         />
@@ -145,7 +145,7 @@ export function ColorWheel({
           role="menuitem"
           disabled={!hexValid}
           onClick={() => onApply(color)}
-          className="rounded bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700 disabled:opacity-40"
+          className="rounded-control bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700 disabled:opacity-40"
         >
           Apply
         </button>
