@@ -20,3 +20,4 @@ dist-release/
 # Scratch output of docs/guides/build-pdfs.mjs
 docs/guides/.build/
 smoke-artifacts/
+build-logs/

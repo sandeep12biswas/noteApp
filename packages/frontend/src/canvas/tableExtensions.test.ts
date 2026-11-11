@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { contrastRatio } from '../lib/textColors'
 import { HEADER_COLORS } from '../layout/TableRibbonGroup'
 import { segmentEditorExtensions } from './segmentEditorExtensions'
-import { DEFAULT_HEADER_BACKGROUND, headerTextOn, insertTable } from './tableExtensions'
+import { DEFAULT_HEADER_BACKGROUND, headerTextOn, insertTable, NO_ROW_SHADING } from './tableExtensions'
 
 let editors: Editor[] = []
 function makeEditor(content: string | object = '<p></p>'): Editor {
@@ -94,5 +94,78 @@ describe('tables', () => {
     expect(table().content![0]!.content).toHaveLength(3)
     editor.commands.deleteColumn()
     expect(table().content![0]!.content).toHaveLength(2)
+  })
+
+  describe('row shading', () => {
+    const rows = (editor: Editor) => [...editor.view.dom.querySelectorAll('tr')] as HTMLElement[]
+    /** Each row as the CSS sees it: header, band 1/2 with its colour, own colour, or plain. */
+    const shading = (editor: Editor) =>
+      rows(editor).map((tr) => {
+        if (tr.querySelector('th')) return 'header'
+        if (tr.dataset.band) return `band${tr.dataset.band} ${tr.style.getPropertyValue('--band')}`
+        if (tr.hasAttribute('data-row-color')) return `own ${tr.style.getPropertyValue('--row-bg')}`
+        return 'plain'
+      })
+    /** Puts the cursor in body row `index` (0 = the header row), first cell. */
+    const cursorInRow = (editor: Editor, index: number) => {
+      const cell = rows(editor)[index]!.querySelector('td, th')!
+      editor.commands.setTextSelection(editor.view.posAtDOM(cell, 0) + 1)
+    }
+
+    it('bands the body rows in the header colour: lightest under the header, then one shade darker, alternating', () => {
+      const editor = makeEditor()
+      insertTable(editor, 5, 2)
+      const c = DEFAULT_HEADER_BACKGROUND
+      expect(shading(editor)).toEqual(['header', `band1 ${c}`, `band2 ${c}`, `band1 ${c}`, `band2 ${c}`])
+    })
+
+    it('follows a header colour change, and keeps alternating when rows are added', () => {
+      const editor = makeEditor()
+      insertTable(editor, 3, 2)
+      editor.commands.setTableHeaderColor('#0f766e')
+      editor.commands.addRowAfter()
+      expect(shading(editor)).toEqual(['header', 'band1 #0f766e', 'band2 #0f766e', 'band1 #0f766e'])
+    })
+
+    it('starts the bands at the first row when the header row is turned off', () => {
+      const editor = makeEditor()
+      insertTable(editor, 3, 2)
+      editor.commands.toggleHeaderRow()
+      expect(shading(editor).map((s) => s.split(' ')[0])).toEqual(['band1', 'band2', 'band1'])
+    })
+
+    it('can band in another colour than the header, go back to the header, or turn the shading off', () => {
+      const editor = makeEditor()
+      insertTable(editor, 3, 2)
+      editor.commands.setTableRowShading('#b45309')
+      expect(shading(editor)).toEqual(['header', 'band1 #b45309', 'band2 #b45309'])
+      editor.commands.setTableRowShading(NO_ROW_SHADING)
+      expect(shading(editor)).toEqual(['header', 'plain', 'plain'])
+      editor.commands.setTableRowShading(null)
+      expect(shading(editor)).toEqual(['header', `band1 ${DEFAULT_HEADER_BACKGROUND}`, `band2 ${DEFAULT_HEADER_BACKGROUND}`])
+    })
+
+    it('gives one row its own colour, with readable text, over the bands; and back', () => {
+      const editor = makeEditor()
+      insertTable(editor, 4, 2)
+      cursorInRow(editor, 2)
+      editor.commands.setTableRowColor('#1e3a8a')
+      const c = DEFAULT_HEADER_BACKGROUND
+      expect(shading(editor)).toEqual(['header', `band1 ${c}`, 'own #1e3a8a', `band1 ${c}`])
+      expect(contrastRatio('#1e3a8a', rows(editor)[2]!.style.getPropertyValue('--row-fg').trim())).toBeGreaterThanOrEqual(4.5)
+      cursorInRow(editor, 2)
+      editor.commands.setTableRowColor(null)
+      expect(shading(editor)).toEqual(['header', `band1 ${c}`, `band2 ${c}`, `band1 ${c}`])
+    })
+
+    it('row colours and the banding setting survive a save/load round trip', () => {
+      const editor = makeEditor()
+      insertTable(editor, 3, 2)
+      editor.commands.setTableRowShading('#15803d')
+      cursorInRow(editor, 1)
+      editor.commands.setTableRowColor('#fde68a')
+      const reloaded = makeEditor(editor.getJSON())
+      expect(shading(reloaded)).toEqual(['header', 'own #fde68a', 'band2 #15803d'])
+    })
   })
 })

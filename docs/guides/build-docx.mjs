@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-// Renders the FlowNote guides to Word (.docx), from the same HTML sources
-// as the PDFs (build-pdfs.mjs), so both formats always say the same thing:
-//   docs/guides/user-guide.html          -> docs/FlowNote-User-Guide.docx
-//   docs/guides/feature-guide.html       -> docs/FlowNote-Feature-Guide.docx
-//   docs/guides/installation-guide.html  -> docs/FlowNote-Installation-Guide.docx
+// Renders the FlowNote guide to Word (.docx), from the same HTML source as
+// the PDF (build-pdfs.mjs), so both formats always say the same thing:
+//   docs/guides/flownote-guide.html  -> docs/FlowNote-Guide.docx
 //
 //   node docs/guides/build-docx.mjs          (or: pnpm docs:docx)
 //
-// Walks each guide's DOM (jsdom) and maps it onto docx elements: the cover,
-// a linked table of contents, numbered chapters (h2) and sections (h3),
+// Walks the guide's DOM (jsdom) and maps it onto docx elements: the cover,
+// a linked table of contents, part dividers (section.part), numbered
+// chapters (h2) and sections (h3),
 // paragraphs with inline formatting, lists, tables, figures, terminal
 // blocks and the Note/Tip/Important/What's new callouts. Screenshots come
 // from docs/guides/screenshots/ (pnpm docs:screenshots).
@@ -47,11 +46,7 @@ const {
 } = require('docx')
 
 const VERSION = fs.readFileSync(path.join(REPO, 'VERSION'), 'utf8').trim()
-const DOCS = [
-  { src: 'user-guide.html', out: 'FlowNote-User-Guide.docx' },
-  { src: 'feature-guide.html', out: 'FlowNote-Feature-Guide.docx' },
-  { src: 'installation-guide.html', out: 'FlowNote-Installation-Guide.docx' },
-]
+const DOCS = [{ src: 'flownote-guide.html', out: 'FlowNote-Guide.docx' }]
 
 // ------------------------------------------------------------- layout
 const FONT = 'Arial'
@@ -181,6 +176,7 @@ class GuideConverter {
   block(el, ctx) {
     const tag = el.tagName.toLowerCase()
     const cls = el.classList
+    if (tag === 'section' && cls.contains('part')) return this.part(el)
     if (tag === 'section' || tag === 'main' || (tag === 'div' && cls.contains('feature'))) return this.blocks(el, ctx)
     if (tag === 'nav' || tag === 'script' || tag === 'style') return []
     if (tag === 'h2') return [this.heading(el, 1)]
@@ -197,6 +193,24 @@ class GuideConverter {
     const callout = Object.keys(CALLOUTS).find((k) => cls.contains(k))
     if (tag === 'div' && callout) return this.callout(el, callout)
     return this.blocks(el, ctx)
+  }
+
+  /** A part divider: its own page, "PART 1" kicker, big title, intro; an unnumbered TOC line. */
+  part(el) {
+    const kicker = collapse(el.querySelector('.part-kicker')?.textContent ?? '').trim()
+    const title = collapse(el.querySelector('.part-title')?.textContent ?? '').trim()
+    const intro = el.querySelector('.part-intro')
+    const anchor = `part_${this.toc.filter((e) => e.level === 0).length + 1}`
+    this.toc.push({ level: 0, text: `${kicker} · ${title}`, anchor })
+    return [
+      new Paragraph({
+        pageBreakBefore: true,
+        spacing: { before: 2400, after: 120 },
+        children: [new Bookmark({ id: anchor, children: [new TextRun({ text: kicker.toUpperCase(), bold: true, color: ACCENT, size: 24 })] })],
+      }),
+      new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: title, bold: true, size: 56, color: '111827' })] }),
+      ...(intro ? [new Paragraph({ children: inlineRuns(intro, { size: 24, color: '4B5563' }) })] : []),
+    ]
   }
 
   heading(el, level) {
@@ -415,9 +429,18 @@ class GuideConverter {
       ...this.toc.map(
         (e) =>
           new Paragraph({
-            indent: { left: e.level === 1 ? 0 : 480 },
-            spacing: { before: e.level === 1 ? 140 : 20, after: 20 },
-            children: [new InternalHyperlink({ anchor: e.anchor, children: [new TextRun({ text: e.text, bold: e.level === 1, color: e.level === 1 ? TEXT : '374151', size: e.level === 1 ? 22 : 20 })] })],
+            indent: { left: e.level <= 1 ? 0 : 480 },
+            spacing: { before: e.level === 0 ? 280 : e.level === 1 ? 140 : 20, after: e.level === 0 ? 60 : 20 },
+            children: [
+              new InternalHyperlink({
+                anchor: e.anchor,
+                children: [
+                  e.level === 0
+                    ? new TextRun({ text: e.text.toUpperCase(), bold: true, color: ACCENT, size: 22 })
+                    : new TextRun({ text: e.text, bold: e.level === 1, color: e.level === 1 ? TEXT : '374151', size: e.level === 1 ? 22 : 20 }),
+                ],
+              }),
+            ],
           }),
       ),
     ]

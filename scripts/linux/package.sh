@@ -7,7 +7,7 @@
 #     FlowNote-<ver>-x86_64.AppImage                runs anywhere, no root
 #     install.sh  uninstall.sh  lib/ui.sh           (packaging/linux/)
 #     README.txt  RELEASE-NOTICE.txt  VERSION
-#     docs/FlowNote-{Installation,User,Feature}-Guide.{pdf,docx}
+#     docs/FlowNote-Guide.{pdf,docx}
 #     SHA256SUMS
 #   dist-release/FlowNote-<ver>-linux-x86_64.tar.gz the bundle, archived
 #   dist-release/FlowNote-<ver>-linux-x86_64.run    self-extracting installer
@@ -33,8 +33,8 @@ Builds the FlowNote Linux release bundle into dist-release/.
                    bundle is built from a clean slate.
   --skip-install   Don't run `pnpm install --frozen-lockfile` first.
 
-Requires pnpm, node and cargo on PATH. The PDF guides are taken from docs/
-(regenerate them with `pnpm docs`).
+Requires pnpm, node and cargo on PATH. The guide (FlowNote-Guide.pdf/.docx)
+is taken from docs/ (regenerate it with `pnpm docs`).
 EOF
 }
 while [ $# -gt 0 ]; do
@@ -98,7 +98,7 @@ cp packaging/linux/install.sh packaging/linux/uninstall.sh packaging/linux/READM
 cp packaging/linux/lib/ui.sh "$BUNDLE/lib/"
 cp packaging/RELEASE-NOTICE.txt "$BUNDLE/"
 echo "$VERSION" >"$BUNDLE/VERSION"
-for guide in FlowNote-{Installation,User,Feature}-Guide.{pdf,docx}; do
+for guide in FlowNote-Guide.{pdf,docx}; do
   if [ -f "docs/$guide" ]; then cp "docs/$guide" "$BUNDLE/docs/"
   else echo "warning: docs/$guide is missing (run: pnpm docs); the bundle won't include it" >&2
   fi

@@ -76,11 +76,11 @@ export function PanelResizeHandle({ panel, label }: { panel: ResizablePanel; lab
       onPointerDown={onPointerDown}
       onDoubleClick={() => resetPanelWidth(panel)}
       onKeyDown={onKeyDown}
-      // A 4px hit area centred on the panel's border; the 2px negative
-      // margins cancel its width exactly, so the layout (and the editor's
-      // minimum-width maths in lib/panelWidths.ts) is unaffected.
-      // Highlighted on hover/focus.
-      className="relative z-10 -mx-[2px] w-[4px] shrink-0 cursor-col-resize outline-none hover:bg-lavender-400/60 focus-visible:bg-lavender-500"
+      // The 6px gap between two panel cards (AppShell) is the hit area; its
+      // width is counted in lib/panelWidths.ts PANEL_CHROME_WIDTH so the
+      // editor's minimum-width maths still holds. A soft lavender pill
+      // shows on hover/focus.
+      className="relative z-10 w-1.5 shrink-0 cursor-col-resize rounded-full outline-none hover:bg-lavender-400/60 focus-visible:bg-lavender-500"
     />
   )
 }

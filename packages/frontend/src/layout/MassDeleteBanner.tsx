@@ -34,7 +34,7 @@ export function MassDeleteBanner() {
       </span>
       <button
         type="button"
-        className="rounded bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700"
+        className="rounded-control bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700"
         onClick={() => {
           setError(null)
           void confirmMassDelete().then((r) => !r.ok && setError(r.error))

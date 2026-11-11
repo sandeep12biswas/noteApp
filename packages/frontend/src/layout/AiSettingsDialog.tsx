@@ -33,7 +33,7 @@ function formFromProvider(p: AiProvider): FormState {
   return { id: p.id, existing: p, kind: p.kind, name: p.name, baseUrl: p.baseUrl, model: p.model, apiKey: '', clearKey: false, needsKey: p.kind !== 'openai_compatible' }
 }
 
-const FIELD = 'w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-800'
+const FIELD = 'w-full rounded-control border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-700 dark:bg-gray-800'
 
 export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
   const providers = useAIStore((s) => s.providers)
@@ -82,7 +82,7 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-label="AI settings"
         aria-modal="true"
-        className="flex max-h-[80vh] w-[460px] flex-col gap-3 overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        className="flex max-h-[80vh] w-[460px] flex-col gap-3 overflow-y-auto rounded-dialog border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
       >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">AI providers</h2>
@@ -96,11 +96,11 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
         <ul aria-label="AI providers" className="flex flex-col gap-1">
           {providers.length === 0 && <li className="text-xs text-gray-400">No providers yet — add one below.</li>}
           {providers.map((p) => (
-            <li key={p.id} className="flex items-center gap-2 rounded border border-gray-200 px-2 py-1.5 dark:border-gray-700">
+            <li key={p.id} className="flex items-center gap-2 rounded-menu border border-gray-200 px-2 py-1.5 dark:border-gray-700">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate font-medium">{p.name}</span>
-                  {p.isDefault && <span className="rounded bg-lavender-100 px-1 text-[10px] text-lavender-700 dark:bg-lavender-900/50 dark:text-lavender-300">Default</span>}
+                  {p.isDefault && <span className="rounded-control bg-lavender-100 px-1 text-[10px] text-lavender-700 dark:bg-lavender-900/50 dark:text-lavender-300">Default</span>}
                 </div>
                 <div className="truncate text-[11px] text-gray-500">
                   {KIND_LABELS[p.kind]} · {p.model} · {p.hasApiKey ? 'key saved' : 'no key'}
@@ -122,7 +122,7 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
         </ul>
 
         {form ? (
-          <form onSubmit={submit} aria-label={form.existing ? `Edit ${form.existing.name}` : 'Add AI provider'} className="flex flex-col gap-2 rounded border border-gray-200 p-3 dark:border-gray-700">
+          <form onSubmit={submit} aria-label={form.existing ? `Edit ${form.existing.name}` : 'Add AI provider'} className="flex flex-col gap-2 rounded-menu border border-gray-200 p-3 dark:border-gray-700">
             {!form.existing && (
               <label className="flex flex-col gap-0.5 text-xs">
                 Service
@@ -179,7 +179,7 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
               <button type="button" className="text-xs text-gray-500 hover:underline" onClick={() => setForm(null)}>
                 Cancel
               </button>
-              <button type="submit" className="rounded bg-lavender-600 px-2 py-1 text-xs text-white hover:bg-lavender-700">
+              <button type="submit" className="rounded-control bg-lavender-600 px-2 py-1 text-xs text-white hover:bg-lavender-700">
                 Save
               </button>
             </div>
@@ -187,7 +187,7 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <button
             type="button"
-            className="self-start rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+            className="self-start rounded-control border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
             onClick={() => {
               setPresetIndex(0)
               setForm(formFromPreset(0))

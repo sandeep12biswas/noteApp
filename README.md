@@ -99,16 +99,20 @@ The setup wizard is Tauri's NSIS installer customised in `tauri.conf.json` → `
 
 Installer artwork (the Linux icon set and the NSIS/MSI images) is generated from the app icon by `python3 scripts/assets/make-installer-art.py`.
 
-### User Guide and Feature Guide (PDF and Word)
+### The FlowNote Guide (PDF and Word)
 
-`docs/FlowNote-Installation-Guide.pdf`, `docs/FlowNote-User-Guide.pdf` and `docs/FlowNote-Feature-Guide.pdf` ship in both bundles (and in the Windows install). The same three guides are also built as Word documents (`docs/*.docx`) for editing or sharing; the bundles' `docs/` folders carry both (the Windows installer itself installs only the PDFs). Their sources are `docs/guides/*.html`. To regenerate after a UI change (Linux, with the app built and a display available):
+`docs/FlowNote-Guide.pdf` is the single user-facing guide: Part 1 installs FlowNote (Linux first, then Windows), Part 2 is the user manual with a screenshot for each feature. It ships in both bundles (and in the Windows install, with a Start Menu entry). The same guide is also built as a Word document (`docs/FlowNote-Guide.docx`); the bundles' `docs/` folders carry both (the Windows installer itself installs only the PDF). Its source is `docs/guides/flownote-guide.html`. To regenerate after a UI change (Linux, with the app built and a display available):
 
 ```bash
 pnpm docs:screenshots   # drives the real Electron app with a throwaway profile -> docs/guides/screenshots/*.png
-pnpm docs:pdf           # headless Chrome -> docs/*.pdf (set CHROME_PATH if Chrome/Chromium isn't found)
-pnpm docs:docx          # the same HTML -> docs/*.docx (Word)
+pnpm docs:pdf           # headless Chrome -> docs/FlowNote-Guide.pdf (set CHROME_PATH if Chrome/Chromium isn't found)
+pnpm docs:docx          # the same HTML -> docs/FlowNote-Guide.docx (Word)
 pnpm docs               # all three
 ```
+
+### Both installers at once
+
+`scripts/release/build-all.sh` (`pnpm package:all`) builds the Linux bundle locally and, in parallel, dispatches the Windows installer workflow on GitHub Actions for the same commit, waits for it, and downloads `FlowNote-<ver>-windows-x64.zip` into `dist-release/`. Commit and push first (the regenerated guide included): the script refuses a dirty tree or an unpushed branch. In Claude Code, the `build-installers` skill (`.claude/skills/build-installers/`) runs the whole release flow: update the guide for new features, recapture screenshots, rebuild the guide, then both installers.
 
 ### macOS
 

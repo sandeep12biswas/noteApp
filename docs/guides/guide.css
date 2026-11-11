@@ -1,4 +1,4 @@
-/* Print stylesheet shared by user-guide.html and feature-guide.html.
+/* Print stylesheet for flownote-guide.html (the FlowNote Guide).
    Rendered to A4 PDF by build-pdfs.mjs (headless Chrome); page header and
    footer (title, page numbers) come from build-pdfs.mjs's templates. */
 :root {
@@ -95,6 +95,17 @@ h2::before { content: counter(h2) ". "; color: var(--accent); }
 section.chapter { margin-top: 11mm; }
 section.chapter:first-of-type { margin-top: 0; }
 section.chapter.new-page { break-before: page; margin-top: 0; }
+/* Part dividers ("Part 1 · Installation"): a page of their own, outside the
+   chapter numbering; the chapter after one starts at the top of a page. */
+section.part { break-before: page; break-after: page; padding-top: 70mm; }
+section.part:first-child { break-before: auto; }
+section.part .part-kicker { text-transform: uppercase; letter-spacing: .18em; font-size: 11pt; font-weight: 700; color: var(--accent); margin: 0 0 3mm; }
+section.part .part-title { font-size: 34pt; font-weight: 700; line-height: 1.1; color: var(--ink); margin: 0 0 6mm; padding-bottom: 4mm; border-bottom: 3px solid var(--accent); }
+section.part .part-intro { font-size: 12pt; color: var(--muted); max-width: 140mm; }
+section.part + section.chapter { margin-top: 0; }
+.toc > ol > li.part { counter-increment: none; margin: 4mm 0 2mm; text-transform: uppercase; letter-spacing: .08em; font-size: 9.5pt; color: var(--accent); }
+.toc > ol > li.part:first-child { margin-top: 0; }
+.toc > ol > li.part::before { content: none; }
 h3 {
   counter-increment: h3;
   font-size: 13pt;

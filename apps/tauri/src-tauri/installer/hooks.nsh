@@ -5,16 +5,19 @@
 ; and "Create desktop shortcut"), closes a running FlowNote before installing
 ; or uninstalling, and offers "Delete the application data" when uninstalling.
 ; These hooks add what's specific to FlowNote:
-;   - Start Menu entries for the Installation, User and Feature Guide PDFs (shipped
-;     as bundle resources under $INSTDIR\docs) and for the uninstaller;
+;   - Start Menu entries for the FlowNote Guide PDF (shipped as a bundle
+;     resource under $INSTDIR\docs) and for the uninstaller;
 ;   - removing those entries again on uninstall, before the template removes
-;     the (then empty) Start Menu folder.
+;     the (then empty) Start Menu folder. That includes the three per-guide
+;     shortcuts versions before 0.1.1 created (Installation / User / Feature
+;     Guide), so an upgrade doesn't leave dead links behind.
 ;
 ; $AppStartMenuFolder and the MUI_STARTMENU_* macros come from the template;
 ; MUI_STARTMENU_WRITE_BEGIN/END skips everything when the user ticked
 ; "Do not create shortcuts".
 
 !macro FLOWNOTE_DELETE_EXTRA_SHORTCUTS
+  Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Guide.lnk"
   Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Installation Guide.lnk"
   Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote User Guide.lnk"
   Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Feature Guide.lnk"
@@ -24,14 +27,12 @@
 !macro NSIS_HOOK_POSTINSTALL
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
     CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
-    ${If} ${FileExists} "$INSTDIR\docs\FlowNote-Installation-Guide.pdf"
-      CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Installation Guide.lnk" "$INSTDIR\docs\FlowNote-Installation-Guide.pdf"
-    ${EndIf}
-    ${If} ${FileExists} "$INSTDIR\docs\FlowNote-User-Guide.pdf"
-      CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\FlowNote User Guide.lnk" "$INSTDIR\docs\FlowNote-User-Guide.pdf"
-    ${EndIf}
-    ${If} ${FileExists} "$INSTDIR\docs\FlowNote-Feature-Guide.pdf"
-      CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Feature Guide.lnk" "$INSTDIR\docs\FlowNote-Feature-Guide.pdf"
+    ; Upgrading from a version that shipped three guides: drop their shortcuts.
+    Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Installation Guide.lnk"
+    Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote User Guide.lnk"
+    Delete "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Feature Guide.lnk"
+    ${If} ${FileExists} "$INSTDIR\docs\FlowNote-Guide.pdf"
+      CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\FlowNote Guide.lnk" "$INSTDIR\docs\FlowNote-Guide.pdf"
     ${EndIf}
     CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\Uninstall FlowNote.lnk" "$INSTDIR\uninstall.exe"
   !insertmacro MUI_STARTMENU_WRITE_END

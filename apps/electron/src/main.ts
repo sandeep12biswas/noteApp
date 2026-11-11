@@ -78,6 +78,16 @@ const DEV_ICON = join(__dirname, '..', 'build', 'icons', '512x512.png')
 /** The renderer draws the title bar on Linux (the only platform this shell ships on); elsewhere the native frame stays. */
 const FRAMELESS = process.platform === 'linux'
 
+/**
+ * Rounded window corners (the "softer look"): the frameless window is made
+ * transparent and the renderer clips its own root to `--radius-window`
+ * (packages/frontend/src/index.css). Without a compositing window manager a
+ * transparent window can show black corners, so it can be turned off with
+ * FLOWNOTE_SQUARE_WINDOW=1 or `--square-window`; the window is then opaque
+ * and square, as before.
+ */
+const ROUNDED_WINDOW = FRAMELESS && process.env.FLOWNOTE_SQUARE_WINDOW !== '1' && !app.commandLine.hasSwitch('square-window')
+
 function createWindow(sidecar: SidecarSupervisor): void {
   // Theme (light/dark/system) is renderer-owned and localStorage-persisted
   // (packages/frontend/src/store/themeStore.ts) — nativeTheme.themeSource
@@ -93,7 +103,7 @@ function createWindow(sidecar: SidecarSupervisor): void {
     // always draws its buttons on the right, ignoring e.g. KDE/GNOME set up
     // with close-minimise-maximise on the left.
     ...(FRAMELESS ? { titleBarStyle: 'hidden' as const } : {}),
-    backgroundColor: '#ffffff',
+    ...(ROUNDED_WINDOW ? { transparent: true, backgroundColor: '#00000000' } : { backgroundColor: '#ffffff' }),
     // Packaged builds get their icon from the .desktop file (build/ isn't
     // shipped); in dev runs the window sets it itself.
     ...(existsSync(DEV_ICON) ? { icon: DEV_ICON } : {}),
@@ -126,6 +136,7 @@ function createWindow(sidecar: SidecarSupervisor): void {
       },
       window: {
         frameless: FRAMELESS,
+        rounded: ROUNDED_WINDOW,
         buttonLayout: systemButtonLayout,
         buttonTheme: systemButtonTheme,
         isMaximized: () => win.isMaximized(),

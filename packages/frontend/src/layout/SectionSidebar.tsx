@@ -41,7 +41,7 @@ function NewFolderInput({ parentId, onDone }: { parentId: string | null; onDone:
       <input
         autoFocus
         aria-label="New folder name"
-        className="w-full rounded border border-lavender-400 px-1 py-0.5 text-sm outline-none"
+        className="w-full rounded-control border border-lavender-400 px-1 py-0.5 text-sm outline-none"
         value={value}
         // Live auto-capitalize preview (DESIGN.md §2.1) — the store
         // capitalizes again on submit, this is just what the user sees
@@ -80,7 +80,7 @@ function RenameFolderInput({ folder, onDone }: { folder: Folder; onDone: () => v
     <input
       autoFocus
       aria-label={`Rename ${folder.name}`}
-      className="flex-1 rounded border border-lavender-400 px-1 py-0.5 text-sm outline-none"
+      className="flex-1 rounded-control border border-lavender-400 px-1 py-0.5 text-sm outline-none"
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={onKeyDown}
@@ -151,7 +151,7 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
         onDragLeave={() => setIsDropTarget(false)}
         onDrop={onDrop}
         className={
-          'flex items-center gap-1 rounded px-1 py-0.5 text-sm ' +
+          'flex items-center gap-1 rounded-control px-1 py-0.5 text-sm ' +
           (isDropTarget
             ? 'bg-lavender-200 dark:bg-lavender-800/60'
             : isSelected
@@ -187,7 +187,7 @@ function FolderNode({ folder, depth }: { folder: Folder; depth: number }) {
             const rect = iconButtonRef.current?.getBoundingClientRect()
             setIconMenu(rect ? { x: rect.left, y: rect.bottom + 4 } : { x: e.clientX, y: e.clientY })
           }}
-          className="flex shrink-0 items-center rounded px-0.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
+          className="flex shrink-0 items-center rounded-control px-0.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700"
         >
           <FolderIcon icon={folder.icon} />
         </button>
@@ -277,7 +277,7 @@ export function SectionSidebar() {
 
   return (
     <aside
-      className="flex shrink-0 flex-col border-r border-gray-200 dark:border-gray-800"
+      className="flex shrink-0 flex-col rounded-panel overflow-hidden border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950"
       style={{ width }}
       data-testid="section-sidebar"
       aria-label="Folders"

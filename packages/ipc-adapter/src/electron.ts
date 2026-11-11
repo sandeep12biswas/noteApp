@@ -84,7 +84,7 @@ interface ElectronRouter {
   saveAiProvider: { mutate: (input: AiProviderInput) => Promise<AiProvider> }
   deleteAiProvider: { mutate: (id: string) => Promise<void> }
   setDefaultAiProvider: { mutate: (id: string) => Promise<void> }
-  windowChrome: { query: () => Promise<{ frameless: boolean; layout: ButtonLayout; theme: ButtonTheme | null }> }
+  windowChrome: { query: () => Promise<{ frameless: boolean; rounded?: boolean; layout: ButtonLayout; theme: ButtonTheme | null }> }
   windowIsMaximized: { query: () => Promise<boolean> }
   windowMinimize: { mutate: () => Promise<void> }
   windowToggleMaximize: { mutate: () => Promise<void> }

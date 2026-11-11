@@ -35,13 +35,13 @@ export function UndoDeleteToast() {
       role="status"
       aria-live="polite"
       data-testid="undo-delete-toast"
-      className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 overflow-hidden rounded-md bg-gray-900 py-2 pr-2 pl-4 text-sm text-white shadow-lg dark:bg-gray-100 dark:text-gray-900"
+      className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 overflow-hidden rounded-menu bg-gray-900 py-2 pr-2 pl-4 text-sm text-white shadow-lg dark:bg-gray-100 dark:text-gray-900"
     >
       <span>Segment deleted</span>
       <button
         type="button"
         onClick={undo}
-        className="rounded px-2 py-1 font-medium text-lavender-300 hover:bg-white/10 dark:text-lavender-700 dark:hover:bg-black/10"
+        className="rounded-control px-2 py-1 font-medium text-lavender-300 hover:bg-white/10 dark:text-lavender-700 dark:hover:bg-black/10"
       >
         Undo
       </button>
@@ -49,7 +49,7 @@ export function UndoDeleteToast() {
         type="button"
         aria-label="Dismiss"
         onClick={commit}
-        className="rounded px-1.5 py-1 text-gray-400 hover:bg-white/10 hover:text-white dark:text-gray-500 dark:hover:bg-black/10 dark:hover:text-gray-900"
+        className="rounded-control px-1.5 py-1 text-gray-400 hover:bg-white/10 hover:text-white dark:text-gray-500 dark:hover:bg-black/10 dark:hover:text-gray-900"
       >
         ✕
       </button>

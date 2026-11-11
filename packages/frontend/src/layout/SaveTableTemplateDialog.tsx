@@ -42,7 +42,7 @@ export function SaveTableTemplateDialog({ table, onClose }: { table: JSONContent
         role="dialog"
         aria-label="Save as template"
         aria-modal="true"
-        className="flex w-[360px] flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        className="flex w-[360px] flex-col gap-3 rounded-dialog border border-gray-200 bg-white p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900"
         onSubmit={(e) => {
           e.preventDefault()
           void submit()
@@ -62,7 +62,7 @@ export function SaveTableTemplateDialog({ table, onClose }: { table: JSONContent
               setConfirmReplace(false)
               setError(null)
             }}
-            className="rounded border border-gray-300 px-2 py-1 dark:border-gray-700 dark:bg-gray-800"
+            className="rounded-control border border-gray-300 px-2 py-1 dark:border-gray-700 dark:bg-gray-800"
           />
         </label>
         <label className="flex items-center gap-2 text-xs">
@@ -71,7 +71,7 @@ export function SaveTableTemplateDialog({ table, onClose }: { table: JSONContent
           <span className="text-gray-400">(otherwise only the layout and header row)</span>
         </label>
         {confirmReplace && existing && (
-          <p role="alert" className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+          <p role="alert" className="rounded-control bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
             A template called “{existing.name}” already exists. Replace it?
           </p>
         )}
@@ -81,10 +81,10 @@ export function SaveTableTemplateDialog({ table, onClose }: { table: JSONContent
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded px-3 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-800">
+          <button type="button" onClick={onClose} className="rounded-control px-3 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-800">
             Cancel
           </button>
-          <button type="submit" className="rounded bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700">
+          <button type="submit" className="rounded-control bg-lavender-600 px-3 py-1 text-xs font-medium text-white hover:bg-lavender-700">
             {confirmReplace && existing ? 'Replace' : 'Save'}
           </button>
         </div>

@@ -1,10 +1,9 @@
 FlowNote for Windows
 ====================
 
-Step-by-step instructions: docs\FlowNote-Installation-Guide.pdf
-Using FlowNote: docs\FlowNote-User-Guide.pdf and docs\FlowNote-Feature-Guide.pdf
-(each guide is also included as an editable Word .docx)
-(all three are also in the Start Menu after installing, under FlowNote).
+Installing and using FlowNote, step by step: docs\FlowNote-Guide.pdf
+(also as an editable Word file, docs\FlowNote-Guide.docx). After installing,
+it's also in the Start Menu under FlowNote -> FlowNote Guide.
 
 INSTALL
   Double-click FlowNote_<version>_x64-setup.exe and follow the wizard

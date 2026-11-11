@@ -1,5 +1,5 @@
 {
-  "captured": "2026-11-10T15:40:28.375Z",
+  "captured": "2026-11-11T17:54:23.993Z",
   "results": [
     {
       "name": "01-first-launch",
@@ -123,6 +123,42 @@
     },
     {
       "name": "28-spreadsheet-block",
+      "ok": true
+    },
+    {
+      "name": "31-table-size-picker",
+      "ok": true
+    },
+    {
+      "name": "32-table",
+      "ok": true
+    },
+    {
+      "name": "33-table-ribbon",
+      "ok": true
+    },
+    {
+      "name": "34-table-header-colour",
+      "ok": true
+    },
+    {
+      "name": "38-table-row-colours",
+      "ok": true
+    },
+    {
+      "name": "39-table-row-own-colour",
+      "ok": true
+    },
+    {
+      "name": "35-save-template",
+      "ok": true
+    },
+    {
+      "name": "36-template-picker",
+      "ok": true
+    },
+    {
+      "name": "37-template-manager",
       "ok": true
     },
     {

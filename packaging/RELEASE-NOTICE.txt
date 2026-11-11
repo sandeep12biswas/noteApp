@@ -14,7 +14,7 @@ anything important.
     copy in a cloud folder you choose.
   * Uninstalling FlowNote keeps your notes unless you choose to delete them.
 
-Guides: see the docs folder of the download (FlowNote-Installation-Guide.pdf,
-FlowNote-User-Guide.pdf, FlowNote-Feature-Guide.pdf).
+Guide: FlowNote-Guide.pdf in the docs folder of the download (installation
+on Linux and Windows, then the user manual).
 
 Project home: https://github.com/sandeep12biswas/noteApp

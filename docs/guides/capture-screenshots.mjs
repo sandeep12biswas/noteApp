@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Captures the screenshots used by the FlowNote User Guide and Feature Guide
-// (docs/guides/*.html -> docs/*.pdf) from the real Electron app.
+// Captures the screenshots used by the FlowNote Guide
+// (docs/guides/flownote-guide.html -> docs/FlowNote-Guide.{pdf,docx}) from the
+// real Electron app.
 //
 //   node docs/guides/capture-screenshots.mjs        (or: pnpm docs:screenshots)
 //
@@ -414,7 +415,11 @@ await step('15-embedded-image', async () => {
 await step('16-ribbon-insert-ai', async () => {
   await tab('Insert').click()
   await wait(200)
-  await shot('16-ribbon-insert-ai', page.getByTestId('ribbon-root'), 0, { maxWidth: 640 })
+  // Whole Insert tab: the table tools come first, Ask AI / Generate / ⚙ after
+  // them. Cropped just past the ⚙ wherever it ends up, so adding a table
+  // tool can't push the AI controls out of the picture.
+  const gear = await page.getByRole('button', { name: 'AI settings' }).boundingBox()
+  await shot('16-ribbon-insert-ai', page.getByTestId('ribbon-root'), 0, { maxWidth: Math.ceil((gear?.x ?? 1044) + (gear?.width ?? 0) + 16) })
 })
 
 await step('17-ai-settings', async () => {
@@ -596,6 +601,132 @@ await step('28-spreadsheet-block', async () => {
   }
   await wait(600)
   await shot('28-spreadsheet-block', page.locator('[data-testid^="segment-"][aria-label="Segment"]').first(), 16)
+})
+
+// ---------------------------------------------------------------- tables
+const tables = () => canvas().locator('table')
+/** Waits until the caret is in a table header cell (the picker hands focus back to the editor). */
+async function caretInHeader() {
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    const ok = await page.evaluate(() => {
+      const anchor = window.getSelection()?.anchorNode
+      const el = anchor instanceof Element ? anchor : anchor?.parentElement
+      return !!document.activeElement?.classList.contains('ProseMirror') && !!el?.closest('th')
+    })
+    if (ok) return
+    await wait(100)
+  }
+  throw new Error('the caret never reached the new table')
+}
+
+await step('31-table-size-picker', async () => {
+  await newPage('Projects', 'Shopping list')
+  await writeSegment(40, 30, async () => {
+    await page.getByRole('button', { name: 'Heading 2' }).click()
+    await page.keyboard.type('Weekly shop')
+    await page.keyboard.press('Enter')
+    await slash('Table…')
+  })
+  const picker = page.getByRole('dialog', { name: 'Insert table' })
+  await picker.waitFor()
+  await picker.getByRole('button', { name: '4 by 3 table' }).hover()
+  await wait(250)
+  await shot('31-table-size-picker', picker, 12)
+})
+
+await step('32-table', async () => {
+  await page.getByRole('dialog', { name: 'Insert table' }).getByRole('button', { name: '4 by 3 table' }).click()
+  await tables().first().waitFor()
+  await caretInHeader()
+  const cells = ['Item', 'Qty', 'Price', 'Apples', '6', '2.40', 'Bread', '1', '1.80', 'Milk', '2', '1.98']
+  for (const [i, text] of cells.entries()) {
+    await page.keyboard.type(text)
+    if (i < cells.length - 1) await page.keyboard.press('Tab')
+  }
+  await wait(300)
+  await setSegmentWidth(segments().last(), 460)
+  await tables().first().locator('td').last().click()
+  await shot('32-table', segments().last(), 16)
+})
+
+await step('33-table-ribbon', async () => {
+  await tab('Insert').click()
+  await wait(200)
+  // Just the table group (Table … Templates…), legible at page width.
+  await shot('33-table-ribbon', page.getByTestId('ribbon-root'), 0, { maxWidth: 850 })
+})
+
+await step('34-table-header-colour', async () => {
+  await page.getByRole('button', { name: 'Header colour' }).click()
+  const menu = page.getByRole('menu', { name: 'Header colour' })
+  await menu.waitFor()
+  await wait(200)
+  await shot('34-table-header-colour', menu, 12)
+  await menu.getByRole('menuitemradio', { name: /#0f766e/i }).click()
+  await wait(300)
+})
+
+await step('38-table-row-colours', async () => {
+  // The cursor is still in the last body row (32-table); the header is teal now.
+  await tables().first().locator('td').last().click()
+  await page.getByRole('button', { name: 'Row colours' }).click()
+  const menu = page.getByRole('menu', { name: 'Row colours' })
+  await menu.waitFor()
+  await wait(200)
+  await shot('38-table-row-colours', menu, 12)
+  await page.keyboard.press('Escape')
+  await wait(200)
+})
+
+await step('39-table-row-own-colour', async () => {
+  // One row in a colour of its own, over the teal bands.
+  await tables().first().locator('td').last().click()
+  await page.getByRole('button', { name: 'Row colours' }).click()
+  const menu = page.getByRole('menu', { name: 'Row colours' })
+  await menu.waitFor()
+  await menu.getByRole('menuitemradio', { name: 'This row' }).click()
+  await menu.getByRole('menuitemradio', { name: 'This row Light amber', exact: true }).click()
+  await wait(300)
+  await tables().first().locator('td').first().click() // caret out of the coloured row
+  await wait(200)
+  await shot('39-table-row-own-colour', segments().nth(-1), 16)
+})
+
+await step('35-save-template', async () => {
+  await tables().first().locator('td').last().click()
+  await page.getByRole('button', { name: 'Save as template…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Save as template' })
+  await dialog.waitFor()
+  await dialog.getByRole('textbox', { name: 'Template name' }).fill('Groceries')
+  await wait(200)
+  await shot('35-save-template', dialog, 12)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await dialog.waitFor({ state: 'hidden' })
+})
+
+await step('36-template-picker', async () => {
+  // A new segment below the table, so the picker opens with somewhere to insert.
+  await writeSegment(40, 330, async () => {})
+  await tab('Insert').click()
+  await page.getByRole('button', { name: 'Insert table' }).click()
+  const picker = page.getByRole('dialog', { name: 'Insert table' })
+  await picker.getByRole('group', { name: 'From template' }).waitFor()
+  await wait(200)
+  await shot('36-template-picker', picker, 12)
+  await page.keyboard.press('Escape')
+  await wait(200)
+})
+
+await step('37-template-manager', async () => {
+  await tab('Insert').click()
+  await page.getByRole('button', { name: 'Manage templates…' }).click()
+  const manager = page.getByRole('dialog', { name: 'Table templates' })
+  await manager.waitFor()
+  await wait(300)
+  await shot('37-template-manager', manager, 12)
+  await manager.getByRole('button', { name: 'Close' }).click()
+  await tab('Home').click()
 })
 
 // ----------------------------------------------------------------- sync

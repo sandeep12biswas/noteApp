@@ -14,6 +14,7 @@
     "docs": "pnpm docs:screenshots && pnpm docs:pdf && pnpm docs:docx",
     "package:linux": "./scripts/linux/package.sh",
     "package:windows": "pwsh -File scripts/windows/package.ps1",
+    "package:all": "./scripts/release/build-all.sh",
     "version:sync": "node scripts/sync-version.mjs"
   },
   "devDependencies": {

@@ -11,7 +11,7 @@
       Uninstall FlowNote.cmd            double-click uninstaller
       Uninstall-FlowNote.ps1            (for either install)
       README.txt  RELEASE-NOTICE.txt  VERSION
-      docs\FlowNote-{Installation,User,Feature}-Guide.{pdf,docx}
+      docs\FlowNote-Guide.{pdf,docx}
       SHA256SUMS.txt
     FlowNote-<ver>-windows-x64.zip      the bundle, zipped
 
@@ -20,8 +20,9 @@
   assemble -> checksum -> zip.
 
   Needs Windows with pnpm, node, cargo/rustup and the Tauri prerequisites
-  (Visual Studio C++ Build Tools; WebView2 ships with Windows 11). The PDF
-  guides are taken from docs\ (generate them on Linux with `pnpm docs`).
+  (Visual Studio C++ Build Tools; WebView2 ships with Windows 11). The guide
+  (FlowNote-Guide.pdf/.docx) is taken from docs\ (generate it on Linux with
+  `pnpm docs`).
 
 .PARAMETER NoClean
   Keep previous build outputs (faster incremental rebuild).
@@ -97,14 +98,12 @@ try {
   Copy-Item (Join-Path $RepoRoot 'packaging\RELEASE-NOTICE.txt') $Bundle
   Set-Content -Path (Join-Path $Bundle 'VERSION') -Value $Version -NoNewline
   # Not `$name`: PowerShell variables ignore case, so that would overwrite
-  # $Name (the bundle name) and the zip would come out as Feature.zip.
-  foreach ($guideName in 'Installation', 'User', 'Feature') {
-    foreach ($ext in 'pdf', 'docx') {
-      $guide = "FlowNote-$guideName-Guide.$ext"
-      $src = Join-Path $RepoRoot "docs\$guide"
-      if (Test-Path $src) { Copy-Item $src (Join-Path $Bundle 'docs') }
-      else { Write-Warning "docs\$guide is missing (run: pnpm docs); the bundle won't include it" }
-    }
+  # $Name (the bundle name).
+  foreach ($ext in 'pdf', 'docx') {
+    $guide = "FlowNote-Guide.$ext"
+    $src = Join-Path $RepoRoot "docs\$guide"
+    if (Test-Path $src) { Copy-Item $src (Join-Path $Bundle 'docs') }
+    else { Write-Warning "docs\$guide is missing (run: pnpm docs); the bundle won't include it" }
   }
 
   Step 'Writing SHA256SUMS.txt'

@@ -43,9 +43,7 @@
     "longDescription": "FlowNote is a note-taking app with a free-form canvas editor: click anywhere on the page and start writing.",
     "licenseFile": "../../../packaging/RELEASE-NOTICE.txt",
     "resources": {
-      "../../../docs/FlowNote-Installation-Guide.pdf": "docs/FlowNote-Installation-Guide.pdf",
-      "../../../docs/FlowNote-User-Guide.pdf": "docs/FlowNote-User-Guide.pdf",
-      "../../../docs/FlowNote-Feature-Guide.pdf": "docs/FlowNote-Feature-Guide.pdf"
+      "../../../docs/FlowNote-Guide.pdf": "docs/FlowNote-Guide.pdf"
     },
     "windows": {
       "nsis": {
