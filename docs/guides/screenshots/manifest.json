@@ -1,5 +1,5 @@
 {
-  "captured": "2026-11-11T17:39:40.974Z",
+  "captured": "2026-11-11T17:54:23.993Z",
   "results": [
     {
       "name": "01-first-launch",
@@ -139,6 +139,14 @@
     },
     {
       "name": "34-table-header-colour",
+      "ok": true
+    },
+    {
+      "name": "38-table-row-colours",
+      "ok": true
+    },
+    {
+      "name": "39-table-row-own-colour",
       "ok": true
     },
     {

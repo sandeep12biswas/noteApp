@@ -43,3 +43,4 @@ export function createRecentColorsStore(storageKey: string): UseBoundStore<Store
 
 export const useRecentPageColors = createRecentColorsStore('flownote:recent-page-colours')
 export const useRecentSegmentColors = createRecentColorsStore('flownote:recent-segment-colours')
+export const useRecentRowColors = createRecentColorsStore('flownote:recent-row-colours')

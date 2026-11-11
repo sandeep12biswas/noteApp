@@ -362,6 +362,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
     <li><strong>Many more colours.</strong> The Page colour and segment colour menus offer a grid of shades for ten colour families, your recently used colours, and a built-in colour wheel under <em>More colours…</em>.</li>
     <li><strong>Delete a segment directly</strong> from its right-click menu, with a few seconds to <em>Undo</em>.</li>
     <li><strong>Page names can start with a lowercase letter</strong>, and keep the case you type.</li>
+    <li><strong>Shaded table rows.</strong> Table rows alternate between two tints of the header colour. Choose another shading colour, turn it off, or give any row its own colour with <em>Insert → Rows ▾</em>.</li>
     <li><strong>A softer look.</strong> The folder, page and editor panels are rounded cards, menus, dialogs, notes and tables have rounded corners, and the app name sits in the middle of the title bar. On Linux the window's own corners are rounded too.</li>
   </ul>
 </div>
@@ -373,7 +374,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
     <tr><td>Organising</td><td>Folders and sub-folders, folder icons, page counts, natural sort, drag to reorganise</td></tr>
     <tr><td>Writing</td><td>Click-anywhere canvas, segments (move, resize, colour, delete with Undo), Linear mode, spell check</td></tr>
     <tr><td>Formatting</td><td>Fonts, text styles, highlight and text colour, lists and checklists, headings, quotes, Format Painter</td></tr>
-    <tr><td>Inserting</td><td>"/" block menu, code blocks with highlighting, tables and table templates, pictures and file attachments</td></tr>
+    <tr><td>Inserting</td><td>"/" block menu, code blocks with highlighting, tables with shaded rows and table templates, pictures and file attachments</td></tr>
     <tr><td>Drawing</td><td>Pen, marker and eraser in five colours</td></tr>
     <tr><td>Finding</td><td>Search by page name or by contents</td></tr>
     <tr><td>Appearance</td><td>Light/dark theme, page colours with shades and a colour wheel, contrast assistant, zoom</td></tr>
@@ -590,7 +591,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
 
 <div class="feature">
 <h3>Tables</h3>
-<p class="what"><span class="label">What it does.</span> Adds a table to a segment. The first row is a header: bold, with a coloured background (FlowNote lavender by default) and text that FlowNote keeps readable whatever header colour you choose. Tables are saved, searched and synced like any other text, and show in both Canvas and Linear mode. Tables pasted from other apps keep their rows and columns.</p>
+<p class="what"><span class="label">What it does.</span> Adds a table to a segment. The first row is a header: bold, with a coloured background (FlowNote lavender by default) and text that FlowNote keeps readable whatever header colour you choose. The other rows are shaded in alternating tints of the header colour: the row under the header gets the lightest tint, the next row one shade darker, and so on. Tables are saved, searched and synced like any other text, and show in both Canvas and Linear mode. Tables pasted from other apps keep their rows and columns.</p>
 <p class="how"><span class="label">How to insert a table.</span></p>
 <ol class="steps">
   <li>Click in a segment where the table should go.</li>
@@ -600,7 +601,7 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
 </ol>
 <div class="two-col">
   <figure><img src="screenshots/31-table-size-picker.png" alt=""><figcaption>Choosing the table size</figcaption></figure>
-  <figure><img src="screenshots/32-table.png" alt=""><figcaption>A table with a header row</figcaption></figure>
+  <figure><img src="screenshots/32-table.png" alt=""><figcaption>A table with a header row and shaded rows</figcaption></figure>
 </div>
 <p class="how"><span class="label">How to change a table.</span> Put the cursor in a cell and use the table tools on the <strong>Insert</strong> tab. They act on the row or column the cursor is in:</p>
 <figure class="wide"><img src="screenshots/33-table-ribbon.png" alt=""><figcaption>The table tools on the Insert tab</figcaption></figure>
@@ -613,16 +614,27 @@ Start FlowNote now? [Y/n] <span class="u">y</span></pre></li>
     <tr><td>✕ Col</td><td>Delete the column</td></tr>
     <tr><td>Header</td><td>Turn the header row on or off</td></tr>
     <tr><td>Header colour (●▾)</td><td>Choose the header row's background colour from the swatches, or <strong>Custom…</strong> for any colour. <strong>None</strong> removes it.</td></tr>
+    <tr><td>Rows ▾</td><td>Choose the colours of the other rows (see below)</td></tr>
     <tr><td>✕ Table</td><td>Delete the whole table</td></tr>
   </tbody>
 </table>
 <p>Drag the border between two columns to make a column wider or narrower.</p>
 <figure class="small"><img src="screenshots/34-table-header-colour.png" alt=""><figcaption>Choosing a header colour</figcaption></figure>
+<p class="how"><span class="label">How to colour the rows.</span> Put the cursor in the table and click <strong>Rows ▾</strong> on the <strong>Insert</strong> tab. Under <strong>Apply to</strong>, choose:</p>
+<ul>
+  <li><strong>All rows</strong> to change the alternating shading. Pick a colour and the rows alternate between its lightest tint and one shade darker. <strong>Match header colour</strong> goes back to following the header (the default; the shading then changes whenever the header colour does), and <strong>No shading</strong> leaves the rows plain.</li>
+  <li><strong>This row</strong> to give the row the cursor is in a colour of its own, over the shading. Select several cells first to colour all their rows at once. FlowNote picks a readable text colour for it. <strong>Use table shading</strong> removes the row's own colour.</li>
+</ul>
+<div class="two-col">
+  <figure><img src="screenshots/38-table-row-colours.png" alt=""><figcaption>The Row colours menu</figcaption></figure>
+  <figure><img src="screenshots/39-table-row-own-colour.png" alt=""><figcaption>Shaded rows, and one row in its own colour</figcaption></figure>
+</div>
+<div class="note"><p>The shading is a see-through tint, so it also works on a coloured page, inside a coloured segment and in the dark theme.</p></div>
 </div>
 
 <div class="feature">
 <h3>Table templates</h3>
-<p class="what"><span class="label">What it does.</span> Saves a table's layout so you can reuse it: the number of rows and columns, column widths, header text and header colour, and, if you want, the text in the other cells too. Templates are available on every page. An inserted template is an independent copy, so changing it doesn't change the template.</p>
+<p class="what"><span class="label">What it does.</span> Saves a table's layout so you can reuse it: the number of rows and columns, column widths, header text and header colour, the row colours, and, if you want, the text in the other cells too. Templates are available on every page. An inserted template is an independent copy, so changing it doesn't change the template.</p>
 <p class="how"><span class="label">How to save a template.</span></p>
 <ol class="steps">
   <li>Put the cursor anywhere in the table.</li>

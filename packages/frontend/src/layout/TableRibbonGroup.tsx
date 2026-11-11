@@ -1,7 +1,7 @@
 // Insert ▸ Table (issue #37): a button that opens the rows × columns picker
 // (and saved templates, #38), then the tools for the table the cursor is in
 // — add/delete rows and columns, toggle the header row, header colour,
-// delete table, save as template — and Manage templates…. The tools
+// row colours (TableRowColorMenu), delete table, save as template — and Manage templates…. The tools
 // are disabled unless the cursor is inside a table.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { JSONContent } from '@tiptap/core'
@@ -10,6 +10,7 @@ import { insertTemplateTable, tableAtSelection } from '../lib/tableTemplates'
 import { useCanvasStore } from '../store/canvasStore'
 import { ColorPickerMenu } from './ColorPickerMenu'
 import { SaveTableTemplateDialog } from './SaveTableTemplateDialog'
+import { TableRowColorMenu } from './TableRowColorMenu'
 import { TableSizePicker } from './TableSizePicker'
 import { TableTemplatesDialog } from './TableTemplatesDialog'
 
@@ -61,10 +62,12 @@ export function TableRibbonGroup() {
   const inTable = useInTable()
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null)
   const [colorMenu, setColorMenu] = useState<{ x: number; y: number } | null>(null)
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number } | null>(null)
   const [saving, setSaving] = useState<JSONContent | null>(null)
   const [managing, setManaging] = useState(false)
   const insertRef = useRef<HTMLButtonElement | null>(null)
   const colorRef = useRef<HTMLButtonElement | null>(null)
+  const rowColorRef = useRef<HTMLButtonElement | null>(null)
 
   const below = (el: HTMLElement | null) => {
     const r = el?.getBoundingClientRect()
@@ -114,6 +117,23 @@ export function TableRibbonGroup() {
       >
         <span className="inline-block h-3 w-3 rounded-handle border border-black/20" style={{ background: DEFAULT_HEADER_BACKGROUND }} />▾
       </button>
+      <button
+        ref={rowColorRef}
+        type="button"
+        aria-label="Row colours"
+        title="Row colours"
+        aria-haspopup="menu"
+        disabled={!inTable}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setRowMenu(below(rowColorRef.current))}
+        className="flex items-center gap-1 rounded-control px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-200 dark:hover:bg-gray-800"
+      >
+        <span aria-hidden="true" className="inline-flex h-3 w-3 flex-col overflow-hidden rounded-handle border border-black/20">
+          <span className="flex-1" style={{ background: '#f1edf9' }} />
+          <span className="flex-1" style={{ background: '#e4dcf3' }} />
+        </span>
+        Rows ▾
+      </button>
       <ToolButton label="Delete table" disabled={!inTable} onClick={() => run((c) => c.deleteTable())}>✕ Table</ToolButton>
       <ToolButton
         label="Save as template…"
@@ -158,6 +178,9 @@ export function TableRibbonGroup() {
           onClear={() => run((c) => c.setTableHeaderColor(null))}
           onClose={() => setColorMenu(null)}
         />
+      )}
+      {rowMenu && getActiveEditor() && (
+        <TableRowColorMenu x={rowMenu.x} y={rowMenu.y} editor={getActiveEditor()!} headerColors={HEADER_COLORS} onClose={() => setRowMenu(null)} />
       )}
       {saving && <SaveTableTemplateDialog table={saving} onClose={() => setSaving(null)} />}
       {managing && <TableTemplatesDialog onClose={() => setManaging(false)} />}

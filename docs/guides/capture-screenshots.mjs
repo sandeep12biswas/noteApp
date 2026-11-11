@@ -415,8 +415,11 @@ await step('15-embedded-image', async () => {
 await step('16-ribbon-insert-ai', async () => {
   await tab('Insert').click()
   await wait(200)
-  // Whole Insert tab: the table tools come first, Ask AI / Generate / ⚙ after them.
-  await shot('16-ribbon-insert-ai', page.getByTestId('ribbon-root'), 0, { maxWidth: 1060 })
+  // Whole Insert tab: the table tools come first, Ask AI / Generate / ⚙ after
+  // them. Cropped just past the ⚙ wherever it ends up, so adding a table
+  // tool can't push the AI controls out of the picture.
+  const gear = await page.getByRole('button', { name: 'AI settings' }).boundingBox()
+  await shot('16-ribbon-insert-ai', page.getByTestId('ribbon-root'), 0, { maxWidth: Math.ceil((gear?.x ?? 1044) + (gear?.width ?? 0) + 16) })
 })
 
 await step('17-ai-settings', async () => {
@@ -651,7 +654,7 @@ await step('33-table-ribbon', async () => {
   await tab('Insert').click()
   await wait(200)
   // Just the table group (Table … Templates…), legible at page width.
-  await shot('33-table-ribbon', page.getByTestId('ribbon-root'), 0, { maxWidth: 770 })
+  await shot('33-table-ribbon', page.getByTestId('ribbon-root'), 0, { maxWidth: 850 })
 })
 
 await step('34-table-header-colour', async () => {
@@ -662,6 +665,32 @@ await step('34-table-header-colour', async () => {
   await shot('34-table-header-colour', menu, 12)
   await menu.getByRole('menuitemradio', { name: /#0f766e/i }).click()
   await wait(300)
+})
+
+await step('38-table-row-colours', async () => {
+  // The cursor is still in the last body row (32-table); the header is teal now.
+  await tables().first().locator('td').last().click()
+  await page.getByRole('button', { name: 'Row colours' }).click()
+  const menu = page.getByRole('menu', { name: 'Row colours' })
+  await menu.waitFor()
+  await wait(200)
+  await shot('38-table-row-colours', menu, 12)
+  await page.keyboard.press('Escape')
+  await wait(200)
+})
+
+await step('39-table-row-own-colour', async () => {
+  // One row in a colour of its own, over the teal bands.
+  await tables().first().locator('td').last().click()
+  await page.getByRole('button', { name: 'Row colours' }).click()
+  const menu = page.getByRole('menu', { name: 'Row colours' })
+  await menu.waitFor()
+  await menu.getByRole('menuitemradio', { name: 'This row' }).click()
+  await menu.getByRole('menuitemradio', { name: 'This row Light amber', exact: true }).click()
+  await wait(300)
+  await tables().first().locator('td').first().click() // caret out of the coloured row
+  await wait(200)
+  await shot('39-table-row-own-colour', segments().nth(-1), 16)
 })
 
 await step('35-save-template', async () => {

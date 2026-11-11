@@ -486,6 +486,30 @@
 .ProseMirror td > p {
   margin: 0;
 }
+/* Row shading (tableExtensions.ts rowShading): body rows banded in tints
+   of the header colour (or the table's own banding colour). The tint is
+   the colour at low opacity over whatever is behind the table, so it
+   works on white, on a coloured page or segment, and in the dark theme,
+   and the editor's text colour stays readable. Band 1 (the row under the
+   header) is the lightest; band 2 is one shade darker. A row with its own
+   colour shows it as is, with text picked for contrast. */
+.ProseMirror tr[data-band='1'] > td {
+  background-color: color-mix(in srgb, var(--band) 10%, transparent);
+}
+.ProseMirror tr[data-band='2'] > td {
+  background-color: color-mix(in srgb, var(--band) 20%, transparent);
+}
+.dark .ProseMirror tr[data-band='1'] > td {
+  background-color: color-mix(in srgb, var(--band) 16%, transparent);
+}
+.dark .ProseMirror tr[data-band='2'] > td {
+  background-color: color-mix(in srgb, var(--band) 28%, transparent);
+}
+.ProseMirror tr[data-row-color] > td {
+  background-color: var(--row-bg);
+  color: var(--row-fg);
+}
+
 /* Cell selection (drag across cells) and the column-resize handle. */
 .ProseMirror .selectedCell::after {
   content: '';
