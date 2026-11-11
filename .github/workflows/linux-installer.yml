@@ -6,7 +6,7 @@ name: Linux installer
 #   - `FlowNote-<version>-linux-x86_64.run`    self-extracting installer
 #   - `FlowNote-<version>-linux-x86_64.tar.gz` the bundle folder: .deb,
 #     .AppImage, install.sh / uninstall.sh (packaging/linux/), README, the
-#     PDF user/feature guides, SHA256SUMS
+#     FlowNote Guide (PDF + Word), SHA256SUMS
 # Then, on the runner, each install path is tested end to end: install →
 # launch (must stay up and create its database) → uninstall → verify
 # nothing is left behind.
@@ -68,9 +68,8 @@ jobs:
       - name: Verify checksums and guides
         run: |
           (cd "$BUNDLE" && sha256sum -c SHA256SUMS)
-          test -s "$BUNDLE/docs/FlowNote-Installation-Guide.pdf"
-          test -s "$BUNDLE/docs/FlowNote-User-Guide.pdf"
-          test -s "$BUNDLE/docs/FlowNote-Feature-Guide.pdf"
+          test -s "$BUNDLE/docs/FlowNote-Guide.pdf"
+          test -s "$BUNDLE/docs/FlowNote-Guide.docx"
 
       - name: Upload package
         uses: actions/upload-artifact@v4

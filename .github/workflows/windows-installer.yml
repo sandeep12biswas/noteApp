@@ -6,12 +6,12 @@ name: Windows installer
 # (`FlowNote-<version>-windows-x64.zip`):
 #   - `FlowNote_<version>_x64-setup.exe` — setup wizard (tauri.conf.json ->
 #     bundle.windows.nsis: branded pages, release notice, Start Menu folder
-#     with the PDF guides + uninstaller, optional desktop shortcut);
+#     with the FlowNote Guide PDF + uninstaller, optional desktop shortcut);
 #     per-user, no admin needed; registers an uninstaller under Settings → Apps.
 #   - `FlowNote_<version>_x64_en-US.msi` — uninstall the same way.
 #   - `Uninstall FlowNote.cmd` + `Uninstall-FlowNote.ps1` — standalone
-#     uninstaller for either install (packaging/windows/), README, the PDF
-#     guides, SHA256SUMS.txt.
+#     uninstaller for either install (packaging/windows/), README, the
+#     FlowNote Guide (PDF + Word), SHA256SUMS.txt.
 # Then, on the runner itself, each installer is tested end to end: silent
 # install → launch (must stay up and create its database) → uninstall via
 # Uninstall-FlowNote.ps1 → verify nothing is left behind.
@@ -72,9 +72,7 @@ jobs:
         run: |
           $version = (Get-Content VERSION -Raw).Trim()
           $bundle = "dist-release/FlowNote-$version-windows-x64"
-          foreach ($pdf in 'Installation', 'User', 'Feature') {
-            if (-not (Test-Path "$bundle/docs/FlowNote-$pdf-Guide.pdf")) { throw "$pdf Guide PDF missing from the bundle" }
-          }
+          if (-not (Test-Path "$bundle/docs/FlowNote-Guide.pdf")) { throw 'FlowNote-Guide.pdf missing from the bundle' }
           Copy-Item -Recurse $bundle package
           Get-ChildItem -Recurse package | Format-Table FullName, Length
 
@@ -101,12 +99,10 @@ jobs:
           $exe = Get-ChildItem $installDir -Filter *.exe | Where-Object Name -ne 'uninstall.exe' | Select-Object -First 1
           Write-Host "Installed to $installDir ($($exe.Name))"
 
-          # hooks.nsh: the guides ship in the install, with Start Menu entries.
-          foreach ($pdf in 'FlowNote-Installation-Guide.pdf', 'FlowNote-User-Guide.pdf', 'FlowNote-Feature-Guide.pdf') {
-            if (-not (Test-Path (Join-Path $installDir "docs\$pdf"))) { throw "$pdf not installed" }
-          }
+          # hooks.nsh: the guide ships in the install, with a Start Menu entry.
+          if (-not (Test-Path (Join-Path $installDir 'docs\FlowNote-Guide.pdf'))) { throw 'FlowNote-Guide.pdf not installed' }
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\FlowNote'
-          foreach ($lnk in 'FlowNote.lnk', 'FlowNote Installation Guide.lnk', 'FlowNote User Guide.lnk', 'FlowNote Feature Guide.lnk', 'Uninstall FlowNote.lnk') {
+          foreach ($lnk in 'FlowNote.lnk', 'FlowNote Guide.lnk', 'Uninstall FlowNote.lnk') {
             if (-not (Test-Path (Join-Path $menu $lnk))) { throw "Start Menu entry missing: $lnk" }
           }
 

@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-// Renders the FlowNote guides to PDF:
-//   docs/guides/user-guide.html          -> docs/FlowNote-User-Guide.pdf
-//   docs/guides/feature-guide.html       -> docs/FlowNote-Feature-Guide.pdf
-//   docs/guides/installation-guide.html  -> docs/FlowNote-Installation-Guide.pdf
+// Renders the FlowNote guide (installation + user manual, one document) to PDF:
+//   docs/guides/flownote-guide.html  -> docs/FlowNote-Guide.pdf
 //
 //   node docs/guides/build-pdfs.mjs          (or: pnpm docs:pdf)
 //
 // Uses headless Chrome/Chromium through playwright-core: set CHROME_PATH, or
 // it looks for google-chrome / chromium in the usual places. Before printing
-// it fills in the table of contents (from each chapter's h2/h3) and the
+// it fills in the table of contents (from each part divider and each
+// chapter's h2/h3) and the
 // version (from the repo's VERSION file). Screenshots come from
 // docs/guides/screenshots/ (pnpm docs:screenshots).
 import { createRequire } from 'node:module'
@@ -22,11 +21,7 @@ const require = createRequire(path.join(REPO, 'package.json'))
 const { chromium } = require('playwright-core')
 
 const VERSION = fs.readFileSync(path.join(REPO, 'VERSION'), 'utf8').trim()
-const DOCS = [
-  { src: 'user-guide.html', out: 'FlowNote-User-Guide.pdf' },
-  { src: 'feature-guide.html', out: 'FlowNote-Feature-Guide.pdf' },
-  { src: 'installation-guide.html', out: 'FlowNote-Installation-Guide.pdf' },
-]
+const DOCS = [{ src: 'flownote-guide.html', out: 'FlowNote-Guide.pdf' }]
 
 function findChrome() {
   const candidates = [
@@ -61,7 +56,18 @@ try {
       const toc = document.querySelector('[data-toc]')
       if (toc) {
         const ol = document.createElement('ol')
-        document.querySelectorAll('main section.chapter').forEach((sec, i) => {
+        document.querySelectorAll('main > section.chapter, main > section.part').forEach((sec, i) => {
+          if (sec.classList.contains('part')) {
+            // "Part 1 · Installation": an unnumbered TOC line.
+            const li = document.createElement('li')
+            li.className = 'part'
+            const a = document.createElement('a')
+            a.href = `#${sec.id}`
+            a.textContent = `${sec.querySelector('.part-kicker')?.textContent ?? ''} · ${sec.querySelector('.part-title')?.textContent ?? ''}`
+            li.append(a)
+            ol.append(li)
+            return
+          }
           const h2 = sec.querySelector('h2')
           if (!h2) return
           if (!sec.id) sec.id = `chapter-${i + 1}`
